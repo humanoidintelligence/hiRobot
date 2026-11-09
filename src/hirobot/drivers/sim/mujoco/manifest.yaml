@@ -1,0 +1,8 @@
+# Drivers registered here: mujoco
+sdk:
+  - distribution: mujoco
+    module: mujoco
+    minimum: "3.0"
+    install: pip install 'hirobot[sim]'
+verified: []
+maintainers: []

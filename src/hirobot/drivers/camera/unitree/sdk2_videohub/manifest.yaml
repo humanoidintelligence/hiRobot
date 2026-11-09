@@ -1,0 +1,13 @@
+# Drivers registered here: unitree_videohub
+sdk:
+  - distribution: unitree_sdk2py
+    minimum: "1.0.1"
+    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
+  - distribution: opencv-python
+    module: cv2
+    install: pip install 'hirobot[camera]'
+verified:
+  - model: Unitree G1 head camera (videohub_pc4)
+    sdk: {unitree_sdk2py: "1.0.1"}
+    date: 2026-11-04
+maintainers: []

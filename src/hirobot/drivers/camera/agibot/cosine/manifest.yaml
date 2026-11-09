@@ -1,0 +1,13 @@
+# Drivers registered here: agibot_cosine
+sdk:
+  - distribution: cosine_bus
+    minimum: "2.0.0"
+    install: preinstalled on the AgiBot G1 onboard computer (system Python 3.10)
+  - distribution: opencv-python
+    module: cv2
+    install: pip install 'hirobot[camera]'
+verified:
+  - model: AgiBot G1 (G01) head colour + depth 1280x800, both wrist colour 848x480, through make_robot("agibot_g1")
+    sdk: {cosine_bus: "2.0.0"}
+    date: 2026-11-09
+maintainers: []

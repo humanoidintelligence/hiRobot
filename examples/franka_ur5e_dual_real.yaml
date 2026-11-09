@@ -1,0 +1,12 @@
+# The built-in Franka FR3 + UR5e group on hardware.
+#
+# overrides are merged into each member's body: section. The members keep
+# their base_pose from groups/franka_ur5e_dual, so the group's ee_poses and
+# ee_targets are in the world frame.
+
+defaults: [groups/franka_ur5e_dual]
+
+group:
+  members:
+    left:  {overrides: {driver: franka_libfranka, ip: <franka ip>}}
+    right: {overrides: {driver: ur_rtde, ip: <ur ip>}}

@@ -1,0 +1,9 @@
+# Universal Robots UR5e — 6-DoF fixed-base arm.
+#
+# The parts are in the files listed under defaults: (hirobot/configs/).
+
+defaults: [body/ur/ur5e]
+
+body:
+  driver: toy              # swap for 'ur_rtde' on hardware
+  # ip: 192.168.1.102      # controller IP (uncomment for the 'ur_rtde' driver)

@@ -1,0 +1,38 @@
+# Example hiRobot configuration — a humanoid.
+#
+# hiRobot describes a robot's I/O contract and which driver drives it. What
+# decides the actions (a VLA served by hiVLA, an agent in hiAgent) is not part
+# of the config.
+
+embodiment:
+  name: generic-humanoid
+  kind: humanoid            # humanoid | arm
+  control_hz: 50
+  floating_base: true       # humanoids have a moving base (IMU / base state)
+  joints:                   # listed in the canonical I/O order; names enable DoF mapping
+    - name: left_hip_pitch
+    - name: left_knee
+    - name: left_ankle_pitch
+    - name: right_hip_pitch
+    - name: right_knee
+    - name: right_ankle_pitch
+    - name: left_shoulder_pitch
+    - name: left_elbow
+    - name: right_shoulder_pitch
+    - name: right_elbow
+  end_effectors:
+    - name: left_hand
+      has_gripper: true
+    - name: right_hand
+      has_gripper: true
+  cameras:
+    - name: head
+      width: 224
+      height: 224
+
+# embodiment: above describes the whole robot, hands included. body: picks
+# and configures only the body driver; hands, cameras and audio name their
+# own drivers inside embodiment:.
+body:
+  driver: toy               # a registered Robot driver (toy | unitree_sdk2 | fourier_grx | ...)
+

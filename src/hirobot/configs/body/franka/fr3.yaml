@@ -1,0 +1,22 @@
+# Franka FR3 (Panda) — 7-DoF fixed-base arm.
+#
+# Joint names/order follow libfranka's RobotState.q (joint1 -> joint7). Fixed
+# base: no IMU/base state. The task-space frame is the end-effector (O_T_EE).
+# Driven via pylibfranka's async joint-position controller.
+
+embodiment:
+  name: franka-fr3
+  kind: arm
+  control_hz: 100          # VLA target rate; libfranka's RT thread runs at 1 kHz
+  floating_base: false
+  joints:
+    - name: joint1
+    - name: joint2
+    - name: joint3
+    - name: joint4
+    - name: joint5
+    - name: joint6
+    - name: joint7
+  end_effectors:
+    - name: ee
+      has_gripper: true     # Franka Hand (controlled separately via Gripper API)

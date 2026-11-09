@@ -1,0 +1,41 @@
+# Two Inspire RH56DFX six-DoF hands as mounted on the Unitree H1: 6 joints each,
+# in order pinky, ring, middle, index, thumb bend, thumb rotation. Positions are
+# normalised, 0 = closed and 1 = open (the bridge scales to the 0-1000 angle
+# registers), so every finger is limited to [0, 1].
+#
+# The drivers below use Unitree's h1_inspire_service 1.0.1 (not 1.0.2):
+# rt/inspire/{cmd,state}, 12 motors, 0-5 right, 6-11 left. For the
+# inspire_sdkpy bridge (scripts/inspire_serial_to_dds.py) replace each hand's
+# driver with {type: inspire_sdkpy, side: left|right}.
+
+embodiment:
+  joints:
+    # left Inspire hand, rt/inspire/cmd motors 6-11
+    - {name: left_hand_pinky,          position_limit: [0.0, 1.0]}  # 19
+    - {name: left_hand_ring,           position_limit: [0.0, 1.0]}  # 20
+    - {name: left_hand_middle,         position_limit: [0.0, 1.0]}  # 21
+    - {name: left_hand_index,          position_limit: [0.0, 1.0]}  # 22
+    - {name: left_hand_thumb_bend,     position_limit: [0.0, 1.0]}  # 23
+    - {name: left_hand_thumb_rotation, position_limit: [0.0, 1.0]}  # 24
+    # right Inspire hand, rt/inspire/cmd motors 0-5
+    - {name: right_hand_pinky,          position_limit: [0.0, 1.0]}  # 25
+    - {name: right_hand_ring,           position_limit: [0.0, 1.0]}  # 26
+    - {name: right_hand_middle,         position_limit: [0.0, 1.0]}  # 27
+    - {name: right_hand_index,          position_limit: [0.0, 1.0]}  # 28
+    - {name: right_hand_thumb_bend,     position_limit: [0.0, 1.0]}  # 29
+    - {name: right_hand_thumb_rotation, position_limit: [0.0, 1.0]}  # 30
+  end_effectors:
+    - name: left_hand
+      joints: [left_hand_pinky, left_hand_ring, left_hand_middle, left_hand_index,
+               left_hand_thumb_bend, left_hand_thumb_rotation]
+      driver: &inspire_service
+        type: unitree_motorcmds
+        cmd_topic: rt/inspire/cmd
+        state_topic: rt/inspire/state
+        num_motors: 12
+        motor_offset: 6
+        service: h1_inspire_service (inspire_hand -s /dev/ttyUSB0)
+    - name: right_hand
+      joints: [right_hand_pinky, right_hand_ring, right_hand_middle, right_hand_index,
+               right_hand_thumb_bend, right_hand_thumb_rotation]
+      driver: {<<: *inspire_service, motor_offset: 0}

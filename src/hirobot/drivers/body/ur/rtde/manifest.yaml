@@ -1,0 +1,7 @@
+# Drivers registered here: ur_rtde
+sdk:
+  - distribution: ur_rtde
+    module: rtde_control
+    install: pip install ur_rtde
+verified: []
+maintainers: []

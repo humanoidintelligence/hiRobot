@@ -1,0 +1,72 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Model weights & checkpoints
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.safetensors
+checkpoints/
+weights/
+
+# Logs & runtime artifacts
+*.log
+logs/
+outputs/
+runs/
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Environment files
+.env
+
+# scratch/ is tracked: dev scripts, notes, diagrams, images, videos (svg/png/mp4/...).
+# Only scratch/_local/ is ignored: run output, logs, big or generated data.
+# `!scratch/**` overrides the global patterns above (*.mp4, *.log, *.pt, logs/, ...).
+!scratch/**
+scratch/_local/*
+!scratch/_local/.gitkeep
+scratch/**/__pycache__/
+scratch/**/*.swp
+scratch/**/.DS_Store
+
+# Caches
+cache/
+
+# Local scratch output (debug images, probes)
+tmp/
+
+# Claude Code: only the dev rules are tracked
+.claude/*
+!.claude/rules/

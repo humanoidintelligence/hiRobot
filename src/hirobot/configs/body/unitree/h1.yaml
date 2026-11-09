@@ -1,0 +1,37 @@
+# Unitree H1 — 19-DoF humanoid.
+#
+# Joint names/order follow the H1 low-level JointIndex enum in
+# unitree_sdk2_python example/h1/low_level/h1_low_level_example.py.
+# The SDK motor array has 20 slots where index 9 (kNotUsedJoint) is unused; the
+# 19 real joints below are listed in SDK index order (the driver maps the gap).
+# Uses the unitree_go DDS message family (msg_family: go). Note H1 has
+# single-DoF ankles.
+
+embodiment:
+  name: unitree-h1
+  kind: humanoid
+  control_hz: 50
+  floating_base: true
+  joints:
+    - name: right_hip_roll        # 0
+    - name: right_hip_pitch       # 1
+    - name: right_knee            # 2
+    - name: left_hip_roll         # 3
+    - name: left_hip_pitch        # 4
+    - name: left_knee             # 5
+    - name: waist_yaw             # 6
+    - name: left_hip_yaw          # 7
+    - name: right_hip_yaw         # 8
+    - name: left_ankle            # 10
+    - name: right_ankle           # 11
+    - name: right_shoulder_pitch  # 12
+    - name: right_shoulder_roll   # 13
+    - name: right_shoulder_yaw    # 14
+    - name: right_elbow           # 15
+    - name: left_shoulder_pitch   # 16
+    - name: left_shoulder_roll    # 17
+    - name: left_shoulder_yaw     # 18
+    - name: left_elbow            # 19
+  end_effectors:
+    - name: left_hand
+    - name: right_hand

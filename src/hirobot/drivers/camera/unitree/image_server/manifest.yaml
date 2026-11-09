@@ -1,0 +1,14 @@
+# Drivers registered here: unitree_image_server
+sdk:
+  - distribution: pyzmq
+    module: zmq
+    minimum: "22.0"
+    install: pip install 'hirobot[camera]'
+  - distribution: opencv-python
+    module: cv2
+    install: pip install 'hirobot[camera]'
+verified:
+  - model: Unitree H1 head D435i, scripts/camera_image_server.py on a Jetson Orin, 640x480
+    sdk: {pyzmq: "27.3.0"}
+    date: 2026-11-08
+maintainers: []

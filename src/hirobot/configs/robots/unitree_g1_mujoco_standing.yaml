@@ -1,0 +1,12 @@
+# Unitree G1 (29 DoF) in MuJoCo, standing free on the floor (no gantry).
+#
+# Same as unitree_g1_mujoco, with the pelvis released and placed at the MJCF's
+# own height (0.793 m), feet on the floor. Plain PD does not balance a humanoid:
+# without a balance controller (a hiWBC layer under layers:) the robot falls.
+# Use unitree_g1_mujoco (pelvis welded) to test joint control alone.
+
+defaults: [robots/unitree_g1_mujoco]
+
+body:
+  fixed_base: false
+  base_height: 0.793

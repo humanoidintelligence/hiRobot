@@ -1,0 +1,31 @@
+# Example hiRobot configuration — a fixed-base arm (e.g. Franka / UR).
+#
+# Same schema as humanoid.yaml, but kind=arm and floating_base=false, so
+# observations carry no IMU/base state. End-effector + Cartesian control matter
+# more here; the unified Action supports both joint and Cartesian modes.
+
+embodiment:
+  name: generic-7dof-arm
+  kind: arm                 # humanoid | arm
+  control_hz: 100
+  floating_base: false      # fixed base: no IMU / base state in observations
+  joints:
+    - name: joint_1
+    - name: joint_2
+    - name: joint_3
+    - name: joint_4
+    - name: joint_5
+    - name: joint_6
+    - name: joint_7
+  end_effectors:
+    - name: tcp
+      has_gripper: true
+  cameras:
+    - name: wrist
+      width: 224
+      height: 224
+
+# embodiment: above describes the whole robot. body: picks and configures
+# only the body driver.
+body:
+  driver: toy               # swap for 'franka_libfranka' / 'ur_rtde' on hardware

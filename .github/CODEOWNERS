@@ -1,0 +1,55 @@
+# Who reviews changes to each part of hiRobot. GitHub requests a review from the
+# owners of every path a pull request touches; the last matching line wins.
+#
+# When you add or take over a driver, add your handle to its line here and to
+# `maintainers:` in the driver's manifest.yaml. tests/test_codeowners.py fails
+# when a driver directory with a manifest has no line below.
+
+# Default: the core (types, embodiment, registry, safety, config loader), docs, CI.
+*                                                   @artpli
+
+# The safety gate and the Robot contract: every driver depends on them.
+/src/hirobot/safety.py                              @artpli
+/src/hirobot/robot.py                               @artpli
+
+# Drivers, one line per SDK directory (src/hirobot/drivers/<part>/<vendor>/<sdk>/).
+# The matching tests/drivers/ directory has the same owners.
+/src/hirobot/drivers/_sdk/                          @artpli
+/src/hirobot/drivers/body/agibot/aimrt/             @artpli
+/src/hirobot/drivers/body/agibot/gdk/               @artpli
+/src/hirobot/drivers/body/fourier/grx/              @artpli
+/src/hirobot/drivers/body/franka/libfranka/         @artpli
+/src/hirobot/drivers/body/unitree/sdk2/             @artpli
+/src/hirobot/drivers/body/ur/rtde/                  @artpli
+/src/hirobot/drivers/end_effector/inspire/sdkpy/            @artpli
+/src/hirobot/drivers/end_effector/unitree/sdk2_handcmd/     @artpli
+/src/hirobot/drivers/end_effector/unitree/sdk2_motorcmds/   @artpli
+/src/hirobot/drivers/camera/agibot/cosine/          @artpli
+/src/hirobot/drivers/camera/generic/video_file/     @artpli
+/src/hirobot/drivers/camera/unitree/image_server/   @artpli
+/src/hirobot/drivers/camera/unitree/sdk2_videohub/  @artpli
+/src/hirobot/drivers/audio/generic/sounddevice/     @artpli
+/src/hirobot/drivers/audio/unitree/sdk2_voice/      @artpli
+/src/hirobot/drivers/sim/mujoco/                    @artpli
+/src/hirobot/drivers/sim/                           @artpli
+
+/tests/drivers/body/agibot/aimrt/                   @artpli
+/tests/drivers/body/agibot/gdk/                     @artpli
+/tests/drivers/body/fourier/grx/                    @artpli
+/tests/drivers/body/franka/libfranka/               @artpli
+/tests/drivers/body/unitree/sdk2/                   @artpli
+/tests/drivers/body/ur/rtde/                        @artpli
+/tests/drivers/end_effector/inspire/sdkpy/                  @artpli
+/tests/drivers/end_effector/unitree/sdk2_handcmd/           @artpli
+/tests/drivers/end_effector/unitree/sdk2_motorcmds/         @artpli
+/tests/drivers/camera/agibot/cosine/                @artpli
+/tests/drivers/camera/generic/video_file/           @artpli
+/tests/drivers/camera/unitree/image_server/         @artpli
+/tests/drivers/camera/unitree/sdk2_videohub/        @artpli
+/tests/drivers/audio/generic/sounddevice/           @artpli
+/tests/drivers/audio/unitree/sdk2_voice/            @artpli
+/tests/drivers/sim/mujoco/                          @artpli
+
+# Hardware scripts and setup guides: they command real robots.
+/scripts/                                           @artpli
+/docs/setup/                                        @artpli

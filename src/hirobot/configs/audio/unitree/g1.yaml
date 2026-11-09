@@ -1,0 +1,14 @@
+# G1 microphone and speaker.
+embodiment:
+  # Built-in microphone and speaker, both behind the G1 audio board (.161).
+  # The mic is its UDP multicast (16 kHz mono); the speaker is the SDK 'voice'
+  # service. Real driver only, like the camera (docs/setup/unitree.md).
+  microphones:
+    - name: head
+      driver:
+        type: unitree_voice_mic
+  speakers:
+    - name: head
+      driver:
+        type: unitree_voice_speaker
+        volume: 60            # set on connect, the previous volume is restored on disconnect

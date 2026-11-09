@@ -1,0 +1,13 @@
+# Drivers registered here: unitree_sdk2
+sdk:
+  - distribution: unitree_sdk2py
+    minimum: "1.0.1"
+    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
+verified:
+  - model: Unitree G1 (29 DoF)
+    sdk: {unitree_sdk2py: "1.0.1 (a035ade)"}
+    date: 2026-11-04
+  - model: Unitree H1 (19 DoF)
+    sdk: {unitree_sdk2py: "1.0.1"}
+    date: 2026-11-05
+maintainers: []

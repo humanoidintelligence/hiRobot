@@ -1,0 +1,47 @@
+# AgiBot X1 — humanoid, driven via a ROS2/AimRT bridge (see the 'agibot_aimrt' driver).
+#
+# Joint names/order follow the ControlModule joint_list in
+# agibot_x1_infer cfg/.../rl_x1.yaml (29 joints: waist, arms, legs).
+# /joint_cmd matches joints by NAME, not index, so this order only needs to be
+# internally consistent with joint_pos/joint_target vectors. The DCU hardware
+# list has 32 joints (adds left/right claw + a different ordering); adjust here
+# if you drive the DCU layer directly.
+
+embodiment:
+  name: agibot-x1
+  kind: humanoid
+  control_hz: 100          # policy rate; AimRT low-level loop runs at 1 kHz
+  floating_base: true
+  joints:
+    - name: lumbar_yaw
+    - name: lumbar_roll
+    - name: lumbar_pitch
+    - name: left_shoulder_pitch
+    - name: left_shoulder_roll
+    - name: left_shoulder_yaw
+    - name: left_elbow_pitch
+    - name: left_elbow_yaw
+    - name: left_wrist_pitch
+    - name: left_wrist_roll
+    - name: right_shoulder_pitch
+    - name: right_shoulder_roll
+    - name: right_shoulder_yaw
+    - name: right_elbow_pitch
+    - name: right_elbow_yaw
+    - name: right_wrist_pitch
+    - name: right_wrist_roll
+    - name: left_hip_pitch
+    - name: left_hip_roll
+    - name: left_hip_yaw
+    - name: left_knee_pitch
+    - name: left_ankle_pitch
+    - name: left_ankle_roll
+    - name: right_hip_pitch
+    - name: right_hip_roll
+    - name: right_hip_yaw
+    - name: right_knee_pitch
+    - name: right_ankle_pitch
+    - name: right_ankle_roll
+  end_effectors:
+    - name: left_hand
+    - name: right_hand

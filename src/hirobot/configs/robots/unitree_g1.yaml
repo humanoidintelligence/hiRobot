@@ -1,0 +1,9 @@
+# Unitree G1 — 29-DoF humanoid.
+#
+# The parts are in the files listed under defaults: (hirobot/configs/).
+
+defaults: [body/unitree/g1_29dof, camera/unitree/g1_head_d435i, audio/unitree/g1]
+
+body:
+  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)
+  # builtin_skills: g1   # with driver: unitree_sdk2, run the built-in walk / gestures by name

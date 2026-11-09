@@ -1,0 +1,15 @@
+# AgiBot G1 (精灵 G01): dual arm on a wheeled chassis, head RGB-D and two wrist cameras.
+#
+# The parts are in the files listed under defaults: (hirobot/configs/).
+# On the robot: driver: agibot_gdk, run with the robot's system Python and the
+# vendor environment sourced (docs/setup/agibot_g1.md).
+
+defaults: [body/agibot/g1, camera/agibot/g1]
+
+body:
+  driver: toy              # set to 'agibot_gdk' on the robot's computer
+  # groups: [left_arm, right_arm]   # joint groups agibot_gdk commands
+  # chassis_host: <chassis box IP>  # the chassis controller box; enables BASE_VELOCITY
+
+safety:
+  gripper_range: [0, 1]    # hiRobot's gripper scale: 0 closed, 1 open

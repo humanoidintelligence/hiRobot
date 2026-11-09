@@ -1,0 +1,8 @@
+# Drivers registered here: sounddevice_mic, sounddevice_speaker
+sdk:
+  - distribution: sounddevice
+    module: sounddevice
+    minimum: "0.4"
+    install: pip install 'hirobot[audio]'
+verified: []
+maintainers: []

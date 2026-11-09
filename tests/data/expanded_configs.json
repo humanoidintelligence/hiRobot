@@ -1,0 +1,2527 @@
+{
+ "robots/agibot_g1": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "depth": true,
+     "driver": {
+      "depth_topic": "/camera/head_depth",
+      "topic": "/camera/head_color",
+      "type": "agibot_cosine"
+     },
+     "height": 800,
+     "name": "head",
+     "width": 1280
+    },
+    {
+     "driver": {
+      "topic": "/camera/hand_left_color",
+      "type": "agibot_cosine"
+     },
+     "height": 480,
+     "name": "left_wrist",
+     "width": 848
+    },
+    {
+     "driver": {
+      "topic": "/camera/hand_right_color",
+      "type": "agibot_cosine"
+     },
+     "height": 480,
+     "name": "right_wrist",
+     "width": 848
+    }
+   ],
+   "control_hz": 30,
+   "end_effectors": [
+    {
+     "frame": {
+      "body": "arm_left_link7"
+     },
+     "has_gripper": true,
+     "name": "left_gripper"
+    },
+    {
+     "frame": {
+      "body": "arm_right_link7"
+     },
+     "has_gripper": true,
+     "name": "right_gripper"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "waist_lift_joint",
+     "position_limit": [
+      0.02,
+      0.55
+     ]
+    },
+    {
+     "name": "waist_pitch_joint",
+     "position_limit": [
+      0.0,
+      1.57
+     ]
+    },
+    {
+     "name": "head_yaw_joint",
+     "position_limit": [
+      -1.57,
+      1.57
+     ]
+    },
+    {
+     "name": "head_pitch_joint",
+     "position_limit": [
+      -0.34,
+      0.52
+     ]
+    },
+    {
+     "name": "left_arm_joint1",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "left_arm_joint2",
+     "position_limit": [
+      -2.0,
+      2.0
+     ]
+    },
+    {
+     "name": "left_arm_joint3",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "left_arm_joint4",
+     "position_limit": [
+      -1.65,
+      -0.05
+     ]
+    },
+    {
+     "name": "left_arm_joint5",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "left_arm_joint6",
+     "position_limit": [
+      -1.65,
+      1.65
+     ]
+    },
+    {
+     "name": "left_arm_joint7",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "right_arm_joint1",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "right_arm_joint2",
+     "position_limit": [
+      -2.0,
+      2.0
+     ]
+    },
+    {
+     "name": "right_arm_joint3",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "right_arm_joint4",
+     "position_limit": [
+      0.05,
+      1.65
+     ]
+    },
+    {
+     "name": "right_arm_joint5",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    },
+    {
+     "name": "right_arm_joint6",
+     "position_limit": [
+      -1.65,
+      1.65
+     ]
+    },
+    {
+     "name": "right_arm_joint7",
+     "position_limit": [
+      -3.1,
+      3.1
+     ]
+    }
+   ],
+   "kind": "humanoid",
+   "name": "agibot-g1"
+  },
+  "safety": {
+   "gripper_range": [
+    0,
+    1
+   ]
+  }
+ },
+ "robots/agibot_x1": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 100,
+   "end_effectors": [
+    {
+     "name": "left_hand"
+    },
+    {
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "lumbar_yaw"
+    },
+    {
+     "name": "lumbar_roll"
+    },
+    {
+     "name": "lumbar_pitch"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow_pitch"
+    },
+    {
+     "name": "left_elbow_yaw"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow_pitch"
+    },
+    {
+     "name": "right_elbow_yaw"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee_pitch"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee_pitch"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    }
+   ],
+   "kind": "humanoid",
+   "name": "agibot-x1"
+  }
+ },
+ "robots/fourier_gr1t1": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 100,
+   "end_effectors": [
+    {
+     "name": "left_hand"
+    },
+    {
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_roll_joint"
+    },
+    {
+     "name": "left_hip_yaw_joint"
+    },
+    {
+     "name": "left_hip_pitch_joint"
+    },
+    {
+     "name": "left_knee_pitch_joint"
+    },
+    {
+     "name": "left_ankle_pitch_joint"
+    },
+    {
+     "name": "left_ankle_roll_joint"
+    },
+    {
+     "name": "right_hip_roll_joint"
+    },
+    {
+     "name": "right_hip_yaw_joint"
+    },
+    {
+     "name": "right_hip_pitch_joint"
+    },
+    {
+     "name": "right_knee_pitch_joint"
+    },
+    {
+     "name": "right_ankle_pitch_joint"
+    },
+    {
+     "name": "right_ankle_roll_joint"
+    },
+    {
+     "name": "waist_yaw_joint"
+    },
+    {
+     "name": "waist_pitch_joint"
+    },
+    {
+     "name": "waist_roll_joint"
+    },
+    {
+     "name": "head_pitch_joint"
+    },
+    {
+     "name": "head_roll_joint"
+    },
+    {
+     "name": "head_yaw_joint"
+    },
+    {
+     "name": "left_shoulder_pitch_joint"
+    },
+    {
+     "name": "left_shoulder_roll_joint"
+    },
+    {
+     "name": "left_shoulder_yaw_joint"
+    },
+    {
+     "name": "left_elbow_pitch_joint"
+    },
+    {
+     "name": "left_wrist_yaw_joint"
+    },
+    {
+     "name": "left_wrist_roll_joint"
+    },
+    {
+     "name": "left_wrist_pitch_joint"
+    },
+    {
+     "name": "right_shoulder_pitch_joint"
+    },
+    {
+     "name": "right_shoulder_roll_joint"
+    },
+    {
+     "name": "right_shoulder_yaw_joint"
+    },
+    {
+     "name": "right_elbow_pitch_joint"
+    },
+    {
+     "name": "right_wrist_yaw_joint"
+    },
+    {
+     "name": "right_wrist_roll_joint"
+    },
+    {
+     "name": "right_wrist_pitch_joint"
+    }
+   ],
+   "kind": "humanoid",
+   "name": "fourier-gr1t1"
+  }
+ },
+ "robots/fourier_gr1t2": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 100,
+   "end_effectors": [
+    {
+     "name": "left_hand"
+    },
+    {
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_roll_joint"
+    },
+    {
+     "name": "left_hip_yaw_joint"
+    },
+    {
+     "name": "left_hip_pitch_joint"
+    },
+    {
+     "name": "left_knee_pitch_joint"
+    },
+    {
+     "name": "left_ankle_pitch_joint"
+    },
+    {
+     "name": "left_ankle_roll_joint"
+    },
+    {
+     "name": "right_hip_roll_joint"
+    },
+    {
+     "name": "right_hip_yaw_joint"
+    },
+    {
+     "name": "right_hip_pitch_joint"
+    },
+    {
+     "name": "right_knee_pitch_joint"
+    },
+    {
+     "name": "right_ankle_pitch_joint"
+    },
+    {
+     "name": "right_ankle_roll_joint"
+    },
+    {
+     "name": "waist_yaw_joint"
+    },
+    {
+     "name": "waist_pitch_joint"
+    },
+    {
+     "name": "waist_roll_joint"
+    },
+    {
+     "name": "head_pitch_joint"
+    },
+    {
+     "name": "head_roll_joint"
+    },
+    {
+     "name": "head_yaw_joint"
+    },
+    {
+     "name": "left_shoulder_pitch_joint"
+    },
+    {
+     "name": "left_shoulder_roll_joint"
+    },
+    {
+     "name": "left_shoulder_yaw_joint"
+    },
+    {
+     "name": "left_elbow_pitch_joint"
+    },
+    {
+     "name": "left_wrist_yaw_joint"
+    },
+    {
+     "name": "left_wrist_roll_joint"
+    },
+    {
+     "name": "left_wrist_pitch_joint"
+    },
+    {
+     "name": "right_shoulder_pitch_joint"
+    },
+    {
+     "name": "right_shoulder_roll_joint"
+    },
+    {
+     "name": "right_shoulder_yaw_joint"
+    },
+    {
+     "name": "right_elbow_pitch_joint"
+    },
+    {
+     "name": "right_wrist_yaw_joint"
+    },
+    {
+     "name": "right_wrist_roll_joint"
+    },
+    {
+     "name": "right_wrist_pitch_joint"
+    }
+   ],
+   "kind": "humanoid",
+   "name": "fourier-gr1t2"
+  }
+ },
+ "robots/franka_fr3": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 100,
+   "end_effectors": [
+    {
+     "has_gripper": true,
+     "name": "ee"
+    }
+   ],
+   "floating_base": false,
+   "joints": [
+    {
+     "name": "joint1"
+    },
+    {
+     "name": "joint2"
+    },
+    {
+     "name": "joint3"
+    },
+    {
+     "name": "joint4"
+    },
+    {
+     "name": "joint5"
+    },
+    {
+     "name": "joint6"
+    },
+    {
+     "name": "joint7"
+    }
+   ],
+   "kind": "arm",
+   "name": "franka-fr3"
+  }
+ },
+ "robots/unitree_g1": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "type": "unitree_videohub"
+     },
+     "height": 1080,
+     "mount": {
+      "body": "torso_link",
+      "fovy": 42,
+      "pos": [
+       0.0576235,
+       0.01753,
+       0.42987
+      ],
+      "quat": [
+       -0.659252,
+       0.659252,
+       -0.255707,
+       0.255707
+      ]
+     },
+     "name": "head",
+     "width": 1920
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "frame": {
+      "body": "left_wrist_yaw_link"
+     },
+     "name": "left_hand"
+    },
+    {
+     "frame": {
+      "body": "right_wrist_yaw_link"
+     },
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "waist_roll"
+    },
+    {
+     "name": "waist_pitch"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_yaw"
+    }
+   ],
+   "kind": "humanoid",
+   "microphones": [
+    {
+     "driver": {
+      "type": "unitree_voice_mic"
+     },
+     "name": "head"
+    }
+   ],
+   "name": "unitree-g1",
+   "speakers": [
+    {
+     "driver": {
+      "type": "unitree_voice_speaker",
+      "volume": 60
+     },
+     "name": "head"
+    }
+   ]
+  }
+ },
+ "robots/unitree_g1_dex3": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "type": "unitree_videohub"
+     },
+     "height": 1080,
+     "mount": {
+      "body": "torso_link",
+      "fovy": 42,
+      "pos": [
+       0.0576235,
+       0.01753,
+       0.42987
+      ],
+      "quat": [
+       -0.659252,
+       0.659252,
+       -0.255707,
+       0.255707
+      ]
+     },
+     "name": "head",
+     "width": 1920
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "driver": {
+      "side": "left",
+      "type": "unitree_handcmd"
+     },
+     "frame": {
+      "body": "left_wrist_yaw_link"
+     },
+     "joints": [
+      "left_hand_thumb_0",
+      "left_hand_thumb_1",
+      "left_hand_thumb_2",
+      "left_hand_middle_0",
+      "left_hand_middle_1",
+      "left_hand_index_0",
+      "left_hand_index_1"
+     ],
+     "name": "left_hand"
+    },
+    {
+     "driver": {
+      "side": "right",
+      "type": "unitree_handcmd"
+     },
+     "frame": {
+      "body": "right_wrist_yaw_link"
+     },
+     "joints": [
+      "right_hand_thumb_0",
+      "right_hand_thumb_1",
+      "right_hand_thumb_2",
+      "right_hand_middle_0",
+      "right_hand_middle_1",
+      "right_hand_index_0",
+      "right_hand_index_1"
+     ],
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "waist_roll"
+    },
+    {
+     "name": "waist_pitch"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_yaw"
+    },
+    {
+     "name": "left_hand_thumb_0",
+     "position_limit": [
+      -1.0472,
+      1.0472
+     ],
+     "torque_limit": 2.45
+    },
+    {
+     "name": "left_hand_thumb_1",
+     "position_limit": [
+      -0.7243,
+      1.0472
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_thumb_2",
+     "position_limit": [
+      0.0,
+      1.7453
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_middle_0",
+     "position_limit": [
+      -1.5708,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_middle_1",
+     "position_limit": [
+      -1.7453,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_index_0",
+     "position_limit": [
+      -1.5708,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_index_1",
+     "position_limit": [
+      -1.7453,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_thumb_0",
+     "position_limit": [
+      -1.0472,
+      1.0472
+     ],
+     "torque_limit": 2.45
+    },
+    {
+     "name": "right_hand_thumb_1",
+     "position_limit": [
+      -1.0472,
+      0.7243
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_thumb_2",
+     "position_limit": [
+      -1.7453,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_middle_0",
+     "position_limit": [
+      0.0,
+      1.5708
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_middle_1",
+     "position_limit": [
+      0.0,
+      1.7453
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_index_0",
+     "position_limit": [
+      0.0,
+      1.5708
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_index_1",
+     "position_limit": [
+      0.0,
+      1.7453
+     ],
+     "torque_limit": 1.4
+    }
+   ],
+   "kind": "humanoid",
+   "microphones": [
+    {
+     "driver": {
+      "type": "unitree_voice_mic"
+     },
+     "name": "head"
+    }
+   ],
+   "name": "unitree-g1-dex3",
+   "speakers": [
+    {
+     "driver": {
+      "type": "unitree_voice_speaker",
+      "volume": 60
+     },
+     "name": "head"
+    }
+   ]
+  }
+ },
+ "robots/unitree_g1_dex3_mujoco": {
+  "body": {
+   "armature": [
+    0.0103,
+    0.0251,
+    0.0103,
+    0.0251,
+    0.003597,
+    0.003597,
+    0.0103,
+    0.0251,
+    0.0103,
+    0.0251,
+    0.003597,
+    0.003597,
+    0.0103,
+    0.0103,
+    0.0103,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001,
+    0.001
+   ],
+   "base_height": 1.0,
+   "damping_kd": 8.0,
+   "default_kd": [
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    6,
+    6,
+    6,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2,
+    0.2
+   ],
+   "default_kp": [
+    100,
+    100,
+    100,
+    150,
+    40,
+    40,
+    100,
+    100,
+    100,
+    150,
+    40,
+    40,
+    200,
+    200,
+    200,
+    40,
+    40,
+    40,
+    40,
+    20,
+    20,
+    20,
+    40,
+    40,
+    40,
+    40,
+    20,
+    20,
+    20,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5,
+    1.5
+   ],
+   "driver": "mujoco",
+   "fixed_base": true,
+   "model_path": "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml",
+   "ramp_seconds": 2.0,
+   "viewer": false
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "type": "unitree_videohub"
+     },
+     "height": 1080,
+     "mount": {
+      "body": "torso_link",
+      "fovy": 42,
+      "pos": [
+       0.0576235,
+       0.01753,
+       0.42987
+      ],
+      "quat": [
+       -0.659252,
+       0.659252,
+       -0.255707,
+       0.255707
+      ]
+     },
+     "name": "head",
+     "width": 1920
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "driver": {
+      "side": "left",
+      "type": "unitree_handcmd"
+     },
+     "frame": {
+      "body": "left_wrist_yaw_link"
+     },
+     "joints": [
+      "left_hand_thumb_0",
+      "left_hand_thumb_1",
+      "left_hand_thumb_2",
+      "left_hand_middle_0",
+      "left_hand_middle_1",
+      "left_hand_index_0",
+      "left_hand_index_1"
+     ],
+     "name": "left_hand"
+    },
+    {
+     "driver": {
+      "side": "right",
+      "type": "unitree_handcmd"
+     },
+     "frame": {
+      "body": "right_wrist_yaw_link"
+     },
+     "joints": [
+      "right_hand_thumb_0",
+      "right_hand_thumb_1",
+      "right_hand_thumb_2",
+      "right_hand_middle_0",
+      "right_hand_middle_1",
+      "right_hand_index_0",
+      "right_hand_index_1"
+     ],
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "waist_roll"
+    },
+    {
+     "name": "waist_pitch"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_yaw"
+    },
+    {
+     "name": "left_hand_thumb_0",
+     "position_limit": [
+      -1.0472,
+      1.0472
+     ],
+     "torque_limit": 2.45
+    },
+    {
+     "name": "left_hand_thumb_1",
+     "position_limit": [
+      -0.7243,
+      1.0472
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_thumb_2",
+     "position_limit": [
+      0.0,
+      1.7453
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_middle_0",
+     "position_limit": [
+      -1.5708,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_middle_1",
+     "position_limit": [
+      -1.7453,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_index_0",
+     "position_limit": [
+      -1.5708,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "left_hand_index_1",
+     "position_limit": [
+      -1.7453,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_thumb_0",
+     "position_limit": [
+      -1.0472,
+      1.0472
+     ],
+     "torque_limit": 2.45
+    },
+    {
+     "name": "right_hand_thumb_1",
+     "position_limit": [
+      -1.0472,
+      0.7243
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_thumb_2",
+     "position_limit": [
+      -1.7453,
+      0.0
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_middle_0",
+     "position_limit": [
+      0.0,
+      1.5708
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_middle_1",
+     "position_limit": [
+      0.0,
+      1.7453
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_index_0",
+     "position_limit": [
+      0.0,
+      1.5708
+     ],
+     "torque_limit": 1.4
+    },
+    {
+     "name": "right_hand_index_1",
+     "position_limit": [
+      0.0,
+      1.7453
+     ],
+     "torque_limit": 1.4
+    }
+   ],
+   "kind": "humanoid",
+   "microphones": [
+    {
+     "driver": {
+      "type": "unitree_voice_mic"
+     },
+     "name": "head"
+    }
+   ],
+   "name": "unitree-g1-dex3",
+   "speakers": [
+    {
+     "driver": {
+      "type": "unitree_voice_speaker",
+      "volume": 60
+     },
+     "name": "head"
+    }
+   ]
+  },
+  "safety": {
+   "joint_limit": 3.0
+  }
+ },
+ "robots/unitree_g1_mujoco": {
+  "body": {
+   "armature": [
+    0.0103,
+    0.0251,
+    0.0103,
+    0.0251,
+    0.003597,
+    0.003597,
+    0.0103,
+    0.0251,
+    0.0103,
+    0.0251,
+    0.003597,
+    0.003597,
+    0.0103,
+    0.0103,
+    0.0103,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597
+   ],
+   "base_height": 1.0,
+   "damping_kd": 8.0,
+   "default_kd": [
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    6,
+    6,
+    6,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "default_kp": [
+    100,
+    100,
+    100,
+    150,
+    40,
+    40,
+    100,
+    100,
+    100,
+    150,
+    40,
+    40,
+    200,
+    200,
+    200,
+    40,
+    40,
+    40,
+    40,
+    20,
+    20,
+    20,
+    40,
+    40,
+    40,
+    40,
+    20,
+    20,
+    20
+   ],
+   "driver": "mujoco",
+   "fixed_base": true,
+   "model_path": "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml",
+   "ramp_seconds": 2.0,
+   "viewer": false
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "type": "unitree_videohub"
+     },
+     "height": 1080,
+     "mount": {
+      "body": "torso_link",
+      "fovy": 42,
+      "pos": [
+       0.0576235,
+       0.01753,
+       0.42987
+      ],
+      "quat": [
+       -0.659252,
+       0.659252,
+       -0.255707,
+       0.255707
+      ]
+     },
+     "name": "head",
+     "width": 1920
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "frame": {
+      "body": "left_wrist_yaw_link"
+     },
+     "name": "left_hand"
+    },
+    {
+     "frame": {
+      "body": "right_wrist_yaw_link"
+     },
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "waist_roll"
+    },
+    {
+     "name": "waist_pitch"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_yaw"
+    }
+   ],
+   "kind": "humanoid",
+   "microphones": [
+    {
+     "driver": {
+      "type": "unitree_voice_mic"
+     },
+     "name": "head"
+    }
+   ],
+   "name": "unitree-g1",
+   "speakers": [
+    {
+     "driver": {
+      "type": "unitree_voice_speaker",
+      "volume": 60
+     },
+     "name": "head"
+    }
+   ]
+  },
+  "safety": {
+   "joint_limit": 3.0
+  }
+ },
+ "robots/unitree_g1_mujoco_standing": {
+  "body": {
+   "armature": [
+    0.0103,
+    0.0251,
+    0.0103,
+    0.0251,
+    0.003597,
+    0.003597,
+    0.0103,
+    0.0251,
+    0.0103,
+    0.0251,
+    0.003597,
+    0.003597,
+    0.0103,
+    0.0103,
+    0.0103,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597,
+    0.003597
+   ],
+   "base_height": 0.793,
+   "damping_kd": 8.0,
+   "default_kd": [
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    5,
+    5,
+    5,
+    5,
+    2,
+    2,
+    6,
+    6,
+    6,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "default_kp": [
+    100,
+    100,
+    100,
+    150,
+    40,
+    40,
+    100,
+    100,
+    100,
+    150,
+    40,
+    40,
+    200,
+    200,
+    200,
+    40,
+    40,
+    40,
+    40,
+    20,
+    20,
+    20,
+    40,
+    40,
+    40,
+    40,
+    20,
+    20,
+    20
+   ],
+   "driver": "mujoco",
+   "fixed_base": false,
+   "model_path": "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml",
+   "ramp_seconds": 2.0,
+   "viewer": false
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "type": "unitree_videohub"
+     },
+     "height": 1080,
+     "mount": {
+      "body": "torso_link",
+      "fovy": 42,
+      "pos": [
+       0.0576235,
+       0.01753,
+       0.42987
+      ],
+      "quat": [
+       -0.659252,
+       0.659252,
+       -0.255707,
+       0.255707
+      ]
+     },
+     "name": "head",
+     "width": 1920
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "frame": {
+      "body": "left_wrist_yaw_link"
+     },
+     "name": "left_hand"
+    },
+    {
+     "frame": {
+      "body": "right_wrist_yaw_link"
+     },
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "waist_roll"
+    },
+    {
+     "name": "waist_pitch"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_yaw"
+    }
+   ],
+   "kind": "humanoid",
+   "microphones": [
+    {
+     "driver": {
+      "type": "unitree_voice_mic"
+     },
+     "name": "head"
+    }
+   ],
+   "name": "unitree-g1",
+   "speakers": [
+    {
+     "driver": {
+      "type": "unitree_voice_speaker",
+      "volume": 60
+     },
+     "name": "head"
+    }
+   ]
+  },
+  "safety": {
+   "joint_limit": 3.0
+  }
+ },
+ "robots/unitree_h1": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "address": "tcp://192.168.123.162:5555",
+      "type": "unitree_image_server"
+     },
+     "height": 720,
+     "name": "head",
+     "width": 1280
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "name": "left_hand"
+    },
+    {
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "left_ankle"
+    },
+    {
+     "name": "right_ankle"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    }
+   ],
+   "kind": "humanoid",
+   "name": "unitree-h1"
+  }
+ },
+ "robots/unitree_h1_2": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "name": "left_hand"
+    },
+    {
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_yaw"
+    }
+   ],
+   "kind": "humanoid",
+   "name": "unitree-h1-2"
+  }
+ },
+ "robots/unitree_h1_inspire": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "cameras": [
+    {
+     "driver": {
+      "address": "tcp://192.168.123.162:5555",
+      "type": "unitree_image_server"
+     },
+     "height": 720,
+     "name": "head",
+     "width": 1280
+    }
+   ],
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "driver": {
+      "cmd_topic": "rt/inspire/cmd",
+      "motor_offset": 6,
+      "num_motors": 12,
+      "service": "h1_inspire_service (inspire_hand -s /dev/ttyUSB0)",
+      "state_topic": "rt/inspire/state",
+      "type": "unitree_motorcmds"
+     },
+     "joints": [
+      "left_hand_pinky",
+      "left_hand_ring",
+      "left_hand_middle",
+      "left_hand_index",
+      "left_hand_thumb_bend",
+      "left_hand_thumb_rotation"
+     ],
+     "name": "left_hand"
+    },
+    {
+     "driver": {
+      "cmd_topic": "rt/inspire/cmd",
+      "motor_offset": 0,
+      "num_motors": 12,
+      "service": "h1_inspire_service (inspire_hand -s /dev/ttyUSB0)",
+      "state_topic": "rt/inspire/state",
+      "type": "unitree_motorcmds"
+     },
+     "joints": [
+      "right_hand_pinky",
+      "right_hand_ring",
+      "right_hand_middle",
+      "right_hand_index",
+      "right_hand_thumb_bend",
+      "right_hand_thumb_rotation"
+     ],
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "left_ankle"
+    },
+    {
+     "name": "right_ankle"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_hand_pinky",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "left_hand_ring",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "left_hand_middle",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "left_hand_index",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "left_hand_thumb_bend",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "left_hand_thumb_rotation",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "right_hand_pinky",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "right_hand_ring",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "right_hand_middle",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "right_hand_index",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "right_hand_thumb_bend",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "right_hand_thumb_rotation",
+     "position_limit": [
+      0.0,
+      1.0
+     ]
+    }
+   ],
+   "kind": "humanoid",
+   "name": "unitree-h1-inspire"
+  }
+ },
+ "robots/unitree_h2": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 50,
+   "end_effectors": [
+    {
+     "name": "left_hand"
+    },
+    {
+     "name": "right_hand"
+    }
+   ],
+   "floating_base": true,
+   "joints": [
+    {
+     "name": "left_hip_pitch"
+    },
+    {
+     "name": "left_hip_roll"
+    },
+    {
+     "name": "left_hip_yaw"
+    },
+    {
+     "name": "left_knee"
+    },
+    {
+     "name": "left_ankle_roll"
+    },
+    {
+     "name": "left_ankle_pitch"
+    },
+    {
+     "name": "right_hip_pitch"
+    },
+    {
+     "name": "right_hip_roll"
+    },
+    {
+     "name": "right_hip_yaw"
+    },
+    {
+     "name": "right_knee"
+    },
+    {
+     "name": "right_ankle_roll"
+    },
+    {
+     "name": "right_ankle_pitch"
+    },
+    {
+     "name": "waist_roll"
+    },
+    {
+     "name": "waist_pitch"
+    },
+    {
+     "name": "waist_yaw"
+    },
+    {
+     "name": "left_shoulder_pitch"
+    },
+    {
+     "name": "left_shoulder_roll"
+    },
+    {
+     "name": "left_shoulder_yaw"
+    },
+    {
+     "name": "left_elbow"
+    },
+    {
+     "name": "left_wrist_yaw"
+    },
+    {
+     "name": "left_wrist_pitch"
+    },
+    {
+     "name": "left_wrist_roll"
+    },
+    {
+     "name": "right_shoulder_pitch"
+    },
+    {
+     "name": "right_shoulder_roll"
+    },
+    {
+     "name": "right_shoulder_yaw"
+    },
+    {
+     "name": "right_elbow"
+    },
+    {
+     "name": "right_wrist_yaw"
+    },
+    {
+     "name": "right_wrist_pitch"
+    },
+    {
+     "name": "right_wrist_roll"
+    },
+    {
+     "name": "head_pitch"
+    },
+    {
+     "name": "head_yaw"
+    }
+   ],
+   "kind": "humanoid",
+   "name": "unitree-h2"
+  }
+ },
+ "robots/ur_ur5e": {
+  "body": {
+   "driver": "toy"
+  },
+  "embodiment": {
+   "control_hz": 125,
+   "end_effectors": [
+    {
+     "has_gripper": false,
+     "name": "tcp"
+    }
+   ],
+   "floating_base": false,
+   "joints": [
+    {
+     "name": "shoulder_pan"
+    },
+    {
+     "name": "shoulder_lift"
+    },
+    {
+     "name": "elbow"
+    },
+    {
+     "name": "wrist_1"
+    },
+    {
+     "name": "wrist_2"
+    },
+    {
+     "name": "wrist_3"
+    }
+   ],
+   "kind": "arm",
+   "name": "ur5e"
+  }
+ }
+}

@@ -1,0 +1,6 @@
+# Unitree G1 29-DoF + two Dex3-1 hands in MuJoCo (no robot needed).
+#
+# The whole robot unitree_g1_dex3 with the MuJoCo overlay
+# (sim/mujoco/unitree_g1_dex3.yaml).
+
+defaults: [robots/unitree_g1_dex3, sim/mujoco/unitree_g1_dex3]

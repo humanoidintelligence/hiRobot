@@ -1,0 +1,27 @@
+# AgiBot G1 cameras, read from the robot's cosine_bus image topics (agibot_cosine).
+# They run only with the real body (driver: agibot_gdk, on the robot's computer).
+embodiment:
+  cameras:
+    # Head RGB-D (RealSense D457): JPEG colour + Z16 depth, 1280x800, about 30 frames/s.
+    - name: head
+      width: 1280
+      height: 800
+      depth: true
+      driver:
+        type: agibot_cosine
+        topic: /camera/head_color
+        depth_topic: /camera/head_depth
+    # Wrist colour cameras (RealSense D405), 848x480. The vendor camera service
+    # has their depth turned off (depthEnable: false), so they are colour-only here.
+    - name: left_wrist
+      width: 848
+      height: 480
+      driver:
+        type: agibot_cosine
+        topic: /camera/hand_left_color
+    - name: right_wrist
+      width: 848
+      height: 480
+      driver:
+        type: agibot_cosine
+        topic: /camera/hand_right_color

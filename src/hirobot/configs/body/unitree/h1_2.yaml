@@ -1,0 +1,43 @@
+# Unitree H1-2 — 27-DoF humanoid.
+#
+# Joint names/order follow the H1-2 low-level JointIndex enum in
+# unitree_sdk2_python example/h1_2/low_level/h1_2_low_level_example.py
+# (indices 0-26). Uses the unitree_hg DDS message family. Compared to H1, the
+# H1-2 adds 2-DoF ankles and 3-DoF wrists.
+
+embodiment:
+  name: unitree-h1-2
+  kind: humanoid
+  control_hz: 50
+  floating_base: true
+  joints:
+    - name: left_hip_yaw          # 0
+    - name: left_hip_pitch        # 1
+    - name: left_hip_roll         # 2
+    - name: left_knee             # 3
+    - name: left_ankle_pitch      # 4
+    - name: left_ankle_roll       # 5
+    - name: right_hip_yaw         # 6
+    - name: right_hip_pitch       # 7
+    - name: right_hip_roll        # 8
+    - name: right_knee            # 9
+    - name: right_ankle_pitch     # 10
+    - name: right_ankle_roll      # 11
+    - name: waist_yaw             # 12
+    - name: left_shoulder_pitch   # 13
+    - name: left_shoulder_roll    # 14
+    - name: left_shoulder_yaw     # 15
+    - name: left_elbow            # 16
+    - name: left_wrist_roll       # 17
+    - name: left_wrist_pitch      # 18
+    - name: left_wrist_yaw        # 19
+    - name: right_shoulder_pitch  # 20
+    - name: right_shoulder_roll   # 21
+    - name: right_shoulder_yaw    # 22
+    - name: right_elbow           # 23
+    - name: right_wrist_roll      # 24
+    - name: right_wrist_pitch     # 25
+    - name: right_wrist_yaw       # 26
+  end_effectors:
+    - name: left_hand
+    - name: right_hand

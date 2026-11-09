@@ -1,0 +1,8 @@
+# Unitree H1 — 19-DoF humanoid.
+#
+# The parts are in the files listed under defaults: (hirobot/configs/).
+
+defaults: [body/unitree/h1, camera/unitree/h1_head_d435i]
+
+body:
+  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)

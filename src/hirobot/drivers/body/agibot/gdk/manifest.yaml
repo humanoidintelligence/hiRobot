@@ -1,0 +1,16 @@
+# Drivers registered here: agibot_gdk
+sdk:
+  - distribution: cosine_bus
+    minimum: "2.0.0"
+    install: preinstalled on the AgiBot G1 onboard computer (system Python 3.10)
+  - distribution: genie_msgs_pb
+    minimum: "0.8.0"
+    install: extract genie_msgs_pb-0.8.0-py3-none-any.whl from a2d_sdk/gdk_installer/gdk_device_installer.tar.gz in the vendor app dir onto PYTHONPATH (docs/setup/agibot_g1.md)
+  - distribution: websockets
+    minimum: "13.0"
+    install: preinstalled on the G1 onboard computer; pip install websockets
+verified:
+  - model: AgiBot G1 (G01), firmware a2d_G01_2.3.4, chassis firmware 2.0.0.7; read only, both grippers, right_arm_joint1 +30 deg, chassis forward / back / turn
+    sdk: {cosine_bus: "2.0.0", genie_msgs_pb: "0.8.0", websockets: "13.0.1"}
+    date: 2026-11-09
+maintainers: []

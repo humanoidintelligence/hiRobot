@@ -1,0 +1,10 @@
+# Unitree G1, read-only: observations, no commands.
+#
+# No rt/lowcmd publisher is created, so the robot's built-in service keeps
+# control and send_action raises. Use it to check joint order, IMU and cameras
+# before anything moves.
+
+defaults: [unitree_g1_real.yaml]
+
+body:
+  read_only: true

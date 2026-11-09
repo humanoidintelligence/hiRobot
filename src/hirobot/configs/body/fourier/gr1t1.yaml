@@ -1,0 +1,48 @@
+# Fourier GR1T1 — 32-DoF humanoid.
+#
+# Joint names/order follow the robot joint list in the official client config
+# fourier-grx-client config/config_GR1_T1.yaml (the floating-base
+# root_joint is excluded; the 32 actuated joints are listed in order). Driven
+# over Zenoh via the fourier RobotClient. Control at 100 Hz per that config.
+
+embodiment:
+  name: fourier-gr1t1
+  kind: humanoid
+  control_hz: 100
+  floating_base: true
+  joints:
+    - name: left_hip_roll_joint
+    - name: left_hip_yaw_joint
+    - name: left_hip_pitch_joint
+    - name: left_knee_pitch_joint
+    - name: left_ankle_pitch_joint
+    - name: left_ankle_roll_joint
+    - name: right_hip_roll_joint
+    - name: right_hip_yaw_joint
+    - name: right_hip_pitch_joint
+    - name: right_knee_pitch_joint
+    - name: right_ankle_pitch_joint
+    - name: right_ankle_roll_joint
+    - name: waist_yaw_joint
+    - name: waist_pitch_joint
+    - name: waist_roll_joint
+    - name: head_pitch_joint
+    - name: head_roll_joint
+    - name: head_yaw_joint
+    - name: left_shoulder_pitch_joint
+    - name: left_shoulder_roll_joint
+    - name: left_shoulder_yaw_joint
+    - name: left_elbow_pitch_joint
+    - name: left_wrist_yaw_joint
+    - name: left_wrist_roll_joint
+    - name: left_wrist_pitch_joint
+    - name: right_shoulder_pitch_joint
+    - name: right_shoulder_roll_joint
+    - name: right_shoulder_yaw_joint
+    - name: right_elbow_pitch_joint
+    - name: right_wrist_yaw_joint
+    - name: right_wrist_roll_joint
+    - name: right_wrist_pitch_joint
+  end_effectors:
+    - name: left_hand
+    - name: right_hand

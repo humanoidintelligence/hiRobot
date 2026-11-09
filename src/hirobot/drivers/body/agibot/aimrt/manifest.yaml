@@ -1,0 +1,6 @@
+# Drivers registered here: agibot_aimrt
+sdk:
+  - distribution: rclpy
+    install: source a ROS 2 install (rclpy comes with it), then build my_ros2_proto
+verified: []
+maintainers: []

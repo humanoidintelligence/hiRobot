@@ -1,0 +1,7 @@
+# Drivers registered here: fourier_grx
+sdk:
+  - distribution: fourier-grx-client
+    module: fourier_grx_client
+    install: pip install fourier-grx-client
+verified: []
+maintainers: []

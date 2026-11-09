@@ -1,0 +1,8 @@
+# Fourier GR1T1 — 32-DoF humanoid.
+#
+# The parts are in the files listed under defaults: (hirobot/configs/).
+
+defaults: [body/fourier/gr1t1]
+
+body:
+  driver: toy   # set to 'fourier_grx' on hardware (docs/setup/fourier.md)

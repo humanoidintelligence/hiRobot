@@ -1,0 +1,10 @@
+# Drivers registered here: unitree_handcmd
+sdk:
+  - distribution: unitree_sdk2py
+    minimum: "1.0.1"
+    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
+verified:
+  - model: Unitree Dex3-1 on G1
+    sdk: {unitree_sdk2py: "1.0.1"}
+    date: 2026-11-04
+maintainers: []

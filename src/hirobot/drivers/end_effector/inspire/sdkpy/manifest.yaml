@@ -1,0 +1,12 @@
+# Drivers registered here: inspire_sdkpy
+sdk:
+  - distribution: unitree_sdk2py
+    minimum: "1.0.1"
+    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
+  - distribution: cyclonedds
+    minimum: "0.10.2"
+verified:
+  - model: Inspire RH56DFX on H1, inspire_sdkpy bridge
+    sdk: {unitree_sdk2py: "1.0.1"}
+    date: 2026-11-07
+maintainers: []

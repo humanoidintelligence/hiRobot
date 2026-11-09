@@ -1,0 +1,8 @@
+# Unitree H1-2 — 27-DoF humanoid.
+#
+# The parts are in the files listed under defaults: (hirobot/configs/).
+
+defaults: [body/unitree/h1_2]
+
+body:
+  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)

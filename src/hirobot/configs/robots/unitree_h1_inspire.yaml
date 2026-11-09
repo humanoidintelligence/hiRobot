@@ -1,0 +1,27 @@
+# Unitree H1 (19 DoF) with two Inspire RH56DFX six-DoF hands: 31 joints.
+#
+# Joints 0-18 are the body, as in unitree_h1.yaml (unitree_go family; the
+# driver skips the unused motor slot 9). Joints 19-30 are the fingers, 6 per
+# hand in order pinky, ring, middle, index, thumb bend, thumb rotation. Finger
+# positions are normalised, 0 = closed and 1 = open, so every finger joint is
+# limited to [0, 1] (the bridge scales to the hand's 0-1000 angle registers).
+#
+# With driver: unitree_sdk2, rt/lowcmd carries joints 0-18. The hands go through a
+# bridge on the computer their USB-serial adapter is plugged into (usually
+# PC2, 192.168.123.162, /dev/ttyUSB0). The hand driver depends on the bridge:
+#   unitree_motorcmds  Unitree h1_inspire_service 1.0.1 (not 1.0.2):
+#                      rt/inspire/{cmd,state}, 12 motors, 0-5 right, 6-11 left.
+#                      This is what the config below uses.
+#   inspire_sdkpy      scripts/inspire_serial_to_dds.py:
+#                      rt/inspire_hand/{ctrl,state}/{l,r}. Replace each hand's
+#                      driver with {type: inspire_sdkpy, side: left|right}.
+# Versions and setup: docs/setup/unitree.md, "Inspire hands (H1)". Pass
+# --msg-family go to scripts/unitree_setup.py.
+
+defaults: [robots/unitree_h1, end_effector/inspire/rh56dfx]
+
+embodiment:
+  name: unitree-h1-inspire
+
+body:
+  driver: toy   # set to 'unitree_sdk2' (and msg_family: go) on hardware (docs/setup/unitree.md)

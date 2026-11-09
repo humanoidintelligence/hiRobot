@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hirobot"
+version = "0.0.1"
+description = "A unified interface layer for controlling diverse robots from VLA models and agents."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Peng Li" },
+    { name = "Yifei Zhang" },
+    { name = "Zihan Zhuang" },
+    { name = "Yi Dong" },
+    { name = "Tao Gui" },
+    { name = "Xipeng Qiu" },
+]
+keywords = ["humanoid", "robotics", "embodiment", "control", "interface", "vla", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "numpy>=1.21",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# MuJoCo physics driver / real-robot sim twin (drivers/sim/mujoco/, twin.py).
+sim = ["mujoco>=3.0"]
+# Network camera sources (drivers/camera/): JPEG decoding, ZeroMQ transport.
+camera = ["opencv-python>=4.5", "pyzmq>=22"]
+# Video files as cameras (drivers/camera/generic/video_file/).
+video = ["av>=12.0"]
+# The computer's own microphone and speaker (drivers/audio/generic/sounddevice/).
+audio = ["sounddevice>=0.4"]
+dev = ["pytest>=7.0", "ruff>=0.4"]
+
+[project.scripts]
+hirobot = "hirobot.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/humanoidintelligence/hiRobot"
+Repository = "https://github.com/humanoidintelligence/hiRobot"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"hirobot.drivers" = ["**/manifest.yaml"]
+"hirobot" = ["configs/**/*.yaml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["scratch", "references"]
+
+[tool.ruff.lint]
+# Errors only (pyflakes, syntax, warnings); the style rules are not enforced yet.
+select = ["E4", "E7", "E9", "F", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

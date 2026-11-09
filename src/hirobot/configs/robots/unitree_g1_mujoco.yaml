@@ -1,0 +1,8 @@
+# Unitree G1 (29 DoF) in MuJoCo, no hardware needed.
+#
+# The whole robot unitree_g1 with the MuJoCo overlay: same joints, head camera
+# (rendered from its mount) and gains; the MJCF and the gains are in
+# sim/mujoco/unitree_g1.yaml. To pair a real G1 with this model instead, add a
+# `sim:` section to a unitree config (see docs/setup/unitree.md).
+
+defaults: [robots/unitree_g1, sim/mujoco/unitree_g1]
