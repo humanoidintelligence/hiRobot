@@ -1,8 +1,20 @@
 # Unitree G1 (29 DoF) in MuJoCo, no hardware needed.
 #
-# The whole robot unitree_g1 with the MuJoCo overlay: same joints, head camera
-# (rendered from its mount) and gains; the MJCF and the gains are in
-# sim/mujoco/unitree_g1.yaml. To pair a real G1 with this model instead, add a
-# `sim:` section to a unitree config (see docs/setup/unitree.md).
+# The whole robot unitree_g1 in the shared simulation (sim:): the body from its
+# device file's model: (body/unitree/g1.yaml: the MJCF, which says how to fetch
+# it, gains and armature), the head camera rendered from its mount. The real
+# camera and audio drivers are not built. To rehearse a motion for the real G1,
+# start this model from the real robot's pose (examples/rehearse_in_sim.py).
+#
+# make_robot("unitree_g1_mujoco", sim=False) builds the real robot instead.
 
-defaults: [robots/unitree_g1, sim/mujoco/unitree_g1]
+defaults: [robots/unitree_g1]
+
+sim:
+  fixed_base: [body]       # pelvis welded in place, like the robot hung on a gantry
+  base_height: {body: 1.0}
+  viewer: false            # set true to open the MuJoCo window
+  ramp_seconds: 2.0
+  damping_kd: 8.0
+safety:
+  joint_limit: 3.0

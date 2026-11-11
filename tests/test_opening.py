@@ -10,8 +10,8 @@ import pytest
 
 from hirobot import Action, ControlMode, Embodiment, RobotAssembly, SafetyGate, make_robot
 from hirobot.drivers.sim.toy import ToyRobot
-from hirobot.end_effector import body_embodiment, build_end_effectors
-from hirobot.registry import register_body
+from hirobot.devices.end_effector import body_embodiment, build_end_effectors
+from hirobot.loading.registry import register_body
 from tests.drivers.end_effector.fake_gripper import NAME, FakeGripper, registered
 
 ARM = ["j1", "j2"]
@@ -120,7 +120,7 @@ def test_out_of_range_opening_is_refused_before_anything_moves(gripper_registere
 
 def test_safety_gate_clamps_before_the_gripper_driver(gripper_registered):
     robot, _, grip = _assembly()
-    robot.set_safety(SafetyGate(gripper_range=(0.2, 0.8)))
+    robot._set_safety(SafetyGate(gripper_range=(0.2, 0.8)))
     robot.send_action(Action(mode=ControlMode.POSITION, joint_target=np.zeros(2),
                              gripper={"gripper": 0.0}))
     assert grip.sent == [pytest.approx(0.2)]
@@ -145,13 +145,22 @@ def test_hold_leaves_the_gripper_where_it_is(gripper_registered):
 # --------------------------------------------------------------- make_robot
 
 
+def _tree_cfg(body_driver):
+    """The arm of :func:`_emb` as an ``assembly:`` config: a body and a gripper part."""
+    return {"assembly": {"name": "arm", "parts": {
+        "body": {"device": "body", "control_hz": 50, "floating_base": False,
+                 "joints": [{"name": n} for n in ARM], "driver": {"type": body_driver}},
+        "gripper": {"device": "end_effector", "interface": "opening",
+                    "driver": {"type": NAME}}}}}
+
+
 def test_make_robot_builds_the_gripper_for_a_real_body(gripper_registered):
     @register_body("test_real_toy")
     class RealToy(_BodySeesGripper):
         simulated = False
 
     try:
-        cfg = {"embodiment": _emb().model_dump(), "body": {"driver": "test_real_toy"}}
+        cfg = _tree_cfg("test_real_toy")
         robot = make_robot(cfg)
         assert isinstance(robot.end_effectors["gripper"], FakeGripper)
         assert robot.body.embodiment.end_effectors[0].has_gripper is False
@@ -161,14 +170,14 @@ def test_make_robot_builds_the_gripper_for_a_real_body(gripper_registered):
         assert robot.end_effectors["gripper"].sent == [0.3]
         assert robot.get_observation().gripper == {"gripper": 0.3}
 
-        ro = make_robot(cfg, body_overrides={"read_only": True})
+        ro = make_robot(cfg, overrides={"body": {"driver": {"read_only": True}}})
         assert ro.end_effectors["gripper"].read_only
     finally:
-        from hirobot.registry import BODIES
+        from hirobot.loading.registry import BODIES
 
         BODIES._entries.pop("test_real_toy", None)
 
 
 def test_make_robot_skips_the_gripper_driver_on_a_simulator(gripper_registered):
-    robot = make_robot({"embodiment": _emb().model_dump(), "body": {"driver": "toy"}})
+    robot = make_robot(_tree_cfg("toy"))
     assert not getattr(robot, "end_effectors", {})

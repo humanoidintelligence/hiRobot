@@ -1,0 +1,20 @@
+# Two UR5e arms side by side, 0.8 m apart, facing the same table.
+#
+# Each arm is robots/ur_ur5e, a part of this robot under the name left or right
+# (left/shoulder_pan, right/tcp, ...). Both run on the toy driver; for hardware,
+# override each arm's body driver:
+#
+#   make_robot("ur5e_dual", overrides={
+#       "left/body": {"driver": {"type": "ur_rtde", "ip": "192.168.1.101"}},
+#       "right/body": {"driver": {"type": "ur_rtde", "ip": "192.168.1.102"}}})
+
+assembly:
+  name: ur5e_dual
+  control_hz: 30                 # outer loop; each arm's RTDE inner loop is unchanged
+  parts:
+    left:  {from: robots/ur_ur5e}
+    right: {from: robots/ur_ur5e}
+  placement:
+    # pose: [x, y, z, qx, qy, qz, qw] of the arm's base in this robot's frame.
+    left:  {pose: [0.0, 0.4, 0.0, 0.0, 0.0, 0.0, 1.0]}
+    right: {pose: [0.0, -0.4, 0.0, 0.0, 0.0, 0.0, 1.0]}

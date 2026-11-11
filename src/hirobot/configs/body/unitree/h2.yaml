@@ -5,43 +5,44 @@
 # (indices 0-30). Uses the unitree_hg DDS message family. H2 adds a 2-DoF head
 # and a 3-DoF waist on top of the H1-2 layout.
 
-embodiment:
-  name: unitree-h2
-  kind: humanoid
-  control_hz: 50
-  floating_base: true
-  joints:
-    - name: left_hip_pitch        # 0
-    - name: left_hip_roll         # 1
-    - name: left_hip_yaw          # 2
-    - name: left_knee             # 3
-    - name: left_ankle_roll       # 4
-    - name: left_ankle_pitch      # 5
-    - name: right_hip_pitch       # 6
-    - name: right_hip_roll        # 7
-    - name: right_hip_yaw         # 8
-    - name: right_knee            # 9
-    - name: right_ankle_roll      # 10
-    - name: right_ankle_pitch     # 11
-    - name: waist_roll            # 12
-    - name: waist_pitch           # 13
-    - name: waist_yaw             # 14
-    - name: left_shoulder_pitch   # 15
-    - name: left_shoulder_roll    # 16
-    - name: left_shoulder_yaw     # 17
-    - name: left_elbow            # 18
-    - name: left_wrist_yaw        # 19
-    - name: left_wrist_pitch      # 20
-    - name: left_wrist_roll       # 21
-    - name: right_shoulder_pitch  # 22
-    - name: right_shoulder_roll   # 23
-    - name: right_shoulder_yaw    # 24
-    - name: right_elbow           # 25
-    - name: right_wrist_yaw       # 26
-    - name: right_wrist_pitch     # 27
-    - name: right_wrist_roll      # 28
-    - name: head_pitch            # 29
-    - name: head_yaw              # 30
-  end_effectors:
-    - name: left_hand
-    - name: right_hand
+device: body
+control_hz: 50
+floating_base: true
+joints:
+  - name: left_hip_pitch        # 0
+  - name: left_hip_roll         # 1
+  - name: left_hip_yaw          # 2
+  - name: left_knee             # 3
+  - name: left_ankle_roll       # 4
+  - name: left_ankle_pitch      # 5
+  - name: right_hip_pitch       # 6
+  - name: right_hip_roll        # 7
+  - name: right_hip_yaw         # 8
+  - name: right_knee            # 9
+  - name: right_ankle_roll      # 10
+  - name: right_ankle_pitch     # 11
+  - name: waist_roll            # 12
+  - name: waist_pitch           # 13
+  - name: waist_yaw             # 14
+  - name: left_shoulder_pitch   # 15
+  - name: left_shoulder_roll    # 16
+  - name: left_shoulder_yaw     # 17
+  - name: left_elbow            # 18
+  - name: left_wrist_yaw        # 19
+  - name: left_wrist_pitch      # 20
+  - name: left_wrist_roll       # 21
+  - name: right_shoulder_pitch  # 22
+  - name: right_shoulder_roll   # 23
+  - name: right_shoulder_yaw    # 24
+  - name: right_elbow           # 25
+  - name: right_wrist_yaw       # 26
+  - name: right_wrist_pitch     # 27
+  - name: right_wrist_roll      # 28
+  - name: head_pitch            # 29
+  - name: head_yaw              # 30
+
+frames:
+  - {name: left_hand}
+  - {name: right_hand}
+
+driver: {type: unitree_sdk2}

@@ -18,13 +18,13 @@ import queue
 import threading
 from typing import Any, Optional, Union
 
-from hirobot.audio import (
+from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     QueuedMicrophone,
     SpeakerDriver,
     register_audio,
 )
-from hirobot.sdk import require_sdk
+from hirobot.loading.sdk import require_sdk
 
 Device = Union[int, str, None]
 

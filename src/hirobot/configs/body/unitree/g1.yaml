@@ -1,0 +1,92 @@
+# Unitree G1: 29-DoF humanoid.
+#
+# Joint names/order follow the G1 low-level JointIndex enum in
+# unitree_sdk2_python example/g1/low_level/g1_low_level_example.py
+# (indices 0-28). Uses the unitree_hg DDS message family. The 23-DoF G1 variant
+# locks the waist roll/pitch and both wrist pitch/yaw.
+
+device: body
+control_hz: 50
+floating_base: true
+
+joints:
+  - {name: left_hip_pitch}        # 0
+  - {name: left_hip_roll}         # 1
+  - {name: left_hip_yaw}          # 2
+  - {name: left_knee}             # 3
+  - {name: left_ankle_pitch}      # 4
+  - {name: left_ankle_roll}       # 5
+  - {name: right_hip_pitch}       # 6
+  - {name: right_hip_roll}        # 7
+  - {name: right_hip_yaw}         # 8
+  - {name: right_knee}            # 9
+  - {name: right_ankle_pitch}     # 10
+  - {name: right_ankle_roll}      # 11
+  - {name: waist_yaw}             # 12
+  - {name: waist_roll}            # 13
+  - {name: waist_pitch}           # 14
+  - {name: left_shoulder_pitch}   # 15
+  - {name: left_shoulder_roll}    # 16
+  - {name: left_shoulder_yaw}     # 17
+  - {name: left_elbow}            # 18
+  - {name: left_wrist_roll}       # 19
+  - {name: left_wrist_pitch}      # 20
+  - {name: left_wrist_yaw}        # 21
+  - {name: right_shoulder_pitch}  # 22
+  - {name: right_shoulder_roll}   # 23
+  - {name: right_shoulder_yaw}    # 24
+  - {name: right_elbow}           # 25
+  - {name: right_wrist_roll}      # 26
+  - {name: right_wrist_pitch}     # 27
+  - {name: right_wrist_yaw}       # 28
+
+# The link each hand pose is read from (wrist yaw link origin, as in unitree_ros).
+# A hand mounted on left_wrist / right_wrist under the same name takes its place.
+frames:
+  - {name: left_hand,  link: left_wrist_yaw_link}
+  - {name: right_hand, link: right_wrist_yaw_link}
+
+mounts:
+  left_wrist:  {link: left_wrist_yaw_link}
+  right_wrist: {link: right_wrist_yaw_link}
+  # Head camera (RealSense D435i colour). From d435_joint in unitree_ros's G1 URDF
+  # (xyz 0.0576 0.0175 0.4299, pitched down 47.6 deg), turned into the optical
+  # frame (z forward, x right, y down). Nominal, not calibrated: put a calibrated
+  # offset in the robot config's placement pose, not here.
+  head_camera:
+    link: torso_link
+    pose: [0.0576235, 0.01753, 0.42987, -0.659252, 0.659252, -0.255707, 0.255707]
+
+# The MJCF comes from unitreerobotics/unitree_ros (robots/g1_description,
+# BSD-3-Clause); it is not shipped with hiRobot. Fetch it with:
+#
+#   git clone --depth 1 --filter=blob:none --sparse \
+#       https://github.com/unitreerobotics/unitree_ros.git ~/.cache/hirobot/unitree_ros
+#   git -C ~/.cache/hirobot/unitree_ros sparse-checkout set robots/g1_description
+#
+# Gains match RoboJuDo's G1 stiffness/damping (robojudo/config/g1/env/g1_env_cfg.py).
+model:
+  mjcf: ~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml
+  #     hip_p hip_r hip_y knee ank_p ank_r   (left, then right)
+  kp: [100, 100, 100, 150, 40, 40,
+       100, 100, 100, 150, 40, 40,
+       200, 200, 200,                        # waist yaw/roll/pitch
+       40, 40, 40, 40, 20, 20, 20,           # left arm
+       40, 40, 40, 40, 20, 20, 20]           # right arm
+  kd: [5, 5, 5, 5, 2, 2,
+       5, 5, 5, 5, 2, 2,
+       6, 6, 6,
+       2, 2, 2, 2, 2, 2, 2,
+       2, 2, 2, 2, 2, 2, 2]
+  # Rotor inertia per joint (the unitree_ros MJCF has none, which makes the light
+  # wrist links unstable under PD). Hip/knee/ankle/waist-yaw/roll/arm values follow
+  # the G1 MJCF in FRoM-W1 (H-ACT/retarget/assets/robot/g1/g1.xml). That file has no
+  # value for waist_pitch or the wrists: waist_pitch reuses 0.0103 and the wrists
+  # reuse 0.003597. Both are estimates, not measured.
+  armature: [0.0103, 0.0251, 0.0103, 0.0251, 0.003597, 0.003597,
+             0.0103, 0.0251, 0.0103, 0.0251, 0.003597, 0.003597,
+             0.0103, 0.0103, 0.0103,
+             0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597,
+             0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597]
+
+driver: {type: unitree_sdk2}

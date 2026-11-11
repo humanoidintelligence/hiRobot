@@ -8,6 +8,8 @@ covered manually during setup.
 
 from __future__ import annotations
 
+import importlib.util
+
 import numpy as np
 import pytest
 
@@ -20,11 +22,18 @@ from hirobot import (
     load_embodiment,
     make_robot,
 )
-from hirobot.config import available_configs, load_config
+from hirobot.loading.config import available_configs
+from hirobot.loading.tree import DeviceSpec, load_robot
 
 CONFIGS = available_configs("robots")
-# Configs whose driver runs without an SDK/simulator install (the toy sim).
-SIM_CONFIGS = [c for c in CONFIGS if load_config(c)["body"]["driver"] == "toy"]
+# Configs whose driver runs without an SDK install (toy bodies). A `sim:` section
+# puts them into a shared MuJoCo world, so those need mujoco and skip without it.
+_NO_MUJOCO = pytest.mark.skipif(importlib.util.find_spec("mujoco") is None, reason="mujoco not installed")
+SIM_CONFIGS = [pytest.param(c, marks=_NO_MUJOCO) if load_robot(c).sim is not None else c
+               for c in CONFIGS
+               if all((d.driver or {}).get("type", "toy") == "toy"
+                      for _, d in load_robot(c).root.walk()
+                      if isinstance(d, DeviceSpec) and d.kind == "body")]
 REAL_DRIVERS = {
     "unitree_sdk2": {"network_interface": "eth0"},
     "fourier_grx": {"server_ip": "localhost"},
@@ -64,12 +73,13 @@ def test_sim_steps_pd_actions(cfg):
     try:
         robot.reset()
         n = robot.embodiment.num_dofs
+        grippers = [e.name for e in robot.embodiment.end_effectors if e.has_gripper][:1]
         chunk = ActionChunk(
             mode=ControlMode.PD,
             joint_targets=np.zeros((5, n)),
             kp=np.full(n, 20.0),
             kd=np.full(n, 1.0),
-            gripper={"g": np.linspace(0, 1, 5)},
+            gripper={g: np.linspace(0, 1, 5) for g in grippers},
         )
         for t in range(12):
             robot.get_observation()

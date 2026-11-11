@@ -73,14 +73,14 @@ def test_send_action_enforces_gate_and_raises():
 
     from hirobot import SafetyError
     from hirobot.drivers.sim.toy import ToyRobot
-    from hirobot.embodiment import Embodiment
+    from hirobot.core.embodiment import Embodiment
 
     emb = Embodiment(
         name="fake", kind="arm", control_hz=20, floating_base=False,
         joints=[{"name": f"j{i}"} for i in range(3)],
     )
     robot = ToyRobot(emb)
-    robot.set_safety(SafetyGate.from_embodiment(emb, joint_limit=1.0))  # clamp off by default
+    robot._set_safety(SafetyGate.from_embodiment(emb, joint_limit=1.0))  # clamp off by default
     robot.connect()
 
     from hirobot import Action
@@ -94,10 +94,9 @@ def test_send_action_enforces_gate_and_raises():
 
 def test_make_robot_attaches_a_gate():
     from hirobot import make_robot
-    from hirobot.config import available_configs, load_config
+    from hirobot.loading.config import available_configs
 
-    sim_cfgs = [c for c in available_configs("robots") if load_config(c)["body"]["driver"] == "toy"]
-    assert sim_cfgs, "expected at least one sim config"
-    robot = make_robot(sim_cfgs[0])
+    assert "robots/ur_ur5e" in available_configs("robots")
+    robot = make_robot("ur_ur5e")  # the toy driver
     assert robot.safety is not None
     assert robot.safety.num_dofs == robot.embodiment.num_dofs

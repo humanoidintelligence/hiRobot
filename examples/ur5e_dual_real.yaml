@@ -1,0 +1,21 @@
+# Two UR5e arms on hardware, one config for real and sim.
+#
+#   real:  make_robot("examples/ur5e_dual_real.yaml")
+#   sim:   make_robot("examples/ur5e_dual_real.yaml", sim=True)
+#
+# The ip overrides only matter on hardware; in sim each arm's driver is
+# replaced by the shared MuJoCo world. placement is the measured layout, shared
+# by both, so the arms sit the same distance apart either way.
+
+defaults: [robots/ur5e_dual]
+
+assembly:
+  parts:
+    left:  {overrides: {body: {driver: {type: ur_rtde, ip: 192.168.1.101}}}}
+    right: {overrides: {body: {driver: {type: ur_rtde, ip: 192.168.1.102}}}}
+  placement:
+    right: {pose: [0.02, -0.81, 0, 0, 0, 0.0087, 1.0]}   # measured
+
+sim:
+  backend: mujoco
+  # scene: {mjcf: ./scenes/my_table.xml}   # optional: a table, objects

@@ -7,10 +7,10 @@ import time
 import numpy as np
 import pytest
 
-from hirobot.stamps import Stamp
 from hirobot import load_embodiment
 from hirobot.drivers.end_effector.unitree.sdk2_handcmd import motor_mode
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
+from hirobot.core.stamps import Stamp
 from tests.drivers.end_effector.unitree.sdk2_handcmd.fake_sdk import _Bus, _install_fake_sdk
 
 CFG = "unitree_g1_dex3"

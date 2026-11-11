@@ -8,7 +8,7 @@ import pytest
 
 from hirobot import load_embodiment
 from hirobot.drivers.end_effector import InspireSdkpyHand
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
 from tests.drivers.end_effector.inspire.sdkpy.fake_sdk import _HandState, _install_sdkpy
 
 CFG = "unitree_h1_inspire"

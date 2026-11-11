@@ -1,0 +1,27 @@
+# Inspire RH56DFX six-DoF hand, left, as mounted on the Unitree H1: 6 joints in
+# order pinky, ring, middle, index, thumb bend, thumb rotation. Positions are
+# normalised, 0 = closed and 1 = open (the bridge scales to the 0-1000 angle
+# registers), so every finger is limited to [0, 1].
+#
+# The driver uses Unitree's h1_inspire_service 1.0.1 (not 1.0.2):
+# rt/inspire/{cmd,state}, 12 motors, 0-5 right, 6-11 left; this hand is motors 6-11.
+# For the inspire_sdkpy bridge (scripts/inspire_serial_to_dds.py) override the
+# driver with {type: inspire_sdkpy, side: left}. Versions and setup:
+# docs/setup/unitree.md, "Inspire hands (H1)".
+
+device: end_effector
+interface: joints
+joints:
+  - {name: left_hand_pinky,          position_limit: [0.0, 1.0]}
+  - {name: left_hand_ring,           position_limit: [0.0, 1.0]}
+  - {name: left_hand_middle,         position_limit: [0.0, 1.0]}
+  - {name: left_hand_index,          position_limit: [0.0, 1.0]}
+  - {name: left_hand_thumb_bend,     position_limit: [0.0, 1.0]}
+  - {name: left_hand_thumb_rotation, position_limit: [0.0, 1.0]}
+driver:
+  type: unitree_motorcmds
+  cmd_topic: rt/inspire/cmd
+  state_topic: rt/inspire/state
+  num_motors: 12
+  motor_offset: 6
+  service: h1_inspire_service (inspire_hand -s /dev/ttyUSB0)

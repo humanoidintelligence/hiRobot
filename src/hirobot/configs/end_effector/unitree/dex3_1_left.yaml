@@ -1,0 +1,17 @@
+# Unitree Dex3-1 three-finger hand, left: 7 joints in Dex3 motor order of
+# rt/dex3/left/cmd (thumb 0-2, middle 0-1, index 0-1). Names, position limits and
+# torque limits come from unitree_ros robots/g1_description/g1_29dof_with_hand_rev_1_0.urdf.
+# The two hands are mirrored: the left fingers close towards negative angles.
+# Mounted on the G1's left_wrist, it takes the place of the body's left_hand frame.
+
+device: end_effector
+interface: joints
+joints:
+  - {name: left_hand_thumb_0,   position_limit: [-1.0472, 1.0472], torque_limit: 2.45}
+  - {name: left_hand_thumb_1,   position_limit: [-0.7243, 1.0472], torque_limit: 1.4}
+  - {name: left_hand_thumb_2,   position_limit: [0.0, 1.7453],     torque_limit: 1.4}
+  - {name: left_hand_middle_0,  position_limit: [-1.5708, 0.0],    torque_limit: 1.4}
+  - {name: left_hand_middle_1,  position_limit: [-1.7453, 0.0],    torque_limit: 1.4}
+  - {name: left_hand_index_0,   position_limit: [-1.5708, 0.0],    torque_limit: 1.4}
+  - {name: left_hand_index_1,   position_limit: [-1.7453, 0.0],    torque_limit: 1.4}
+driver: {type: unitree_handcmd, side: left}

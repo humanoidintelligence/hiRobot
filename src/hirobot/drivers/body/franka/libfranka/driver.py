@@ -1,7 +1,7 @@
 """Franka arm driver (FR3 / Panda).
 
 Wraps ``pylibfranka`` (the official libfranka pybind bindings, see
-https://github.com/frankarobotics/libfranka) behind the :class:`~hirobot.robot.Robot`
+https://github.com/frankarobotics/libfranka) behind the :class:`~hirobot.core.robot.Robot`
 contract. Franka arms are 7-DoF, fixed base, so ``floating_base=False``.
 
 libfranka requires a 1 kHz real-time control loop on a PREEMPT_RT kernel for its
@@ -22,13 +22,13 @@ from typing import Optional
 
 import numpy as np
 
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot
-from hirobot.stamps import StampCounter
-from hirobot.sdk import require_sdk
-from hirobot.transforms import pose_from_matrix
-from hirobot.types import Action, ControlMode, Observation
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot
+from hirobot.core.stamps import StampCounter
+from hirobot.loading.sdk import require_sdk
+from hirobot.geometry.transforms import pose_from_matrix
+from hirobot.core.types import Action, ControlMode, Observation
 
 
 @register_body("franka_libfranka")

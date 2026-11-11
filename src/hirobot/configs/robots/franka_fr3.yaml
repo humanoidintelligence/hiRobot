@@ -1,9 +1,9 @@
-# Franka FR3 (Panda) — 7-DoF fixed-base arm.
+# Franka FR3 (Panda): 7-DoF fixed-base arm (franka_libfranka, FCI address in driver.ip).
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default; on hardware drop the toy override to use the
+# body file's driver.
 
-defaults: [body/franka/fr3]
-
-body:
-  driver: toy              # swap for 'franka_libfranka' on hardware
-  # ip: 172.16.0.2         # FCI address (uncomment for the 'franka_libfranka' driver)
+assembly:
+  name: franka-fr3
+  parts:
+    body: {from: body/franka/fr3, overrides: {driver: {type: toy}}}

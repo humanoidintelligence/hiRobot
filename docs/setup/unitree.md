@@ -75,7 +75,7 @@ stream) and `stamps["head"]` (receive time on `time.monotonic()` and frame numbe
 
 The frames come from Unitree's `videohub_pc4` service on PC2, over the same DDS
 NIC as the body, so nothing extra runs on the robot. The source only reads, so
-it also works in `read_only` and in `sim: shadow`. It needs `opencv-python`
+it also works in `read_only`. It needs `opencv-python`
 (`pip install -e '.[camera]'`). Measured from a desktop on the robot LAN: about
 24 new frames/s, median frame age 21 ms. If the camera gives no frame within 3 s
 of `connect()`, a warning is logged and `images` lacks `head` until frames
@@ -89,8 +89,7 @@ into and publishes each colour frame as one JPEG over ZeroMQ PUB on port 5555
 (`image_server.py` in Unitree's avp_teleoperate / xr_teleoperate). The
 `unitree_h1` and `unitree_h1_inspire` configs declare a `head` camera with
 `driver: {type: unitree_image_server, address: tcp://192.168.123.162:5555}`
-(PC2, 1280x720), where avp_teleoperate runs the server on the H1. The source only subscribes, so it works in `read_only` and in
-`sim: shadow`. It needs `opencv-python` and `pyzmq` (`pip install -e '.[camera]'`).
+(PC2, 1280x720), where avp_teleoperate runs the server on the H1. The source only subscribes, so it works in `read_only`. It needs `opencv-python` and `pyzmq` (`pip install -e '.[camera]'`).
 
 If the camera is plugged into another computer, or that computer has no image
 server, run `scripts/camera_image_server.py` there. It needs only Python 3.8+,
@@ -142,7 +141,7 @@ spk.stop()                                  # from another thread: cuts play() s
 - **Microphone**: raw PCM multicast over UDP to `239.168.123.161:5555`, 16 kHz
   mono int16, one 5120-byte packet (160 ms) at a time, as in Unitree's C++
   `g1_audio_client_example.cpp`. The driver only listens, so it works in
-  `read_only` and `sim: shadow`, and it needs no SDK. It joins the group on the
+  `read_only`, and it needs no SDK. It joins the group on the
   address of `network_interface`. Up to 10 s of audio is queued for a slow
   reader; older chunks are then dropped (counted in `dropped`).
 - **Speaker**: the SDK `voice` service (`AudioClient.PlayStream` / `PlayStop`).
@@ -198,7 +197,7 @@ each hand gets its 7 joints on `rt/dex3/<side>/cmd`, clipped to the joint's
 rejected. Gains default to kp 1.5, kd 0.2 (the values Unitree's xr_teleoperate
 uses). `disconnect()` damps both hands: zero gains with the timeout flag, as in
 the SDK example. `read_only: true` on the body makes the hands read-only too, so
-`sim: shadow` publishes nothing on any topic.
+a read-only robot publishes nothing on any topic.
 
 The observation's `joint_pos` / `joint_vel` cover all 43 joints. Hand torque is
 NaN: the `tau_est` the hand reports is not in Nm (the values are multiples of
@@ -402,7 +401,7 @@ body:
 The built-in motion service (`ai`) then owns `rt/lowcmd`, so the driver creates
 no `rt/lowcmd` publisher: `send_action` raises `SafetyError` and `reset()` does
 nothing. `builtin_skills` cannot be combined with `release_motion_mode` or
-`read_only`, and `sim: shadow` drops it. The `ai` service must be active; after
+`read_only`. The `ai` service must be active; after
 a `--release-motion-mode` run, bring it back with `unitree_setup.py restore`
 (section 6, step 5). Otherwise every skill fails with RPC code 3102 and an error
 that says so.
@@ -439,7 +438,8 @@ first.
 ## 5. MuJoCo (G1, optional)
 
 Driving the real robot needs no MuJoCo. With it, the G1 runs in simulation on
-its own (no robot at all), or as a twin next to the real one. Install MuJoCo and
+its own (no robot at all), or from the real robot's pose to rehearse a motion
+before it runs on hardware. Install MuJoCo and
 fetch the G1 model from [unitree_ros](https://github.com/unitreerobotics/unitree_ros)
 (not shipped with hiRobot):
 
@@ -496,35 +496,31 @@ What differs from the real robot: images (no noise, exposure or compression,
 an empty scene), dynamics (motor model, friction, latency), IMU noise. The
 built-in skills do not exist in simulation.
 
-### Twin next to the real robot
+### Rehearse from the real robot's pose
 
-The twin adds two things: rehearse a motion in simulation from the robot's
-current pose before running it, and watch the measured state in a 3D viewer
-while it runs. It renders no cameras: images come from the real ones. Add a
-`sim:` section to your `driver: unitree_sdk2` config:
+Before a motion runs on hardware, run it in MuJoCo starting from where the real
+robot stands. [`examples/rehearse_in_sim.py`](../../examples/rehearse_in_sim.py)
+does this with two separate robots:
 
-```yaml
-sim:
-  mode: "off"        # quote it: a bare off is read as a YAML boolean
-  model: ~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml
-  viewer: true
-  fixed_base: true   # pelvis welded in place, like the robot on its gantry
-  base_height: 1.0
-  armature: [...]    # copy the list from the built-in sim/mujoco/unitree_g1
+1. Open the real robot with `read_only: true` (no `rt/lowcmd` publisher is
+   created), read one observation, and disconnect.
+2. Build the MuJoCo config (`unitree_g1_mujoco`) as a second robot and put it in
+   the measured pose with the MuJoCo driver's `set_state`.
+3. `reset()` ramps the gains up while holding that pose; then the motion runs
+   in simulation only.
+
+```bash
+python examples/rehearse_in_sim.py my_g1.yaml unitree_g1_mujoco \
+    --body network_interface=eth0 --joint right_elbow --target 0.0
 ```
 
-| `mode` | Real robot | Simulation |
-|---|---|---|
-| `off` (default) | commanded | not used; MuJoCo is not imported |
-| `mirror` | commanded | shows the measured state (kinematic copy, no physics) |
-| `shadow` | **read-only**: no `rt/lowcmd` publisher is created | starts from the measured pose and runs every action |
-
-`scripts/unitree_setup.py hold|move --sim <mode>` and
-`make_robot(cfg, sim_overrides={"mode": "shadow"})` override the config. In
-`shadow` mode the script ignores `--release-motion-mode`, so a running built-in
-service is left alone (`make_robot` refuses `release_motion_mode` with
-`shadow`). The twin's gains (`default_kp` / `default_kd`) are copied
-from the `body:` section unless `sim:` sets its own.
+Nothing is sent to the real robot, and a running built-in service is left
+alone. The simulation uses the gains of the MuJoCo config; to rehearse with
+your own, put them in a local config with `defaults: [unitree_g1_mujoco]`. The
+simulation renders the head camera from the model, not the real images. Copy
+`read_real_pose` and `sim_from_pose` from the example into your own code to
+rehearse other motions. A live view of the real robot's state in MuJoCo is
+planned (`hirobot view <config>`).
 
 ### Model notes
 
@@ -552,6 +548,7 @@ body:
   network_interface: eth0
   ramp_seconds: 3.0
   damping_kd: 8.0
+  # command_timeout_s: 0.2  # zero velocity (kp 0) when no new VELOCITY came for this long; null: off
   #            hip_p hip_r hip_y knee ank_p ank_r   (left, then right)
   default_kp: [100, 100, 100, 150, 40, 40,
                100, 100, 100, 150, 40, 40,
@@ -589,19 +586,19 @@ damping at 500 Hz, and asks an active built-in service to damp. Start it before
 any commanding step. It needs the DDS link to work, so keep the physical e-stop
 or remote in hand as well.
 
-**Step 3: rehearse in the twin (read-only).**
+**Step 3: rehearse in simulation (read-only).** This needs the MuJoCo setup
+from section 5.
 
 ```bash
-python scripts/unitree_setup.py move --config my_g1.yaml --iface eth0 \
-    --joint right_elbow --target 0.0 --ramp 3 --sim shadow
+python examples/rehearse_in_sim.py my_g1.yaml unitree_g1_mujoco \
+    --body network_interface=eth0 --joint right_elbow --target 0.0
 ```
 
-The sim starts from the measured pose and runs the full move: a 3 s gain ramp,
-4 s out on a minimum-jerk trajectory, 2 s hold, 4 s back, 1 s settle. The
-printed table and the final line (`Sim twin left in damping mode; the real
-robot was never commanded.`) should show tracking within a few hundredths of a
-radian and no other joint drifting. If it aborts here, fix the target or gains
-before going near the hardware.
+The real robot is only read. The simulated G1 starts from the measured pose,
+ramps its gains, and moves the elbow to the target in 3 s (`--seconds`). The
+last line prints the real start angle and where the simulated elbow ended. It
+should be close to the target: gravity against kp 40 leaves about 0.05 rad. If
+it is far off, fix the target or gains before going near the hardware.
 
 **Step 4: run it on the robot (commands the robot).** The robot is hung with
 its feet off the ground, the area around the right arm is clear, and someone
@@ -609,20 +606,19 @@ holds the e-stop.
 
 ```bash
 python scripts/unitree_setup.py move --config my_g1.yaml --iface eth0 \
-    --joint right_elbow --target 0.0 --ramp 3 --release-motion-mode --sim mirror \
+    --joint right_elbow --target 0.0 --ramp 3 --release-motion-mode \
     --log elbow.csv
 ```
 
 `--release-motion-mode` releases the built-in service first (omit it if step 1
-showed none). `--sim mirror` is optional: it shows the measured pose in the
-viewer while the real robot moves; `--sim off` (or no `sim:` section) runs
-without MuJoCo. The script aborts to damping if the elbow lags its trajectory
+showed none). The script aborts to damping if the elbow lags its trajectory
 by more than `--max-track-error` (0.3 rad) or any other joint drifts more than
 `--max-error` (0.3 rad), and always ends in damping mode.
 
-Results from one G1 run, real robot versus the step 3 rehearsal:
+Results from one G1 run, real robot versus the same move run in MuJoCo from
+the real pose:
 
-| | Real robot | Twin (`shadow`) |
+| | Real robot | Simulation |
 |---|---|---|
 | Steady state at target 0.0 | 0.048 rad | 0.046 rad |
 | Elbow torque while holding | −1.69 to −1.75 Nm | −1.82 Nm |
@@ -648,7 +644,7 @@ reports active, and asks it to enter its damping state. Or re-enter the
 service from the remote or app.
 
 Other joints follow the same procedure; `--max-travel` (1.6 rad) refuses
-targets far from the measured pose. `hold` runs steps 3 and 4 without a move,
+targets far from the measured pose. `hold` runs step 4 without a move,
 holding the measured pose for `--seconds` (useful to check the gains first).
 
 ### Legacy H1 (19 DoF)
@@ -679,8 +675,8 @@ The same procedure ran on a hung legacy H1, body only. What differs from the G1:
                  1.5, 1.5, 1.5, 1.5]
   ```
 
-- **Twin model:** fetch `robots/h1_description` from unitree_ros the same way as
-  in section 5. Its `mjcf/h1.xml` needs edits in a local copy before the twin
+- **Simulation model:** fetch `robots/h1_description` from unitree_ros the same way as
+  in section 5. Its `mjcf/h1.xml` needs edits in a local copy before MuJoCo
   loads it. The model names the waist `torso_joint`, but the config calls it
   `waist_yaw`. Its `home` keyframe also no longer fits once `fixed_base` removes
   the free joint. Set `meshdir` to the absolute `meshes/` path, since the copy
@@ -693,7 +689,23 @@ The same procedure ran on a hung legacy H1, body only. What differs from the G1:
       -e '/<keyframe>/,/<\/keyframe>/d' $M/mjcf/h1.xml > h1_sim.xml
   ```
 
-  Then point `sim.model` at `h1_sim.xml`, with `fixed_base: true` and `base_height: 1.2`.
+  Then write a local simulation config, say `my_h1_mujoco.yaml`, and rehearse
+  with `python examples/rehearse_in_sim.py my_h1.yaml my_h1_mujoco.yaml ...`:
+
+  ```yaml
+  defaults: [unitree_h1]
+  assembly:
+    parts:
+      body:
+        overrides:
+          model: {mjcf: h1_sim.xml}   # kp / kd / armature: copy from the real config
+  sim:
+    fixed_base: [body]
+    base_height: {body: 1.2}
+    ramp_seconds: 2.0
+    damping_kd: 8.0
+  ```
+
 - **Arm pose:** `right_elbow` reads about 1.52 rad with the arm hanging. Smaller
   angles raise the forearm, and 0.0 is horizontal forward. The test moved it to
   0.8 rad, about 40° up from hanging.
@@ -701,9 +713,9 @@ The same procedure ran on a hung legacy H1, body only. What differs from the G1:
   built-in service from the remote or app.
 
 Results of `move --joint right_elbow --target 0.8` on the H1, real robot versus
-the `shadow` rehearsal:
+the same move run in MuJoCo from the real pose:
 
-| | Real robot | Twin (`shadow`) |
+| | Real robot | Simulation |
 |---|---|---|
 | Steady state at target 0.8 | 0.835 rad | 0.857 rad |
 | Worst tracking error | 0.043 rad | 0.172 rad |
@@ -712,7 +724,7 @@ the `shadow` rehearsal:
 | Back at start (1.523 commanded) | 1.519 rad | 1.508 rad |
 
 A `hold` of 5 s beforehand tracked within 0.001 rad with all 19 motors enabled.
-Unlike the G1, the twin tracks *worse* than the hardware: the unitree_ros H1 model
+Unlike the G1, the simulation tracks *worse* than the hardware: the unitree_ros H1 model
 was used without tuned armature or friction, so take its numbers as a
 conservative rehearsal, not a prediction.
 
@@ -720,7 +732,8 @@ conservative rehearsal, not a prediction.
 
 Once a single-joint move works, the same driver runs any control loop that
 uses the `Robot` interface. Keep the robot hung for the first runs, and
-rehearse new motions with `sim: {mode: shadow}` first. The basic loop is in the
+rehearse new motions in MuJoCo from the real pose first
+([section 5](#rehearse-from-the-real-robots-pose)). The basic loop is in the
 [Quick start](../../README.md#simulation); on the real robot, pace it at
 `robot.embodiment.control_hz`.
 

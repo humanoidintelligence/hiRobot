@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 import hirobot
-from hirobot.config import load_config
+import hirobot.loading.config
+from tests.conftest import mjcf_of
 
 ROOT = Path(__file__).resolve().parent.parent
 READMES = ["README.md", "README.zh-CN.md"]
@@ -24,7 +25,7 @@ def _code(block):
 
 
 def _mujoco_model(config):
-    return os.path.expanduser(load_config(config)["body"]["model_path"])
+    return mjcf_of(config)
 
 
 def test_both_readmes_run_the_same_code():
@@ -45,11 +46,12 @@ def test_readme_block_runs(index, monkeypatch):
 
     make_robot = hirobot.make_robot
 
-    def fast_make_robot(config, body_overrides=None, **kw):
+    def fast_make_robot(config, overrides=None, **kw):
         # Same robot, without the wall-clock pacing and the start ramp.
         if "mujoco" in str(config):
-            body_overrides = {"realtime": False, "ramp_seconds": 0.0, "viewer": False, **(body_overrides or {})}
-        return make_robot(config, body_overrides=body_overrides, **kw)
+            fast = {"body": {"driver": {"realtime": False, "ramp_seconds": 0.0, "viewer": False}}}
+            overrides = hirobot.loading.config.merge(fast, dict(overrides or {}))
+        return make_robot(config, overrides=overrides, **kw)
 
     monkeypatch.setattr(hirobot, "make_robot", fast_make_robot)
     namespace = {}
@@ -57,3 +59,32 @@ def test_readme_block_runs(index, monkeypatch):
     if "elbow" in namespace:  # the G1 example: the elbow got to 1 rad
         obs = namespace["robot"].get_observation()
         assert obs.joint_pos[namespace["elbow"]] == pytest.approx(1.0, abs=0.1)
+
+
+def _layer_example(name):
+    text = (ROOT / "docs" / name).read_text(encoding="utf-8")
+    heading = {"api.md": "### Writing a layer", "api.zh-CN.md": "### 编写层"}[name]
+    section = text.split(heading, 1)[1].split("\n## ", 1)[0]
+    (block,) = re.findall(r"^```python\n(.*?)^```", section, flags=re.S | re.M)
+    return block
+
+
+def test_both_layer_examples_run_the_same_code():
+    en, zh = (_layer_example(n) for n in ("api.md", "api.zh-CN.md"))
+    assert _code(en) == _code(zh)
+
+
+@pytest.mark.parametrize("name", ["api.md", "api.zh-CN.md"])
+def test_layer_example_runs_and_uses_only_the_public_api(name):
+    import numpy as np
+
+    from hirobot.loading.registry import LAYERS
+    from hirobot.testing import assert_layer_uses_public_api
+
+    namespace = {}
+    try:
+        exec(compile(_layer_example(name), f"docs/{name} layer example", "exec"), namespace)
+        np.testing.assert_allclose(namespace["robot"].get_observation().joint_pos, 0.05)
+        assert_layer_uses_public_api(namespace["RateLimit"], {"max_step": 0.05})
+    finally:
+        LAYERS._entries.pop("rate_limit", None)

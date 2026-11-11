@@ -97,8 +97,8 @@ def test_no_server_names_the_cause():
 
 @pytest.mark.parametrize("config", ["unitree_h1", "unitree_h1_inspire"])
 def test_h1_configs_attach_the_head_camera_on_hardware(config):
-    robot = make_robot(config, body_overrides={"driver": "unitree_sdk2", "msg_family": "go",
-                                                "network_interface": "eth9"})
+    robot = make_robot(config, overrides={"body": {"driver": {"type": "unitree_sdk2", "msg_family": "go",
+                                                "network_interface": "eth9"}}})
     assert isinstance(robot, RobotAssembly)
     cam = robot.cameras["head"]
     assert isinstance(cam, UnitreeImageServerCamera)

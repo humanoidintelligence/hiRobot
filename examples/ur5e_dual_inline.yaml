@@ -1,0 +1,43 @@
+# The same robot as ur5e_dual, but with the parts written inline instead of
+# referenced, to show the three ways a part can be given:
+#   - from: <name or path>     a reference (left)
+#   - assembly: {...}          an inline node (right)
+#   - device: <kind> + fields  an inline device (scene)
+#
+# A part's name comes only from its key under parts: (and from joints / frames),
+# never from where it is defined, so the assembled names match ur5e_dual either
+# way: left/shoulder_pan ..., right/tcp, scene.
+
+assembly:
+  name: ur5e_dual_inline
+  parts:
+    left: {from: robots/ur_ur5e}          # a reference
+    right:                                 # an inline node: the same content as ur_ur5e
+      assembly:
+        parts:
+          body:
+            from: body/ur/ur5e             # node inline, device still from a file
+            overrides:
+              driver: {type: toy}
+              mounts: {wrist_camera: {link: wrist_3_link}}   # where to hang the camera
+          wrist:                           # an inline device
+            device: camera
+            width: 640
+            height: 480
+            fovy: 42
+            driver: {type: array}
+        placement:
+          wrist: {on: body.wrist_camera, pose: [0, -0.07, 0.03, 0, 0, 0, 1]}
+    scene:                                 # an inline device: an overhead camera, no model file
+      device: camera
+      width: 1280
+      height: 720
+      fps: 30
+      fovy: 55
+      driver: {type: array}
+  placement:
+    left:  {pose: [0, 0.4, 0, 0, 0, 0, 1]}
+    right: {pose: [0, -0.4, 0, 0, 0, 0, 1]}
+    scene: {pose: [1.0, 0, 0.8, -0.6124, -0.6124, 0.3536, 0.3536]}
+
+safety: {max_joint_step: 0.2}

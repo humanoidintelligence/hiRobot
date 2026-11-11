@@ -1,8 +1,13 @@
-# Unitree H1 — 19-DoF humanoid.
+# Unitree H1: 19-DoF humanoid with its head camera.
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default; on hardware the body file's driver
+# (unitree_sdk2, msg_family: go) applies when the toy override is dropped
+# (docs/setup/unitree.md).
 
-defaults: [body/unitree/h1, camera/unitree/h1_head_d435i]
-
-body:
-  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)
+assembly:
+  name: unitree-h1
+  parts:
+    body: {from: body/unitree/h1, overrides: {driver: {type: toy}}}
+    head: {from: camera/intel/d435i_image_server}
+  placement:
+    head: {on: body.head_camera}

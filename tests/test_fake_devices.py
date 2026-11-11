@@ -16,7 +16,7 @@ from hirobot.drivers.audio import (
     wav_bytes,
 )
 from hirobot.drivers.camera import ArrayCamera
-from hirobot.embodiment import Embodiment, Joint
+from hirobot.core.embodiment import Embodiment, Joint
 
 RATE = 16000
 
@@ -71,9 +71,10 @@ def _drain(mic, timeout: float = 2.0) -> bytes:
 def _sim_config(tmp_path, extra: str) -> str:
     cfg = tmp_path / "robot.yaml"
     cfg.write_text(
-        "embodiment:\n  name: toy\n  control_hz: 50\n  joints: [{name: a}, {name: b}]\n"
+        "assembly:\n  name: toy\n  parts:\n"
+        "    body: {device: body, control_hz: 50, joints: [{name: a}, {name: b}],"
+        " driver: {type: toy}}\n"
         + extra
-        + "body: {driver: toy}\n"
     )
     return str(cfg)
 
@@ -81,9 +82,9 @@ def _sim_config(tmp_path, extra: str) -> str:
 def test_make_robot_attaches_simulated_devices_to_a_sim_driver(tmp_path):
     wav = _write_wav(tmp_path / "in.wav", _tone(0.1))
     cfg = _sim_config(tmp_path,
-        "  cameras: [{name: head, width: 64, height: 64, driver: {type: array, fps: 10}}]\n"
-        f"  microphones: [{{name: m, driver: {{type: wav_mic, path: {wav}, realtime: false}}}}]\n"
-        f"  speakers: [{{name: s, driver: {{type: wav_speaker, path: {tmp_path / 'out.wav'}}}}}]\n")
+        "    head: {device: camera, width: 64, height: 64, driver: {type: array, fps: 10}}\n"
+        f"    m: {{device: microphone, driver: {{type: wav_mic, path: {wav}, realtime: false}}}}\n"
+        f"    s: {{device: speaker, driver: {{type: wav_speaker, path: {tmp_path / 'out.wav'}}}}}\n")
     robot = make_robot(cfg)
     assert isinstance(robot, RobotAssembly)
     assert isinstance(robot.cameras["head"], ArrayCamera)
@@ -100,25 +101,20 @@ def test_make_robot_attaches_simulated_devices_to_a_sim_driver(tmp_path):
 def test_make_robot_skips_real_devices_on_a_sim_driver(tmp_path):
     wav = _write_wav(tmp_path / "in.wav", _tone(0.1))
     cfg = _sim_config(tmp_path,
-        "  cameras: [{name: real, width: 64, height: 64, driver: {type: unitree_videohub}},\n"
-        "            {name: fake, width: 64, height: 64, driver: {type: array}}]\n"
-        "  microphones: [{name: real, driver: {type: unitree_voice_mic}},\n"
-        f"                {{name: fake, driver: {{type: wav_mic, path: {wav}}}}}]\n")
+        "    real_cam: {device: camera, width: 64, height: 64, driver: {type: unitree_videohub}}\n"
+        "    fake_cam: {device: camera, width: 64, height: 64, driver: {type: array}}\n"
+        "    real_mic: {device: microphone, driver: {type: unitree_voice_mic}}\n"
+        f"    fake_mic: {{device: microphone, driver: {{type: wav_mic, path: {wav}}}}}\n")
     robot = make_robot(cfg)
-    assert set(robot.cameras) == {"fake"}
-    assert set(robot.microphones) == {"fake"}
+    assert set(robot.cameras) == {"fake_cam"}
+    assert set(robot.microphones) == {"fake_mic"}
 
 
 def test_make_robot_unitree_g1_mujoco_takes_a_wav_mic(tmp_path):
-    from hirobot.config import load_config
-
-    base = load_config("unitree_g1_mujoco")
     wav = _write_wav(tmp_path / "in.wav", _tone(0.1))
-    emb = base["embodiment"]
-    emb["microphones"] = [{"name": "head", "driver": {"type": "unitree_voice_mic"}},
-                          {"name": "laptop", "driver": {"type": "wav_mic", "path": wav}}]
-    emb["cameras"] = list(emb.get("cameras") or []) + [
-        {"name": "video", "width": 64, "height": 64, "driver": {"type": "array"}}]
+    base = {"defaults": ["unitree_g1_mujoco"], "assembly": {"parts": {
+        "laptop": {"device": "microphone", "driver": {"type": "wav_mic", "path": wav}},
+        "video": {"device": "camera", "width": 64, "height": 64, "driver": {"type": "array"}}}}}
     pytest.importorskip("mujoco")
     try:
         robot = make_robot(base)
@@ -133,10 +129,11 @@ def test_sim_device_does_not_get_the_robot_nic(tmp_path):
     wav = _write_wav(tmp_path / "in.wav", _tone(0.1))
     cfg = tmp_path / "robot.yaml"
     cfg.write_text(
-        "embodiment:\n  name: toy\n  joints: [{name: a}]\n"
-        f"  microphones: [{{name: m, driver: {{type: wav_mic, path: {wav}}}}}]\n"
-        "  cameras: [{name: c, width: 8, height: 8, driver: {type: array}}]\n"
-        "body: {driver: unitree_sdk2, network_interface: eth9}\n")
+        "assembly:\n  name: toy\n  parts:\n"
+        "    body: {device: body, joints: [{name: a}],"
+        " driver: {type: unitree_sdk2, network_interface: eth9}}\n"
+        f"    m: {{device: microphone, driver: {{type: wav_mic, path: {wav}}}}}\n"
+        "    c: {device: camera, width: 8, height: 8, driver: {type: array}}\n")
     # A real body passes its NIC to Unitree devices; stand-ins take no such
     # argument, so this would raise TypeError if it were passed to them too.
     robot = make_robot(str(cfg))
@@ -189,7 +186,7 @@ def test_hold_goes_through_the_safety_gate():
     from hirobot import SafetyGate
 
     robot = _PosRobot()
-    robot.set_safety(SafetyGate.from_embodiment(robot.embodiment))
+    robot._set_safety(SafetyGate.from_embodiment(robot.embodiment))
     robot.hold()
     assert len(robot.sent) == 1
 

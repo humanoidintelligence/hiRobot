@@ -4,18 +4,18 @@
 # RTDE actual_q. Fixed base: no IMU/base state. The single task-space frame is
 # the TCP, controllable in Cartesian mode via servoL.
 
-embodiment:
-  name: ur5e
-  kind: arm
-  control_hz: 125          # UR5e is e-Series: up to 500 Hz; 125 is a conservative default
-  floating_base: false
-  joints:
-    - name: shoulder_pan    # 0 (base)
-    - name: shoulder_lift   # 1
-    - name: elbow           # 2
-    - name: wrist_1         # 3
-    - name: wrist_2         # 4
-    - name: wrist_3         # 5
-  end_effectors:
-    - name: tcp
-      has_gripper: false
+device: body
+control_hz: 125          # UR5e is e-Series: up to 500 Hz; 125 is a conservative default
+floating_base: false
+joints:
+  - name: shoulder_pan    # 0 (base)
+  - name: shoulder_lift   # 1
+  - name: elbow           # 2
+  - name: wrist_1         # 3
+  - name: wrist_2         # 4
+  - name: wrist_3         # 5
+
+frames:
+  - {name: tcp}
+
+driver: {type: ur_rtde}

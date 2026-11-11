@@ -11,7 +11,13 @@ import pytest
 from hirobot import Action, ControlMode, RobotAssembly, load_embodiment, make_robot
 from hirobot.drivers.end_effector import UnitreeDex3Hand
 from hirobot.drivers.sim.toy import ToyRobot
-from hirobot.end_effector import available_end_effectors, body_embodiment, build_end_effectors, get_end_effector, end_effector_joint_names
+from hirobot.devices.end_effector import (
+    available_end_effectors,
+    body_embodiment,
+    build_end_effectors,
+    end_effector_joint_names,
+    get_end_effector,
+)
 from tests.drivers.end_effector.unitree.sdk2_handcmd.fake_sdk import _Bus, _install_fake_sdk
 
 CFG = "unitree_g1_dex3"
@@ -67,7 +73,7 @@ def test_sim_driver_gets_all_43_joints_and_no_hand_driver():
 
 
 def test_real_driver_gets_body_joints_and_two_hands():
-    robot = make_robot(CFG, body_overrides={"driver": "unitree_sdk2", "network_interface": "eth0"})
+    robot = make_robot(CFG, overrides={"body": {"driver": {"type": "unitree_sdk2", "network_interface": "eth0"}}})
     assert isinstance(robot, RobotAssembly)
     assert robot.embodiment.num_dofs == 43
     assert robot.body.embodiment.num_dofs == 29
@@ -78,8 +84,8 @@ def test_real_driver_gets_body_joints_and_two_hands():
 
 
 def test_read_only_body_makes_hands_read_only():
-    robot = make_robot(CFG, body_overrides={"driver": "unitree_sdk2", "network_interface": "eth0",
-                                             "read_only": True})
+    robot = make_robot(CFG, overrides={"body": {"driver": {"type": "unitree_sdk2", "network_interface": "eth0",
+                                             "read_only": True}}})
     assert all(h.read_only for h in robot.end_effectors.values())
 
 
@@ -152,7 +158,7 @@ def test_safety_gate_sees_all_43_joints(monkeypatch):
     from hirobot import SafetyError, SafetyGate
 
     robot, body, bus = _assembly(monkeypatch)
-    robot.set_safety(SafetyGate.from_embodiment(robot.embodiment))
+    robot._set_safety(SafetyGate.from_embodiment(robot.embodiment))
     robot.connect()
     with pytest.raises(SafetyError, match="43"):
         robot.send_action(Action(mode=ControlMode.PD, joint_target=np.zeros(29)))
@@ -175,7 +181,7 @@ def test_disconnect_damps_both_hands(monkeypatch):
         assert all(m[0] & 0x80 and m[2] == 0.0 for m in bus.sent[topic][-1])
 
 
-# ---------------------------------------------------------------- the twin
+# ---------------------------------------------------------------- MuJoCo with hands
 
 MJ_CFG = "unitree_g1_dex3_mujoco"
 _MODEL = "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml"
@@ -191,7 +197,7 @@ def _mujoco_or_skip():
 
 def test_mujoco_fingers_track_open_and_close():
     _mujoco_or_skip()
-    robot = make_robot(MJ_CFG, body_overrides={"realtime": False, "viewer": False})
+    robot = make_robot(MJ_CFG, overrides={"body": {"driver": {"realtime": False, "viewer": False}}})
     robot.connect()
     robot.reset()
     emb = robot.embodiment
@@ -214,24 +220,3 @@ def test_mujoco_fingers_track_open_and_close():
         assert np.abs(q[29:] - goal).max() < 0.05
         assert np.abs(q[:29] - settled).max() < 0.02  # moving the fingers leaves the body still
     robot.disconnect()
-
-
-def test_shadow_with_hands_seeds_twin_and_never_commands(monkeypatch):
-    _mujoco_or_skip()
-    from hirobot.twin import TwinRobot
-
-    emb, bus, hands = _hands(monkeypatch, read_only=True)
-    body = _Body(body_embodiment(emb))
-    real = RobotAssembly(body, end_effectors=hands, embodiment=emb)
-    real._read_only = True  # what make_robot's read-only UnitreeRobot provides
-    from hirobot.drivers.sim.mujoco import MujocoRobot
-
-    twin = MujocoRobot(emb, model_path=_MODEL, fixed_base=True, base_height=1.0, realtime=False,
-                       default_kp=40.0, default_kd=2.0, armature=0.001)
-    robot = TwinRobot(real, twin, mode="shadow")
-    robot.connect()
-    q = robot.get_observation().joint_pos
-    assert np.allclose(q[29:36], LEFT_Q, atol=1e-6) and np.allclose(q[36:], RIGHT_Q, atol=1e-6)
-    robot.send_action(Action(mode=ControlMode.PD, joint_target=q))
-    robot.disconnect()
-    assert not body.sent and not bus.publishers

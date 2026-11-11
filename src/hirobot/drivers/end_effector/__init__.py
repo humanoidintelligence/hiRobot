@@ -1,7 +1,7 @@
 """Hand drivers: dexterous hands commanded separately from the body.
 
 A hand's finger joints are ordinary embodiment joints; an end-effector lists
-them and names its driver (see :mod:`hirobot.end_effector`). Vendor SDKs
+them and names its driver (see :mod:`hirobot.devices.end_effector`). Vendor SDKs
 are imported lazily on ``connect()``. Layout: ``hands/<SDK vendor>/<SDK or protocol>/``.
 """
 

@@ -8,32 +8,34 @@
 # tighter than the URDF for the elbows (joint4) and the waist lift.
 # waist_lift_joint is prismatic, in metres.
 
-embodiment:
-  name: agibot-g1
-  kind: humanoid
-  control_hz: 30
-  floating_base: true      # the chassis moves; base pose from its odometer
-  joints:
-    - {name: waist_lift_joint,    position_limit: [0.02, 0.55]}
-    - {name: waist_pitch_joint,   position_limit: [0.0, 1.57]}
-    - {name: head_yaw_joint,      position_limit: [-1.57, 1.57]}
-    - {name: head_pitch_joint,    position_limit: [-0.34, 0.52]}
-    - {name: left_arm_joint1,     position_limit: [-3.10, 3.10]}
-    - {name: left_arm_joint2,     position_limit: [-2.0, 2.0]}
-    - {name: left_arm_joint3,     position_limit: [-3.10, 3.10]}
-    - {name: left_arm_joint4,     position_limit: [-1.65, -0.05]}
-    - {name: left_arm_joint5,     position_limit: [-3.10, 3.10]}
-    - {name: left_arm_joint6,     position_limit: [-1.65, 1.65]}
-    - {name: left_arm_joint7,     position_limit: [-3.10, 3.10]}
-    - {name: right_arm_joint1,    position_limit: [-3.10, 3.10]}
-    - {name: right_arm_joint2,    position_limit: [-2.0, 2.0]}
-    - {name: right_arm_joint3,    position_limit: [-3.10, 3.10]}
-    - {name: right_arm_joint4,    position_limit: [0.05, 1.65]}
-    - {name: right_arm_joint5,    position_limit: [-3.10, 3.10]}
-    - {name: right_arm_joint6,    position_limit: [-1.65, 1.65]}
-    - {name: right_arm_joint7,    position_limit: [-3.10, 3.10]}
-  end_effectors:
-    # Omnipicker grippers; the pose is arm_{left,right}_link7 in base_link,
-    # as the motion controller reports it.
-    - {name: left_gripper,  has_gripper: true, frame: {body: arm_left_link7}}
-    - {name: right_gripper, has_gripper: true, frame: {body: arm_right_link7}}
+device: body
+control_hz: 30
+floating_base: true      # the chassis moves; base pose from its odometer
+joints:
+  - {name: waist_lift_joint,    position_limit: [0.02, 0.55]}
+  - {name: waist_pitch_joint,   position_limit: [0.0, 1.57]}
+  - {name: head_yaw_joint,      position_limit: [-1.57, 1.57]}
+  - {name: head_pitch_joint,    position_limit: [-0.34, 0.52]}
+  - {name: left_arm_joint1,     position_limit: [-3.10, 3.10]}
+  - {name: left_arm_joint2,     position_limit: [-2.0, 2.0]}
+  - {name: left_arm_joint3,     position_limit: [-3.10, 3.10]}
+  - {name: left_arm_joint4,     position_limit: [-1.65, -0.05]}
+  - {name: left_arm_joint5,     position_limit: [-3.10, 3.10]}
+  - {name: left_arm_joint6,     position_limit: [-1.65, 1.65]}
+  - {name: left_arm_joint7,     position_limit: [-3.10, 3.10]}
+  - {name: right_arm_joint1,    position_limit: [-3.10, 3.10]}
+  - {name: right_arm_joint2,    position_limit: [-2.0, 2.0]}
+  - {name: right_arm_joint3,    position_limit: [-3.10, 3.10]}
+  - {name: right_arm_joint4,    position_limit: [0.05, 1.65]}
+  - {name: right_arm_joint5,    position_limit: [-3.10, 3.10]}
+  - {name: right_arm_joint6,    position_limit: [-1.65, 1.65]}
+  - {name: right_arm_joint7,    position_limit: [-3.10, 3.10]}
+
+# The frames the motion controller reports: arm_{left,right}_link7 in base_link.
+# The Omnipicker grippers are driven by the body driver (Action.gripper).
+frames:
+  - {name: left_gripper,  link: arm_left_link7}
+  - {name: right_gripper, link: arm_right_link7}
+grippers: [left_gripper, right_gripper]
+
+driver: {type: agibot_gdk}

@@ -1,31 +1,33 @@
-# Example hiRobot configuration — a fixed-base arm (e.g. Franka / UR).
+# Example robot config: a fixed-base 7-DoF arm (e.g. Franka / UR) with a wrist camera.
 #
-# Same schema as humanoid.yaml, but kind=arm and floating_base=false, so
-# observations carry no IMU/base state. End-effector + Cartesian control matter
-# more here; the unified Action supports both joint and Cartesian modes.
+# Every device is written inline here (device: ...). A device file under
+# hirobot/configs/ (body/franka/fr3, ...) is the same mapping in its own file,
+# named with from:. A fixed base has no IMU / base state in its observations.
 
-embodiment:
+assembly:
   name: generic-7dof-arm
-  kind: arm                 # humanoid | arm
-  control_hz: 100
-  floating_base: false      # fixed base: no IMU / base state in observations
-  joints:
-    - name: joint_1
-    - name: joint_2
-    - name: joint_3
-    - name: joint_4
-    - name: joint_5
-    - name: joint_6
-    - name: joint_7
-  end_effectors:
-    - name: tcp
-      has_gripper: true
-  cameras:
-    - name: wrist
+  parts:
+    body:
+      device: body
+      control_hz: 100
+      floating_base: false
+      joints:
+        - {name: joint_1}
+        - {name: joint_2}
+        - {name: joint_3}
+        - {name: joint_4}
+        - {name: joint_5}
+        - {name: joint_6}
+        - {name: joint_7}
+      frames:
+        - {name: tcp, link: link7}
+      grippers: [tcp]        # the body driver opens and closes it (Action.gripper)
+      mounts:
+        wrist_camera: {link: link7}
+      driver: {type: toy}    # swap for franka_libfranka / ur_rtde on hardware
+    wrist:
+      device: camera
       width: 224
       height: 224
-
-# embodiment: above describes the whole robot. body: picks and configures
-# only the body driver.
-body:
-  driver: toy               # swap for 'franka_libfranka' / 'ur_rtde' on hardware
+  placement:
+    wrist: {on: body.wrist_camera}

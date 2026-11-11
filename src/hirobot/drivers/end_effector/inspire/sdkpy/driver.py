@@ -33,10 +33,10 @@ from typing import Optional, Sequence, Tuple
 import numpy as np
 
 from hirobot.drivers._sdk.unitree_sdk2 import channel_api, init_channel
-from hirobot.embodiment import Joint
-from hirobot.stamps import Stamp, StampCounter
-from hirobot.end_effector import EndEffectorDriver, JointsState, register_end_effector
-from hirobot.sdk import require_sdk
+from hirobot.core.embodiment import Joint
+from hirobot.core.stamps import Stamp, StampCounter
+from hirobot.devices.end_effector import EndEffectorDriver, JointsState, register_end_effector
+from hirobot.loading.sdk import require_sdk
 
 NUM_JOINTS = 6
 SUFFIX = {"left": "l", "right": "r"}

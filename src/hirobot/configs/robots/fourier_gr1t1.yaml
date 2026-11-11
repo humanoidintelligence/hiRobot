@@ -1,8 +1,9 @@
-# Fourier GR1T1 — 32-DoF humanoid.
+# Fourier GR1T1: 32-DoF humanoid (fourier_grx, docs/setup/fourier.md).
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default; on hardware drop the toy override to use the
+# body file's driver.
 
-defaults: [body/fourier/gr1t1]
-
-body:
-  driver: toy   # set to 'fourier_grx' on hardware (docs/setup/fourier.md)
+assembly:
+  name: fourier-gr1t1
+  parts:
+    body: {from: body/fourier/gr1t1, overrides: {driver: {type: toy}}}

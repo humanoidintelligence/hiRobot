@@ -1,0 +1,15 @@
+# Intel RealSense D435i colour, as JPEG over ZeroMQ from Unitree's teleoperation
+# image_server (xr_teleoperate), as on the Unitree H1.
+#
+# The server runs on the computer the camera is plugged into: by default the H1's
+# development computer PC2, 192.168.123.162, port 5555, 1280x720. If yours is
+# plugged in elsewhere or serves another size, override address / width / height
+# (docs/setup/unitree.md, "Head camera (H1)"). Only runs with a real body.
+
+device: camera
+width: 1280
+height: 720
+fovy: 42
+driver:
+  type: unitree_image_server
+  address: tcp://192.168.123.162:5555

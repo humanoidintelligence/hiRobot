@@ -1,0 +1,12 @@
+# Intel RealSense D457 RGB-D, as the AgiBot G1's head camera on its cosine_bus
+# image topics (agibot_cosine): JPEG colour + Z16 depth, 1280x800, about 30 fps.
+# Runs only with the real body (driver: agibot_gdk, on the robot's computer).
+
+device: camera
+width: 1280
+height: 800
+depth: true
+driver:
+  type: agibot_cosine
+  topic: /camera/head_color
+  depth_topic: /camera/head_depth

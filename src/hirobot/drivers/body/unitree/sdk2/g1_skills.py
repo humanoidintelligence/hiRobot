@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from hirobot.robot_skills import RobotSkillError, RobotSkillSpec
+from hirobot.core.robot_skills import RobotSkillError, RobotSkillSpec
 
 logger = logging.getLogger(__name__)
 

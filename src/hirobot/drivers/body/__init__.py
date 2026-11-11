@@ -1,7 +1,7 @@
 """Real-robot body drivers: vendor SDKs behind the Robot contract.
 
 Each driver wraps one vendor SDK (Unitree, Fourier, AgiBot, Franka, UR) behind
-:class:`~hirobot.robot.Robot`. SDKs are imported lazily on ``connect()``, so
+:class:`~hirobot.core.robot.Robot`. SDKs are imported lazily on ``connect()``, so
 importing this package (which registers the drivers) needs none of them.
 """
 

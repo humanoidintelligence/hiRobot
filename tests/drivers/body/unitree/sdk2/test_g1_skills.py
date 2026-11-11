@@ -17,7 +17,7 @@ from hirobot import (
     load_embodiment,
 )
 from hirobot.drivers.body.unitree.sdk2.g1_skills import GESTURES, SKILLS, G1Skills
-from hirobot.robot_skills import validate_args
+from hirobot.core.robot_skills import validate_args
 
 G1 = "unitree_g1"
 

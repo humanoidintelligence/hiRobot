@@ -1,4 +1,4 @@
-# Unitree H1 — 19-DoF humanoid.
+# Unitree H1: 19-DoF humanoid.
 #
 # Joint names/order follow the H1 low-level JointIndex enum in
 # unitree_sdk2_python example/h1/low_level/h1_low_level_example.py.
@@ -7,31 +7,47 @@
 # Uses the unitree_go DDS message family (msg_family: go). Note H1 has
 # single-DoF ankles.
 
-embodiment:
-  name: unitree-h1
-  kind: humanoid
-  control_hz: 50
-  floating_base: true
-  joints:
-    - name: right_hip_roll        # 0
-    - name: right_hip_pitch       # 1
-    - name: right_knee            # 2
-    - name: left_hip_roll         # 3
-    - name: left_hip_pitch        # 4
-    - name: left_knee             # 5
-    - name: waist_yaw             # 6
-    - name: left_hip_yaw          # 7
-    - name: right_hip_yaw         # 8
-    - name: left_ankle            # 10
-    - name: right_ankle           # 11
-    - name: right_shoulder_pitch  # 12
-    - name: right_shoulder_roll   # 13
-    - name: right_shoulder_yaw    # 14
-    - name: right_elbow           # 15
-    - name: left_shoulder_pitch   # 16
-    - name: left_shoulder_roll    # 17
-    - name: left_shoulder_yaw     # 18
-    - name: left_elbow            # 19
-  end_effectors:
-    - name: left_hand
-    - name: right_hand
+device: body
+control_hz: 50
+floating_base: true
+
+joints:
+  - {name: right_hip_roll}        # 0
+  - {name: right_hip_pitch}       # 1
+  - {name: right_knee}            # 2
+  - {name: left_hip_roll}         # 3
+  - {name: left_hip_pitch}        # 4
+  - {name: left_knee}             # 5
+  - {name: waist_yaw}             # 6
+  - {name: left_hip_yaw}          # 7
+  - {name: right_hip_yaw}         # 8
+  - {name: left_ankle}            # 10
+  - {name: right_ankle}           # 11
+  - {name: right_shoulder_pitch}  # 12
+  - {name: right_shoulder_roll}   # 13
+  - {name: right_shoulder_yaw}    # 14
+  - {name: right_elbow}           # 15
+  - {name: left_shoulder_pitch}   # 16
+  - {name: left_shoulder_roll}    # 17
+  - {name: left_shoulder_yaw}     # 18
+  - {name: left_elbow}            # 19
+
+# The hand frames are the hand flange (the left/right_wrist mounts below). A hand
+# mounted on left_wrist / right_wrist under the same name takes their place.
+frames:
+  - {name: left_hand,  link: left_elbow_link,  pose: [0.2605, 0, -0.0185, 0, 0, 0, 1]}
+  - {name: right_hand, link: right_elbow_link, pose: [0.2605, 0, -0.0185, 0, 0, 0, 1]}
+
+# Nominal positions from unitree_ros robots/h1_description, not calibrated.
+mounts:
+  # Hand flange at the end of the forearm: left/right_hand_joint origin in
+  # h1_with_hand.urdf (the hand link on the elbow link).
+  left_wrist:  {link: left_elbow_link,  pose: [0.2605, 0, -0.0185, 0, 0, 0, 1]}
+  right_wrist: {link: right_elbow_link, pose: [0.2605, 0, -0.0185, 0, 0, 0, 1]}
+  # Head camera (RealSense D435i colour): d435_rgb_module_joint in h1.urdf, which
+  # is already the optical frame (z forward, x right, y down).
+  head_camera:
+    link: torso_link
+    pose: [0.10848474394, 0.0325, 0.69317107367, -0.666125, 0.666128, -0.237225, 0.237224]
+
+driver: {type: unitree_sdk2, msg_family: go}

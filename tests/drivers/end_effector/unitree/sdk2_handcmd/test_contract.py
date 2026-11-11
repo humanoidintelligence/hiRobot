@@ -1,7 +1,7 @@
 """``unitree_handcmd`` (Dex3-1) passes the hand contract against the fake SDK."""
 
 from hirobot import load_embodiment
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
 from tests.drivers.contract import check_hand
 from tests.drivers.end_effector.unitree.sdk2_handcmd.fake_sdk import _Bus, _install_fake_sdk
 

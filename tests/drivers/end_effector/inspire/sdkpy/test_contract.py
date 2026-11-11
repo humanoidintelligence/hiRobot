@@ -1,7 +1,7 @@
 """``inspire_sdkpy`` passes the hand contract against a fake inspire_sdkpy bridge."""
 
 from hirobot import load_embodiment
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
 from tests.drivers.contract import check_hand
 from tests.drivers.end_effector.inspire.sdkpy.fake_sdk import _HandState, _install_sdkpy
 

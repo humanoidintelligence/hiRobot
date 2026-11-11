@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 from hirobot import load_embodiment, make_robot
-from hirobot.config import available_configs, load_config, merge, resolve
+from hirobot.loading.config import available_configs, load_config, merge, resolve
 
 
 def test_dicts_merge_deeply_and_other_lists_are_replaced():
@@ -50,12 +50,13 @@ def test_simulated_g1_takes_stand_in_audio(tmp_path):
     cfg = tmp_path / "g1.yaml"
     cfg.write_text(
         "defaults: [unitree_g1]\n"
-        "embodiment:\n"
-        f"  microphones: [{{name: head, driver: {{type: wav_mic, path: {wav}}}}}]\n"
-        "  speakers: [{name: head, driver: {type: null_speaker}}]\n")
+        "assembly:\n"
+        "  parts:\n"
+        f"    head_mic: {{overrides: {{driver: {{type: wav_mic, path: {wav}}}}}}}\n"
+        "    head_speaker: {overrides: {driver: {type: null_speaker}}}\n")
     robot = make_robot(str(cfg))  # body is the toy driver, so only stand-in devices are built
-    assert type(robot.microphones["head"]).__name__ == "WavMicrophone"
-    assert type(robot.speakers["head"]).__name__ == "NullSpeaker"
+    assert type(robot.microphones["head_mic"]).__name__ == "WavMicrophone"
+    assert type(robot.speakers["head_speaker"]).__name__ == "NullSpeaker"
 
 
 def test_named_list_entries_need_a_name():
@@ -65,7 +66,7 @@ def test_named_list_entries_need_a_name():
 
 def test_hand_joints_follow_the_body():
     emb = load_embodiment("unitree_g1_dex3")
-    body = load_embodiment("body/unitree/g1_29dof")
+    body = load_embodiment("body/unitree/g1")
     assert emb.joint_names[:29] == body.joint_names
     assert emb.joint_names[29] == "left_hand_thumb_0" and emb.num_dofs == 43
     assert emb.name == "unitree-g1-dex3"
@@ -73,17 +74,19 @@ def test_hand_joints_follow_the_body():
 
 
 def test_user_file_builds_on_builtin_parts_and_relative_files(tmp_path):
-    (tmp_path / "gains.yaml").write_text(yaml.safe_dump({"body": {"dt": 0.01}}))
+    (tmp_path / "gains.yaml").write_text(yaml.safe_dump(
+        {"assembly": {"parts": {"body": {"overrides": {"driver": {"dt": 0.01}}}}}}))
     (tmp_path / "mine.yaml").write_text(
-        "defaults: [body/unitree/h1, ./gains.yaml]\n"
-        "embodiment: {name: my-h1}\n"
-        "body: {driver: toy}\n")
+        "defaults: [unitree_h1, ./gains.yaml]\n"
+        "assembly:\n"
+        "  name: my-h1\n"
+        "  parts: {body: {overrides: {driver: {type: toy}}}}\n")
     cfg = load_config(tmp_path / "mine.yaml")
-    assert cfg["embodiment"]["name"] == "my-h1"
-    assert cfg["body"] == {"dt": 0.01, "driver": "toy"}
+    assert cfg["assembly"]["name"] == "my-h1"
+    assert cfg["assembly"]["parts"]["body"]["overrides"] == {"driver": {"type": "toy", "dt": 0.01}}
     assert "defaults" not in cfg
     robot = make_robot(str(tmp_path / "mine.yaml"))
-    assert robot.embodiment.num_dofs == 19
+    assert robot.embodiment.num_dofs == 19 and robot.embodiment.name == "my-h1"
 
 
 def test_defaults_cycle_is_reported(tmp_path):
@@ -105,7 +108,7 @@ def test_names_paths_and_errors():
 
 def test_make_robot_takes_a_dict():
     cfg = load_config("unitree_h1")
-    cfg["embodiment"]["name"] = "renamed"
+    cfg["assembly"]["name"] = "renamed"
     assert make_robot(cfg).embodiment.name == "renamed"
 
 
@@ -126,12 +129,7 @@ def test_examples_exist():
 @pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.name)
 def test_every_example_loads(path):
     # Examples are loaded by path; their defaults: mix built-in names and sibling files.
-    cfg = load_config(path)
-    if "group" in cfg:
-        for member in cfg["group"]["members"].values():
-            load_embodiment(load_config(member["config"]))
-    else:
-        load_embodiment(cfg)
+    assert load_embodiment(path).num_dofs > 0
 
 
 def test_cli_lists_and_resolves(capsys):
@@ -139,10 +137,11 @@ def test_cli_lists_and_resolves(capsys):
 
     main(["configs", "end_effector"])
     assert capsys.readouterr().out.split() == [
-        "end_effector/inspire/rh56dfx", "end_effector/unitree/dex3_1"]
+        "end_effector/inspire/rh56dfx_left", "end_effector/inspire/rh56dfx_right",
+        "end_effector/unitree/dex3_1_left", "end_effector/unitree/dex3_1_right"]
     main(["info", "--config", "unitree_g1", "--resolved"])
     out = capsys.readouterr().out
-    assert yaml.safe_load(out)["embodiment"]["cameras"][0]["driver"] == {"type": "unitree_videohub"}
+    assert yaml.safe_load(out)["assembly"]["parts"]["head"] == {"from": "camera/intel/d435i"}
 
 
 def test_expanded_configs_match_the_snapshot():
@@ -158,12 +157,15 @@ def test_expanded_configs_match_the_snapshot():
         assert json.loads(json.dumps(load_config(name))) == snap[name], name
 
 
-def test_old_section_and_key_names_are_rejected_with_the_new_name():
-    emb = load_config("robots/unitree_h1")["embodiment"]
-    with pytest.raises(ValueError, match="now called body:"):
-        make_robot({"embodiment": emb, "robot": {"driver": "toy"}})
-    with pytest.raises(ValueError, match="now called body:"):
-        make_robot({"group": {"members": {}}, "robot": {"driver": "toy"}})
-    cam = {"name": "head", "width": 8, "height": 8, "source": {"type": "array"}}
-    with pytest.raises(ValueError, match="now called driver:"):
-        make_robot({"embodiment": {**emb, "cameras": [cam]}, "body": {"driver": "toy"}})
+def test_old_formats_are_rejected_or_deprecated():
+    with pytest.raises(ValueError, match="group: section"):
+        make_robot({"group": {"members": {}}})
+    with pytest.raises(ValueError, match="body: section"):
+        make_robot({"body": {"driver": "toy"}})
+    old = {"embodiment": {"name": "old", "control_hz": 50, "joints": [{"name": "j"}]},
+           "body": {"driver": "toy"}}
+    with pytest.warns(DeprecationWarning, match="embodiment: config format"):
+        assert make_robot(old).embodiment.name == "old"
+    with pytest.warns(DeprecationWarning, match="body_overrides"):
+        robot = make_robot("unitree_h1", body_overrides={"driver": "toy", "dt": 0.01})
+    assert robot.embodiment.num_dofs == 19

@@ -11,9 +11,9 @@ import re
 from pathlib import Path
 
 from hirobot import available_bodies
-from hirobot.audio import available_audio
-from hirobot.camera import available_cameras
-from hirobot.end_effector import available_end_effectors, get_end_effector
+from hirobot.devices.audio import available_audio
+from hirobot.devices.camera import available_cameras
+from hirobot.devices.end_effector import available_end_effectors, get_end_effector
 
 EXEMPT = {"sounddevice_mic", "sounddevice_speaker"}
 

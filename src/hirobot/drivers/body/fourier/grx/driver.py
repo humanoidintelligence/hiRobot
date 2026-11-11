@@ -1,7 +1,7 @@
 """Fourier GR-series humanoid driver (GR1T1 / GR1T2).
 
 Wraps ``fourier_grx_client.RobotClient`` behind the
-:class:`~hirobot.robot.Robot` contract. The client talks to a GRX server over
+:class:`~hirobot.core.robot.Robot` contract. The client talks to a GRX server over
 Zenoh (default ``server_ip:7447``); GR1T1 and GR1T2 share the same 32-joint API,
 so one driver covers both — only the embodiment config differs.
 
@@ -26,12 +26,12 @@ from typing import Optional
 
 import numpy as np
 
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot
-from hirobot.stamps import StampCounter
-from hirobot.sdk import require_sdk
-from hirobot.types import Action, ControlMode, Observation
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot
+from hirobot.core.stamps import StampCounter
+from hirobot.loading.sdk import require_sdk
+from hirobot.core.types import Action, ControlMode, Observation
 
 
 @register_body("fourier_grx")

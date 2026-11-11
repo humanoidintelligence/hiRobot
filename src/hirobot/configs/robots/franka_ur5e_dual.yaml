@@ -1,0 +1,33 @@
+# Example robot of two robots: a Franka FR3 and a UR5e facing the same table, plus a scene camera.
+#
+# Each arm is a whole robot config of its own (robots/franka_fr3, robots/ur_ur5e),
+# here a part of this one; the parts keep their names under a prefix
+# (left/joint1, right/tcp, scene). Both arms run on the toy driver, so this runs
+# without hardware:
+#
+#   hirobot info --config franka_ur5e_dual
+#
+# For hardware, override each arm's body driver, in your own file or in code
+# (examples/franka_ur5e_dual_real.yaml):
+#
+#   make_robot("franka_ur5e_dual", overrides={
+#       "left/body": {"driver": {"type": "franka_libfranka", "ip": "172.16.0.2"}},
+#       "right/body": {"driver": {"type": "ur_rtde", "ip": "192.168.1.102"}}})
+
+assembly:
+  name: franka_ur5e_dual
+  control_hz: 30                 # outer loop; each arm's SDK inner loop is unchanged
+  parts:
+    left:  {from: robots/franka_fr3}
+    right: {from: robots/ur_ur5e}
+    # Not part of either arm: a stand-in camera (frames in memory) here.
+    scene:
+      device: camera
+      width: 640
+      height: 480
+      driver: {type: array}
+  placement:
+    # pose: [x, y, z, qx, qy, qz, qw] of the arm's base in this robot's frame, so
+    # ee_poses / ee_targets are in that frame.
+    left:  {pose: [0.0, 0.4, 0.0, 0.0, 0.0, 0.0, 1.0]}
+    right: {pose: [0.0, -0.4, 0.0, 0.0, 0.0, 0.0, 1.0]}

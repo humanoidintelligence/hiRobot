@@ -13,13 +13,13 @@ from hirobot import (
     Action,
     ControlMode,
     RobotFaultError,
-    RobotGroup,
     RobotStoppedError,
     get_body,
     load_embodiment,
     make_robot,
 )
-from hirobot.robot import Robot
+from hirobot.assembly import RobotAssembly
+from hirobot.core.robot import Robot
 from tests.drivers.body.unitree.sdk2 import fake_sdk as unitree_fake
 from tests.drivers.body.ur.rtde import fake_sdk as ur_fake
 
@@ -126,7 +126,7 @@ def test_no_command_goes_out_after_estop():
 
 
 def test_estop_does_not_wait_forever_for_a_stuck_send(monkeypatch):
-    import hirobot.robot as robot_mod
+    import hirobot.core.robot as robot_mod
 
     monkeypatch.setattr(robot_mod, "ESTOP_LOCK_TIMEOUT_S", 0.05)
     stuck = threading.Event()
@@ -217,7 +217,7 @@ def test_group_estop_stops_every_member_even_if_one_fails():
     left.damp = boom  # type: ignore[attr-defined]
     stopped = []
     right.damp = lambda: stopped.append(True)  # type: ignore[attr-defined]
-    group = RobotGroup({"left": left, "right": right})
+    group = RobotAssembly(None, parts={"left": left, "right": right})
     group.connect()
     group.reset()
     with pytest.raises(RuntimeError, match="bus down"):
@@ -233,7 +233,7 @@ def test_group_estop_stops_every_member_even_if_one_fails():
 def test_estop_on_a_group_member_needs_no_group_call():
     """An e-stop skips the group's owner check: anyone may stop a member."""
     left, right = make_robot("ur_ur5e"), make_robot("ur_ur5e")
-    group = RobotGroup({"left": left, "right": right})
+    group = RobotAssembly(None, parts={"left": left, "right": right})
     group.connect()
     left.estop()
     assert left.fault is not None
@@ -242,7 +242,7 @@ def test_estop_on_a_group_member_needs_no_group_call():
 def test_subclass_reset_clears_the_fault_without_calling_clear_fault():
     class Plain(type(make_robot("ur_ur5e"))):
         def reset(self, seed=None):
-            pass  # no clear_fault() here
+            pass  # no _clear_fault() here
 
     robot = Plain(load_embodiment("ur_ur5e"))
     robot.estop()

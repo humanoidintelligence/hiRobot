@@ -1,0 +1,12 @@
+# Intel RealSense D405, colour only, 848x480, as the AgiBot G1's wrist cameras on
+# its cosine_bus image topics (agibot_cosine). The vendor camera service has their
+# depth turned off (depthEnable: false). The topic depends on the wrist: the
+# robot config overrides driver.topic (/camera/hand_left_color,
+# /camera/hand_right_color). Runs only with the real body (agibot_gdk).
+
+device: camera
+width: 848
+height: 480
+driver:
+  type: agibot_cosine
+  topic: /camera/hand_left_color

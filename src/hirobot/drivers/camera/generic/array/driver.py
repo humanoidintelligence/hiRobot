@@ -20,8 +20,8 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from hirobot.camera import CameraDriver, Frame, register_camera
-from hirobot.stamps import Stamp
+from hirobot.devices.camera import CameraDriver, Frame, register_camera
+from hirobot.core.stamps import Stamp
 
 
 @register_camera("array")

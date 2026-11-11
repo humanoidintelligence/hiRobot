@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from hirobot import load_embodiment
-from hirobot.registry import get_body
+from hirobot.loading.registry import get_body
 
 
 def test_h1_go_skips_slot_9():

@@ -1,7 +1,7 @@
 """Universal Robots arm driver (UR5 / UR10 / e-Series).
 
 Wraps the ``ur_rtde`` library (``RTDEControlInterface`` + ``RTDEReceiveInterface``)
-behind the :class:`~hirobot.robot.Robot` contract. UR arms are 6-DoF, fixed
+behind the :class:`~hirobot.core.robot.Robot` contract. UR arms are 6-DoF, fixed
 base, so the embodiment has ``floating_base=False`` and no IMU/base fields.
 
 Why ``ur_rtde`` and not Universal Robots' bare ``RTDE_Python_Client_Library``:
@@ -13,7 +13,7 @@ a driver wants. It is imported lazily; install with ``pip install ur_rtde``.
 
 Streaming joint targets at the control rate uses ``servoJ`` (a non-blocking
 servo command); ``reset()`` moves to home with an asynchronous ``moveJ`` and
-waits for it, so :meth:`~hirobot.robot.Robot.estop` can stop the move part way
+waits for it, so :meth:`~hirobot.core.robot.Robot.estop` can stop the move part way
 (``stopJ``). Not yet run on a real arm.
 """
 
@@ -23,13 +23,14 @@ from typing import Optional
 
 import numpy as np
 
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot
-from hirobot.stamps import StampCounter
-from hirobot.sdk import require_sdk
-from hirobot.transforms import pose_from_axis_angle, pose_to_axis_angle
-from hirobot.types import Action, ControlMode, Observation
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot
+from hirobot.core.stamps import StampCounter
+from hirobot.loading.sdk import require_sdk
+from hirobot.geometry.transforms import pose_from_axis_angle, pose_to_axis_angle
+from hirobot.core.types import Action, ControlMode, Observation
+from hirobot.control.watchdog import DEFAULT_COMMAND_TIMEOUT_S, CommandWatchdog
 
 
 @register_body("ur_rtde")
@@ -45,6 +46,9 @@ class URRobot(Robot):
         stop_deceleration: ``stopJ`` deceleration (rad/s^2) for :meth:`estop`.
         servo_velocity / servo_acceleration: ``servoJ`` kinematic limits.
         servo_lookahead / servo_gain: ``servoJ`` smoothing/tracking parameters.
+        command_timeout_s: Seconds without a new ``VELOCITY`` command before a
+            timer thread calls ``speedStop`` and logs a warning; ``None`` turns
+            it off. Not in the fault state: the next command runs as usual.
     """
 
     action_modes = (
@@ -63,6 +67,7 @@ class URRobot(Robot):
         home_speed: float = 0.5,
         home_acceleration: float = 0.5,
         stop_deceleration: float = 2.0,
+        command_timeout_s: Optional[float] = DEFAULT_COMMAND_TIMEOUT_S,
     ) -> None:
         self._embodiment = embodiment
         self._ip = ip
@@ -77,6 +82,10 @@ class URRobot(Robot):
         self._control = None
         self._receive = None
         self._stamps = StampCounter()
+        self.command_timeout_s = command_timeout_s
+        self._watchdog = CommandWatchdog(type(self).__name__, command_timeout_s,
+                                         self._stop_velocity, thread=True,
+                                         lock=self._estop_signal.lock)
 
     @property
     def embodiment(self) -> Embodiment:
@@ -99,7 +108,7 @@ class URRobot(Robot):
         """Move to the configured home pose, if one is set, and wait until it is there.
 
         An :meth:`estop` from another thread stops the move (``stopJ``) and this
-        raises :class:`~hirobot.robot.RobotStoppedError`.
+        raises :class:`~hirobot.core.robot.RobotStoppedError`.
         """
         if self._control is None or self._home_q is None:
             return
@@ -177,8 +186,15 @@ class URRobot(Robot):
             )
         else:
             raise ValueError(f"URRobot does not support mode {action.mode!r}")
+        self._watchdog.feed(action.mode)  # a non-velocity command disarms it
+
+    def _stop_velocity(self, mode: ControlMode) -> None:
+        """Watchdog: leave speed mode (the arm decelerates to a stop)."""
+        if self._control is not None and self.fault is None:
+            self._control.speedStop()
 
     def disconnect(self) -> None:
+        self._watchdog.close()
         if self._control is not None:
             self._control.servoStop()
             self._control.stopScript()

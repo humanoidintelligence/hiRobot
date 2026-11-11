@@ -1,0 +1,18 @@
+# A UR5e on a mobile base: a floating node (the base is the only moving part,
+# so the node frame is the base's frame; the arm rides on it).
+#
+# The base takes BASE_VELOCITY; the arm's joints and TCP get the arm/ prefix
+# (arm/shoulder_pan ..., arm/tcp). The arm's ee_poses reach the node frame
+# through the fixed mount, so no odometry is needed for them.
+#
+# Both parts run on the toy driver here. The base device is an illustration
+# (examples/devices/mobile_base.yaml); there is no real model behind it.
+
+assembly:
+  name: mobile_ur5e
+  parts:
+    base: {from: ./devices/mobile_base.yaml}
+    arm:  {from: robots/ur_ur5e}
+  placement:
+    arm: {on: base.arm_mount}      # bolted to the base's top plate
+    # base is not placed: in a floating node the moving part is the node frame.

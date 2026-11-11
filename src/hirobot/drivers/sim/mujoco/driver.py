@@ -1,6 +1,6 @@
 """MuJoCo physics driver.
 
-Simulates a robot from an MJCF model behind the :class:`~hirobot.robot.Robot`
+Simulates a robot from an MJCF model behind the :class:`~hirobot.core.robot.Robot`
 contract, so control code written for real hardware runs unchanged in sim.
 Joints are matched to the embodiment by name (``<name>`` or ``<name>_joint``),
 so the model's joint order does not have to match the embodiment's.
@@ -28,8 +28,8 @@ whole-body controller takes; with a floating base, compose with
 follows ``MUJOCO_GL`` (``glfw`` needs a display; ``egl`` / ``osmesa`` run headless);
 without a working one the robot runs without images and logs a warning.
 
-It also serves as the renderer for :class:`~hirobot.twin.TwinRobot`,
-which mirrors a real robot's state into the viewer (:meth:`set_state`).
+:meth:`set_state` puts the model in a measured pose, so a rehearsal can start
+from where the real robot stands (``examples/rehearse_in_sim.py``).
 
 MuJoCo is imported lazily: install it with ``pip install mujoco`` (or the
 ``[sim]`` extra). Models are not shipped with hiRobot; see
@@ -47,13 +47,14 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot
-from hirobot.sdk import require_sdk
-from hirobot.stamps import Stamp
-from hirobot.transforms import pose_compose, pose_inverse, quat_multiply
-from hirobot.types import Action, ControlMode, Observation
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot
+from hirobot.loading.sdk import require_sdk
+from hirobot.core.stamps import Stamp
+from hirobot.geometry.transforms import pose_compose, pose_inverse, quat_multiply
+from hirobot.core.types import Action, ControlMode, Observation
+from hirobot.control.watchdog import DEFAULT_COMMAND_TIMEOUT_S, CommandWatchdog
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +90,14 @@ class MujocoRobot(Robot):
             or per joint; ``None`` keeps the model's values. Models exported
             from URDF often have none, which makes light links (wrists) unstable
             under PD at a 2 ms timestep.
+        command_timeout_s: Simulated seconds without a new ``VELOCITY``
+            command before the held velocity is dropped (the joints then hold
+            where they are, damped); ``None`` turns it off.
     """
 
     simulated = True
+    #: Prefix of this robot's names in the model (``left/`` for a view of a shared world).
+    _prefix = ""
 
     def __init__(
         self,
@@ -107,6 +113,7 @@ class MujocoRobot(Robot):
         damping_kd: float = 8.0,
         initial_joint_pos: Optional[Sequence[float]] = None,
         armature: Union[None, float, Sequence[float]] = None,
+        command_timeout_s: Optional[float] = DEFAULT_COMMAND_TIMEOUT_S,
     ) -> None:
         self._embodiment = embodiment
         self._n = embodiment.num_dofs
@@ -133,6 +140,9 @@ class MujocoRobot(Robot):
         # A lock shared by everything that touches mjData (physics, viewer sync,
         # a mirroring thread); falls back to a plain lock without a viewer.
         self._lock = threading.RLock()
+        self.command_timeout_s = command_timeout_s
+        self._watchdog = CommandWatchdog(type(self).__name__, command_timeout_s,
+                                         self._stop_velocity, clock=self.now)
         # Command held between control ticks.
         self._cmd_q = np.zeros(self._n)
         self._cmd_dq = np.zeros(self._n)
@@ -248,9 +258,10 @@ class MujocoRobot(Robot):
         qadr, vadr, act, jids = [], [], [], []
         joint_to_act = {int(m.actuator_trnid[a, 0]): a for a in range(m.nu)
                         if m.actuator_trntype[a] == mj.mjtTrn.mjTRN_JOINT}
+        pre = self._prefix
         for name in self._embodiment.joint_names:
             jid = -1
-            for cand in (name, f"{name}_joint"):
+            for cand in (pre + name, f"{pre}{name}_joint"):
                 jid = mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT, cand)
                 if jid >= 0:
                     break
@@ -268,7 +279,13 @@ class MujocoRobot(Robot):
         self._vadr = np.array(vadr)
         self._act = np.array(act)
         self._jid = np.array(jids)
-        self._has_free = m.nq > 0 and m.njnt > 0 and m.jnt_type[0] == mj.mjtJoint.mjJNT_FREE
+        # The free joint of the tree these joints are on (its own in a shared world).
+        root = int(m.body_rootid[m.jnt_bodyid[jids[0]]]) if jids else 0
+        free = [j for j in range(m.njnt) if m.jnt_type[j] == mj.mjtJoint.mjJNT_FREE
+                and int(m.body_rootid[m.jnt_bodyid[j]]) == root]
+        self._has_free = bool(free)
+        self._fq = int(m.jnt_qposadr[free[0]]) if free else 0   # [x y z | w x y z]
+        self._fv = int(m.jnt_dofadr[free[0]]) if free else 0    # [v | omega]
         self._substeps = max(1, round(self.control_period / m.opt.timestep))
         if self._armature is not None:
             m.dof_armature[self._vadr] = self._armature
@@ -290,7 +307,7 @@ class MujocoRobot(Robot):
         for ee in self._embodiment.end_effectors:
             if ee.frame is None:
                 continue
-            bid = mj.mj_name2id(m, mj.mjtObj.mjOBJ_BODY, ee.frame.body)
+            bid = mj.mj_name2id(m, mj.mjtObj.mjOBJ_BODY, ee.frame.body)  # links are prefixed
             if bid < 0:
                 raise ValueError(f"end-effector {ee.name!r}: frame.body {ee.frame.body!r} is not a "
                                  f"body of {self._model_path}")
@@ -328,7 +345,7 @@ class MujocoRobot(Robot):
         """Ramp kp from 0 while holding the current pose (mirrors the Unitree driver).
 
         An :meth:`estop` from another thread ends the ramp at the next step
-        (:class:`~hirobot.robot.RobotStoppedError`), damped.
+        (:class:`~hirobot.core.robot.RobotStoppedError`), damped.
         """
         token = self._stop_token()
         start = self.data.qpos[self._qadr].copy()
@@ -377,12 +394,18 @@ class MujocoRobot(Robot):
             self._set_command(None, np.zeros(self._n), np.zeros(self._n), None, target)
         else:
             raise ValueError(f"MujocoRobot does not support mode {action.mode!r}")
+        self._watchdog.feed(action.mode)
         self._advance()
 
-    def idle_step(self) -> None:
+    def _idle_step(self) -> None:
         """Step physics one control period under the held command (no new target)."""
         if self.data is not None:
+            self._watchdog.check()
             self._advance()
+
+    def _stop_velocity(self, mode: ControlMode) -> None:
+        """Watchdog: drop a stale velocity command, damping the joints to rest."""
+        self._cmd_dq = np.zeros(self._n)
 
     def set_gains(self, kp: Optional[np.ndarray], kd: Optional[np.ndarray]) -> None:
         if kp is not None:
@@ -410,10 +433,11 @@ class MujocoRobot(Robot):
             if self._embodiment.floating_base:
                 if self._has_free:
                     # MuJoCo stores [w, x, y, z]; Observation is [x, y, z, w].
-                    obs.base_orientation = d.qpos[[4, 5, 6, 3]].copy()
-                    obs.base_angular_velocity = d.qvel[3:6].copy()
-                    obs.base_position = d.qpos[0:3].copy()
-                    obs.base_linear_velocity = d.qvel[0:3].copy()
+                    fq, fv = self._fq, self._fv
+                    obs.base_orientation = d.qpos[[fq + 4, fq + 5, fq + 6, fq + 3]].copy()
+                    obs.base_angular_velocity = d.qvel[fv + 3:fv + 6].copy()
+                    obs.base_position = d.qpos[fq:fq + 3].copy()
+                    obs.base_linear_velocity = d.qvel[fv:fv + 3].copy()
                 else:
                     obs.base_orientation = np.array([0.0, 0.0, 0.0, 1.0])
                     obs.base_angular_velocity = np.zeros(3)
@@ -449,22 +473,24 @@ class MujocoRobot(Robot):
                   base_orientation: Optional[np.ndarray] = None) -> None:
         """Overwrite the simulated state (kinematic: no physics step).
 
-        Used to mirror a real robot into the viewer, or to start a simulation
-        from a measured pose. ``base_orientation`` is ``[x, y, z, w]`` and is
+        Used to start a simulation from a measured pose (the real robot's,
+        for a rehearsal), or to show a measured state in the viewer. ``base_orientation`` is ``[x, y, z, w]`` and is
         ignored when the base is fixed. The held command is reset to hold this
         pose with zero gains, so nothing jumps when physics resumes.
         """
         d, mj = self.data, self._mj
         with self._lock:
             d.qpos[self._qadr] = np.asarray(joint_pos, dtype=float)
-            d.qvel[:] = 0.0
+            d.qvel[self._vadr] = 0.0
+            if self._has_free:
+                d.qvel[self._fv:self._fv + 6] = 0.0
             if joint_vel is not None:
                 d.qvel[self._vadr] = np.asarray(joint_vel, dtype=float)
             if self._has_free and base_orientation is not None:
                 q = np.asarray(base_orientation, dtype=float)
                 norm = np.linalg.norm(q)
                 if norm > 0:
-                    d.qpos[3:7] = q[[3, 0, 1, 2]] / norm  # -> MuJoCo's [w, x, y, z]
+                    d.qpos[self._fq + 3:self._fq + 7] = q[[3, 0, 1, 2]] / norm  # MuJoCo [w,x,y,z]
             mj.mj_forward(self.model, d)
         z = np.zeros(self._n)
         self._set_command(np.asarray(joint_pos, dtype=float), z, z, None, None)
@@ -507,3 +533,153 @@ class MujocoRobot(Robot):
         while v.is_running() and time.time() < deadline:
             time.sleep(0.02)
         time.sleep(0.2)  # let GLFW finish destroying the window
+
+
+class MujocoView(MujocoRobot):
+    """One body's view of a shared :class:`~hirobot.sim.sim_world.SimWorld`.
+
+    Reads and writes only its own joints (the world's names start with
+    ``prefix``); the world steps once every view has its command for the
+    period. Everything else is as :class:`MujocoRobot`: gains, the reset ramp,
+    :meth:`damp`, :meth:`set_state`, the velocity watchdog. ``ee_poses`` are in
+    the frame of the body's own root link. The mounted cameras of the body's
+    node come in its observation (the world renders them); the world owns the
+    viewer.
+
+    Args:
+        embodiment: The body's embodiment (unprefixed names, no cameras).
+        world: The shared world.
+        prefix: This body's prefix in the world (``left/``; ``""`` for the root's body).
+        path: Its part path, for messages.
+    """
+
+    def __init__(self, embodiment: Embodiment, world, prefix: str = "", path: str = "body",
+                 default_kp: Union[float, Sequence[float]] = 60.0,
+                 default_kd: Union[float, Sequence[float]] = 1.0,
+                 ramp_seconds: float = 2.0, damping_kd: float = 8.0,
+                 initial_joint_pos: Optional[Sequence[float]] = None,
+                 armature: Union[None, float, Sequence[float]] = None,
+                 command_timeout_s: Optional[float] = DEFAULT_COMMAND_TIMEOUT_S) -> None:
+        super().__init__(embodiment, model_path=path,
+                         realtime=world.realtime, default_kp=default_kp,
+                         default_kd=default_kd, ramp_seconds=ramp_seconds,
+                         damping_kd=damping_kd, initial_joint_pos=initial_joint_pos,
+                         armature=armature, command_timeout_s=command_timeout_s)
+        self.world = world
+        self._prefix = prefix
+        self._path = path
+        self._model_path = f"the simulation world ({path})"
+        world.add_view(self)
+
+    # The world owns these; the view reads them from it.
+    @property
+    def _lock(self):  # type: ignore[override]
+        return self.world.lock
+
+    @_lock.setter
+    def _lock(self, value) -> None:  # MujocoRobot.__init__ sets one
+        pass
+
+    @property
+    def _ticks(self) -> int:  # type: ignore[override]
+        return self.world.ticks
+
+    @_ticks.setter
+    def _ticks(self, value: int) -> None:
+        pass
+
+    @property
+    def control_period(self) -> float:
+        return self.world.period
+
+    @property
+    def viewer_running(self) -> bool:
+        return self.world.viewer_running
+
+    def render(self, force: bool = False) -> None:
+        self.world.render(force)
+
+    # ----------------------------------------------------------- lifecycle
+
+    def connect(self) -> None:
+        self.world.connect()  # builds the model and binds every view, once
+        self._connected = True
+
+    def _bind(self, world) -> None:
+        """Map this body's joints in the world's model (``SimWorld.connect``)."""
+        self._mj, self.model, self.data = world.mj, world.model, world.data
+        self._map_joints()
+        self._substeps = world.substeps
+        if self._initial is not None:
+            self.data.qpos[self._qadr] = self._initial
+
+    def _hold_here(self) -> None:
+        """Hold the pose at connect with the default gains.
+
+        In a shared world one body's reset ramp steps the others too; holding
+        keeps them where they are meanwhile (a body alone in its world is never
+        stepped before its reset, as with :class:`MujocoRobot`).
+        """
+        z = np.zeros(self._n)
+        self._set_command(self.data.qpos[self._qadr].copy(), self._kp, self._kd, z, z)
+
+    def disconnect(self) -> None:
+        if self._connected:
+            self.damp()
+        self._connected = False
+        self.world.disconnect()
+
+    # ------------------------------------------------------------- physics
+
+    def _advance(self) -> None:
+        """This body has its command for the period; the world steps when all have."""
+        self.world.ready(self)
+
+    def _apply_torque(self) -> None:
+        """Set this body's PD for one physics step (``SimWorld.step``).
+
+        The world's actuators compute ``ctrl - kp q - kd dq`` (``SimWorld._as_motors``),
+        so ``ctrl = kp q* + kd dq* + tau_ff`` gives
+        ``tau = kp (q* - q) + kd (dq* - dq) + tau_ff``, clamped by the actuator's
+        force range; the damping is integrated implicitly when the model's
+        integrator is.
+        """
+        m, d, a = self.model, self.data, self._act
+        m.actuator_biasprm[a, 1] = -self._cmd_kp
+        m.actuator_biasprm[a, 2] = -self._cmd_kd
+        d.ctrl[a] = self._cmd_kp * self._cmd_q + self._cmd_kd * self._cmd_dq + self._cmd_tau
+
+    def _after_step(self) -> None:
+        """Hook after each world step (nothing yet)."""
+
+    def reset(self, seed: Optional[int] = None) -> None:
+        """Ramp kp from 0 holding the current pose; the world steps with it.
+
+        The other bodies keep their commands for the ramp's steps (their
+        simulated time passes with this one's).
+        """
+        token = self._stop_token()
+        start = self.data.qpos[self._qadr].copy()
+        steps = max(1, int(self._ramp_seconds / self.control_period))
+        for s in range(steps + 1):
+            ratio = min(1.0, s / steps)
+            with self._commanding(token):
+                self._set_command(start, self._kp * ratio, self._kd, None, None)
+                self.world.step()
+            if self._realtime:
+                self._wait(self.control_period, token)
+
+    def _open_renderers(self) -> None:
+        """Nothing: the world renders every camera."""
+
+    def _close_renderers(self) -> None:
+        """Nothing: the world closes its renderers."""
+
+    def _render_images(self, obs: Observation) -> None:
+        """The mounted cameras of this body's node, rendered by the world (caller holds the lock)."""
+        for cam in self._embodiment.cameras:
+            if cam.mount is None:
+                continue
+            image = self.world.render_camera(self._prefix + cam.name)
+            if image is not None:
+                obs.images[cam.name] = image

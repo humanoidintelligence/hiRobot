@@ -11,8 +11,8 @@ Each ``GetImageSample`` returns the newest JPEG. Measured on a G1 from a
 desktop on the robot LAN: ~10 ms per request, ~130 KB per frame, and ~18 new
 frames/s, so the default poll rate of 30 Hz fetches every frame.
 
-The driver is read-only: it never publishes anything, so it is safe in the
-``shadow`` sim mode and alongside another controller.
+The driver is read-only: it never publishes anything, so it is safe next to a
+``read_only`` body and alongside another controller.
 """
 
 from __future__ import annotations
@@ -21,9 +21,9 @@ from typing import Optional
 
 import numpy as np
 
-from hirobot.camera import PollingCameraDriver, register_camera
+from hirobot.devices.camera import PollingCameraDriver, register_camera
 from hirobot.drivers._sdk.unitree_sdk2 import init_channel
-from hirobot.sdk import require_sdk
+from hirobot.loading.sdk import require_sdk
 
 #: unitree_sdk2py.rpc.internal.RPC_ERR_CLIENT_SEND: the request found no subscriber
 #: (the SDK waits up to the client timeout for one before giving up).

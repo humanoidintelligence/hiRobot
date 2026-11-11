@@ -1,38 +1,34 @@
-# Example hiRobot configuration — a humanoid.
+# Example robot config: a humanoid with a head camera, written from scratch.
 #
 # hiRobot describes a robot's I/O contract and which driver drives it. What
 # decides the actions (a VLA served by hiVLA, an agent in hiAgent) is not part
-# of the config.
+# of the config. Every device is written inline (device: ...); a device file
+# under hirobot/configs/ is the same mapping in its own file, named with from:.
 
-embodiment:
+assembly:
   name: generic-humanoid
-  kind: humanoid            # humanoid | arm
-  control_hz: 50
-  floating_base: true       # humanoids have a moving base (IMU / base state)
-  joints:                   # listed in the canonical I/O order; names enable DoF mapping
-    - name: left_hip_pitch
-    - name: left_knee
-    - name: left_ankle_pitch
-    - name: right_hip_pitch
-    - name: right_knee
-    - name: right_ankle_pitch
-    - name: left_shoulder_pitch
-    - name: left_elbow
-    - name: right_shoulder_pitch
-    - name: right_elbow
-  end_effectors:
-    - name: left_hand
-      has_gripper: true
-    - name: right_hand
-      has_gripper: true
-  cameras:
-    - name: head
+  parts:
+    body:
+      device: body
+      control_hz: 50
+      floating_base: true    # a moving base: IMU / base state in observations
+      joints:                # in the canonical I/O order; names enable DoF mapping
+        - {name: left_hip_pitch}
+        - {name: left_knee}
+        - {name: left_ankle_pitch}
+        - {name: right_hip_pitch}
+        - {name: right_knee}
+        - {name: right_ankle_pitch}
+        - {name: left_shoulder_pitch}
+        - {name: left_elbow}
+        - {name: right_shoulder_pitch}
+        - {name: right_elbow}
+      frames:
+        - {name: left_hand}
+        - {name: right_hand}
+      grippers: [left_hand, right_hand]
+      driver: {type: toy}    # a registered body driver (toy | unitree_sdk2 | fourier_grx | ...)
+    head:
+      device: camera
       width: 224
       height: 224
-
-# embodiment: above describes the whole robot, hands included. body: picks
-# and configures only the body driver; hands, cameras and audio name their
-# own drivers inside embodiment:.
-body:
-  driver: toy               # a registered Robot driver (toy | unitree_sdk2 | fourier_grx | ...)
-

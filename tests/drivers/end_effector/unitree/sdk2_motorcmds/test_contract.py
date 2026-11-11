@@ -1,7 +1,7 @@
 """``unitree_motorcmds`` (H1 Inspire via h1_inspire_service) passes the hand contract."""
 
 from hirobot import load_embodiment
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
 from tests.drivers.contract import check_hand
 from tests.drivers.end_effector.unitree.sdk2_motorcmds.fake_sdk import _install, _MotorStates
 

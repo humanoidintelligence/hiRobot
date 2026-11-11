@@ -32,8 +32,8 @@ import time
 from typing import Any, Optional
 
 from hirobot.drivers._sdk.unitree_sdk2 import init_channel
-from hirobot.sdk import require_sdk
-from hirobot.audio import (
+from hirobot.loading.sdk import require_sdk
+from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     QueuedMicrophone,
     SpeakerDriver,

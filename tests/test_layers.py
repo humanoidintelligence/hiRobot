@@ -8,6 +8,8 @@ it leaves free (``direct_joints``) through from ``Action.joint_names``.
 
 from __future__ import annotations
 
+import time
+
 import numpy as np
 import pytest
 
@@ -15,17 +17,22 @@ from hirobot import (
     Action,
     ActionChunk,
     ControlMode,
+    Layer,
     MotionClip,
     Robot,
     RobotAssembly,
+    RobotFaultError,
     SafetyError,
     SafetyGate,
     make_robot,
-    registry,
 )
-from hirobot.config import load_config
+from hirobot.loading import registry
+from hirobot.loading.config import load_config
 from hirobot.drivers.sim.toy import ToyRobot
-from hirobot.embodiment import Embodiment
+from hirobot.core.embodiment import Embodiment
+from hirobot.control.layer import ESTOP_LAYER_TIMEOUT_S
+from hirobot.testing import assert_layer_uses_public_api
+from tests.conftest import toy_config
 
 
 def _emb(n: int) -> Embodiment:
@@ -111,22 +118,18 @@ def test_capability_defaults():
 # ------------------------------------------------------------- a fake layer
 
 
-class FakeWbc(Robot):
+class FakeWbc(Layer):
     """Drives ``driven`` joints itself; the others are left to the caller."""
 
     action_modes = (ControlMode.BASE_VELOCITY, ControlMode.MOTION_CLIP, ControlMode.CARTESIAN)
     motion_spaces = ("joint",)
 
     def __init__(self, inner: Robot, driven=None, gain: float = 40.0) -> None:
-        self.inner = inner
+        super().__init__(inner)
         names = inner.embodiment.joint_names
         self.driven = list(driven) if driven is not None else list(names)
         self.gain = gain
         self.received = []
-
-    @property
-    def embodiment(self):
-        return self.inner.embodiment
 
     @property
     def direct_joints(self):  # type: ignore[override]
@@ -135,15 +138,6 @@ class FakeWbc(Robot):
     @property
     def cartesian_targets(self):  # type: ignore[override]
         return ("left_hand",)
-
-    def connect(self):
-        self.inner.connect()
-
-    def reset(self, seed=None):
-        self.inner.reset(seed)
-
-    def get_observation(self):
-        return self.inner.get_observation()
 
     def _send_action(self, action):
         self.received.append(action)
@@ -166,8 +160,7 @@ def fake_layer(monkeypatch):
 
 
 def _cfg(n=4, **extra):
-    cfg = {"embodiment": _emb(n).model_dump(),
-           "body": {"driver": "toy"}}
+    cfg = toy_config(_emb(n))
     cfg.update(extra)
     return cfg
 
@@ -194,7 +187,7 @@ def test_layer_joint_commands_clear_the_gate_underneath(fake_layer):
     robot.send_action(free)  # within 0.1 rad on both gates
     # A tighter gate underneath refuses the PD command the layer sends, even
     # though the caller's action cleared the gate on top.
-    robot.inner.set_safety(SafetyGate(num_dofs=4, joint_limit=0.01))
+    robot._inner._set_safety(SafetyGate(num_dofs=4, joint_limit=0.01))
     with pytest.raises(SafetyError, match="exceed"):
         robot.send_action(free)
 
@@ -212,31 +205,31 @@ def test_layer_wraps_body_and_hands_so_it_sees_every_joint(fake_layer, monkeypat
     from tests.test_end_effectors import CFG, _hands
 
     _hands(monkeypatch)  # installs the fake Dex3 SDK
-    robot = make_robot(CFG, body_overrides={"driver": "unitree_sdk2", "network_interface": "eth0"})
+    robot = make_robot(CFG, overrides={"body": {"driver": {"type": "unitree_sdk2", "network_interface": "eth0"}}})
     assert isinstance(robot, RobotAssembly)  # no layers: unchanged
     cfg = load_config(CFG)
     cfg["layers"] = [{"type": "fake_wbc"}]
-    robot = make_robot(cfg, body_overrides={"driver": "unitree_sdk2", "network_interface": "eth0"})
-    # Cameras and audio are attached outside the layers, hands inside.
-    layer = robot.body if isinstance(robot, RobotAssembly) else robot
+    robot = make_robot(cfg, overrides={"body": {"driver": {"type": "unitree_sdk2", "network_interface": "eth0"}}})
+    # One assembly under the layer joins the hands, cameras and audio.
+    layer = robot
     assert isinstance(layer, FakeWbc)
-    assert not getattr(robot, "end_effectors", {})
-    assert isinstance(layer.inner, RobotAssembly) and set(layer.inner.end_effectors) == {
+    assert isinstance(layer.inner, RobotAssembly) and set(layer._inner.end_effectors) == {
         "left_hand", "right_hand"}
+    assert layer.cameras is layer.inner.cameras
     assert layer.embodiment.num_dofs == 43  # the layer can drive the fingers too
     assert robot.action_modes == FakeWbc.action_modes
     assert robot.motion_spaces == ("joint",) and robot.cartesian_targets == ("left_hand",)
 
 
 def test_layer_drives_the_body_and_the_caller_drives_the_fingers(monkeypatch):
-    from hirobot.end_effector import body_embodiment
+    from hirobot.devices.end_effector import body_embodiment
     from tests.test_end_effectors import LEFT_Q, _hands
 
     emb, bus, hands = _hands(monkeypatch)
     inner = RobotAssembly(ToyRobot(body_embodiment(emb)), end_effectors=hands, embodiment=emb)
     body = body_embodiment(emb).joint_names
     robot = FakeWbc(inner, driven=body)
-    robot.set_safety(SafetyGate.from_embodiment(emb))
+    robot._set_safety(SafetyGate.from_embodiment(emb))
     left, right = emb.end_effectors[0].joints, emb.end_effectors[1].joints
     assert set(robot.direct_joints) == set(left) | set(right)
     robot.connect()
@@ -277,7 +270,7 @@ class _SelfBalancing(ToyRobot):
 
 
 def _balancing_assembly(monkeypatch):
-    from hirobot.end_effector import body_embodiment
+    from hirobot.devices.end_effector import body_embodiment
     from tests.test_end_effectors import _hands
 
     emb, bus, hands = _hands(monkeypatch)
@@ -341,3 +334,128 @@ def test_hold_beside_a_self_balancing_body(monkeypatch):
     assert body.held and not body.sent  # the body holds itself, no joint freeze
     cmd = bus.sent["rt/dex3/left/cmd"][-1]
     assert np.allclose([m[1] for m in cmd], LEFT_Q)
+
+
+def test_one_assembly_under_the_layers_and_devices_reach_the_caller(fake_layer):
+    cfg = _cfg(layers=[{"type": "fake_wbc"}])
+    cfg["assembly"]["parts"]["head"] = {"device": "camera", "width": 64, "height": 64,
+                                        "driver": {"type": "array", "fps": 10}}
+    robot = make_robot(cfg)
+    # caller -> layer -> (gate) assembly -> driver, with one assembly only
+    assert isinstance(robot, FakeWbc)
+    assembly = robot._inner
+    assert isinstance(assembly, RobotAssembly) and isinstance(assembly.body, ToyRobot)
+    assert assembly.safety is not None and assembly.body.safety is None
+    assert set(robot.cameras) == {"head"} and robot.cameras is assembly.cameras
+    assert dict(robot.microphones) == {} and dict(robot.speakers) == {}
+    robot.connect()
+    try:
+        assert "head" in robot.get_observation().images
+    finally:
+        robot.disconnect()
+
+
+def test_a_bare_driver_has_no_devices():
+    robot = make_robot(_cfg())
+    assert isinstance(robot, ToyRobot)
+    assert dict(robot.cameras) == {} and dict(robot.microphones) == {}
+    assert dict(robot.speakers) == {}
+
+
+def test_layer_base_forwards_to_inner():
+    inner = ToyRobot(_emb(4))
+    layer = Layer(inner)
+    assert layer.embodiment is inner.embodiment
+    assert layer.action_modes == inner.action_modes and layer.simulated
+    layer.connect()
+    layer.reset()
+    layer.send_action(Action(mode=ControlMode.POSITION, joint_target=np.full(4, 0.1)))
+    assert np.allclose(inner.get_observation().joint_pos, 0.1, atol=0.05)
+    inner._set_fault("driver damped")
+    assert layer.fault == "driver damped" and layer.get_status().fault == "driver damped"
+    layer.reset()
+    assert layer.fault is None
+    layer.estop()
+    assert inner.fault is not None  # the stop reached the robot underneath
+    layer.disconnect()
+
+
+# ------------------------------------------------- e-stop order and inner proxy
+
+
+class _StuckLayer(Layer):
+    """A layer whose own _estop hangs or raises."""
+
+    def __init__(self, inner, how="hang"):
+        super().__init__(inner)
+        self.how = how
+        self.estopped = False
+
+    def _estop(self):
+        self.estopped = True
+        if self.how == "hang":
+            time.sleep(5)
+        raise RuntimeError("layer stop failed")
+
+
+@pytest.mark.parametrize("how", ["hang", "raise"])
+def test_estop_reaches_the_bottom_even_if_a_layer_hangs(how):
+    bottom = ToyRobot(_emb(4))
+    calls = []
+    bottom_estop = bottom.estop
+    bottom.estop = lambda: (calls.append(time.monotonic()), bottom_estop())
+    middle = _StuckLayer(bottom, how)
+    outer = _StuckLayer(middle, "raise")
+    outer.connect()
+    t0 = time.monotonic()
+    outer.estop()
+    assert calls and calls[0] - t0 < 0.05  # the hardware first, before any layer
+    assert time.monotonic() - t0 < 0.25 + ESTOP_LAYER_TIMEOUT_S
+    assert middle.estopped and outer.estopped  # every layer still got its turn
+    for robot in (outer, middle):
+        assert robot.fault is not None
+        with pytest.raises(RobotFaultError):
+            robot.send_action(Action(mode=ControlMode.POSITION, joint_target=np.zeros(4)))
+    assert bottom.fault is not None
+
+
+def test_estop_from_a_middle_layer_still_hits_the_bottom():
+    bottom = ToyRobot(_emb(4))
+    middle = Layer(bottom)
+    outer = Layer(middle)
+    middle.estop()
+    assert bottom.fault is not None and middle.fault is not None
+    assert outer.fault is not None  # reported from below
+
+
+def test_inner_is_public_api_only():
+    bottom = ToyRobot(_emb(4))
+    layer = Layer(bottom)
+    assert isinstance(layer.inner, ToyRobot) and layer.inner.embodiment is bottom.embodiment
+    for name in ("_send_action", "_set_safety", "_estop", "_fault"):
+        with pytest.raises(AttributeError, match="public API"):
+            getattr(layer.inner, name)
+    with pytest.raises(AttributeError):
+        layer.inner.safety = None
+    assembly = RobotAssembly(bottom, cameras={})
+    with pytest.raises(AttributeError, match="public API"):
+        Layer(assembly).inner.body
+    # Stacking layers does not wrap a proxy in a proxy.
+    assert type(Layer(layer.inner).inner) is type(layer.inner)
+
+
+def test_assert_layer_uses_public_api(fake_layer):
+    used = assert_layer_uses_public_api(FakeWbc)
+    assert {"send_action", "get_observation"} <= used
+
+    class Sneaky(Layer):
+        def _send_action(self, action):
+            try:
+                self.inner._send_action(action)
+            except AttributeError:
+                pass
+
+    with pytest.raises(AssertionError, match="_send_action"):
+        assert_layer_uses_public_api(Sneaky)
+    with pytest.raises(AssertionError, match="does not subclass"):
+        assert_layer_uses_public_api(lambda inner: ToyRobot(inner.embodiment))

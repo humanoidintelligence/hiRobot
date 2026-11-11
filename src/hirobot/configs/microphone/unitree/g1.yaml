@@ -1,0 +1,5 @@
+# Unitree G1 built-in microphone, behind the G1 audio board (.161): its UDP
+# multicast, 16 kHz mono. Real driver only, like the camera (docs/setup/unitree.md).
+
+device: microphone
+driver: {type: unitree_voice_mic}

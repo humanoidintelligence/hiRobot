@@ -19,11 +19,8 @@ Two steps, run in order the first time a robot is connected:
     target on a minimum-jerk trajectory, holds, moves back, then damps. Aborts
     if the joint lags its trajectory or any other joint drifts.
 
-``--sim off|mirror|shadow`` (``hold`` and ``move``)
-    ``off`` drives the real robot only and needs no MuJoCo. ``mirror`` drives
-    the real robot and renders its measured state in MuJoCo. ``shadow`` opens
-    the real robot read-only and runs the same motion on the MuJoCo twin from
-    the robot's current pose. Needs a ``sim:`` section (or ``--sim-model``).
+To rehearse a motion in MuJoCo from the robot's current pose first (the
+real robot only read), see ``examples/rehearse_in_sim.py``.
 
 ``restore`` (hands control back to the built-in service)
     Calls the motion switcher's ``SelectMode`` (default ``ai``), waits until it
@@ -62,47 +59,25 @@ def _enabled(s, slots) -> int:
 
 
 def build_robot(args, release: bool):
-    sim = getattr(args, "sim", None)
-    if sim == "shadow":
-        release = False  # shadow never commands the real robot
     overrides = {"driver": "unitree_sdk2", "network_interface": args.iface, "release_motion_mode": release}
     if getattr(args, "ramp", None) is not None:
         overrides["ramp_seconds"] = args.ramp
     if args.msg_family:
         overrides["msg_family"] = args.msg_family
-    sim_overrides = {}
-    if sim is not None:
-        sim_overrides["mode"] = sim
-    if getattr(args, "sim_model", None):
-        sim_overrides["model"] = args.sim_model
-    return make_robot(args.config, body_overrides=overrides, sim_overrides=sim_overrides)
+    return make_robot(args.config, body_overrides=overrides)
 
 
 def _check_motion_service(robot, args) -> bool:
-    """True if nothing contests rt/lowcmd (always true in shadow mode)."""
-    if getattr(robot, "mode", None) == "shadow" or args.release_motion_mode:
+    """True if nothing contests rt/lowcmd."""
+    if args.release_motion_mode:
         return True
-    real = getattr(robot, "real", robot)
-    mode = real.motion_mode()
+    mode = robot.motion_mode()
     if mode and mode.get("name"):
         print(f"Built-in motion service {mode['name']!r} is active; it would fight our commands.")
-        print("Re-run with --release-motion-mode (robot hung!), or use --sim shadow to rehearse in sim.")
+        print("Re-run with --release-motion-mode (robot hung!), or rehearse in sim first "
+              "(examples/rehearse_in_sim.py).")
         return False
     return True
-
-
-def _final_state(robot) -> str:
-    if getattr(robot, "mode", None) == "shadow":
-        return "Sim twin left in damping mode; the real robot was never commanded."
-    return "Robot left in damping mode."
-
-
-def _describe_target(robot) -> None:
-    mode = getattr(robot, "mode", "off")
-    if mode == "shadow":
-        print("[sim shadow] real robot is read-only; commands go to the MuJoCo twin only.")
-    elif mode == "mirror":
-        print("[sim mirror] commanding the REAL robot; MuJoCo shows its measured state.")
 
 
 def cmd_status(args) -> int:
@@ -143,7 +118,6 @@ def cmd_status(args) -> int:
 def cmd_hold(args) -> int:
     robot = build_robot(args, release=args.release_motion_mode)
     robot.connect()  # blocks while releasing the motion service, if asked
-    _describe_target(robot)
     if not _check_motion_service(robot, args):
         robot.disconnect()
         return 2
@@ -188,7 +162,7 @@ def cmd_hold(args) -> int:
             mon.close()
         time.sleep(0.5)
         print_torque("damped +0.5s")
-        print(_final_state(robot))
+        print("Robot left in damping mode.")
 
 
 def _min_jerk(s: float) -> float:
@@ -205,7 +179,6 @@ def cmd_move(args) -> int:
         print(f"Unknown joint {args.joint!r}; choose from: {', '.join(names)}")
         return 2
     robot.connect()
-    _describe_target(robot)
     if not _check_motion_service(robot, args):
         robot.disconnect()
         return 2
@@ -278,7 +251,7 @@ def cmd_move(args) -> int:
         robot.disconnect()  # sends damping
         if log:
             log.close()
-        print(_final_state(robot))
+        print("Robot left in damping mode.")
 
 
 class _HoldMonitor:
@@ -322,7 +295,7 @@ class _HoldMonitor:
 
     def sample(self, t: float) -> np.ndarray:
         obs = self.robot.get_observation()
-        s = getattr(self.robot, "raw_state", None)  # None for the sim twin
+        s = getattr(self.robot, "raw_state", None)  # None without the SDK state
         err = np.abs(obs.joint_pos - self.start)
         tau = np.abs(obs.joint_torque)
         enabled = self.n if s is None else _enabled(s, _slots(self.robot, self.n))
@@ -491,13 +464,6 @@ def main(argv=None) -> int:
     hold.add_argument("--log", default=None, help="Optional CSV path: every sample's error, torque, enabled count.")
     hold.add_argument("--release-motion-mode", action="store_true",
                       help="Release the built-in motion service first. The robot loses balance: hang it.")
-    for name in ("hold", "move"):
-        sp = sub.choices[name]
-        sp.add_argument("--sim", choices=["off", "mirror", "shadow"], default=None,
-                        help="MuJoCo twin: off = real robot only (no MuJoCo needed); mirror = command "
-                        "the real robot and render its state; shadow = real robot read-only, "
-                        "rehearse the motion in sim. Default: the config's sim.mode (off if absent).")
-        sp.add_argument("--sim-model", default=None, help="Override sim.model (MJCF path).")
     move = sub.choices["move"]
     move.add_argument("--joint", required=True, help="Joint name, e.g. right_elbow.")
     move.add_argument("--target", type=float, required=True, help="Absolute target position (rad).")

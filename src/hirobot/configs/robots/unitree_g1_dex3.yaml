@@ -1,21 +1,22 @@
 # Unitree G1 29-DoF with two Dex3-1 three-finger hands: 43 joints.
 #
-# Joints 0-28 are the body, as in unitree_g1.yaml. Joints 29-42 are the fingers,
-# 7 per hand in Dex3 motor order (thumb 0-2, middle 0-1, index 0-1). Names,
-# position limits and torque limits come from unitree_ros
-# robots/g1_description/g1_29dof_with_hand_rev_1_0.urdf. The two hands are
-# mirrored: left fingers close towards negative angles, right towards positive.
-#
-# With driver: unitree_sdk2, rt/lowcmd carries joints 0-28 and each hand driver sends
-# its 7 joints on rt/dex3/<side>/cmd, clipped to position_limit
-# (docs/setup/unitree.md, "Dex3 hands"). With the sim / mujoco drivers the
-# fingers are joints of the model and no hand driver runs.
+# Joints 0-28 are the body, as in unitree_g1. Joints 29-42 are the fingers, 7 per
+# hand in Dex3 motor order (thumb 0-2, middle 0-1, index 0-1), from the hand files.
+# With the body on unitree_sdk2, rt/lowcmd carries joints 0-28 and each hand
+# driver sends its 7 joints on rt/dex3/<side>/cmd, clipped to position_limit
+# (docs/setup/unitree.md, "Dex3 hands"). With a simulated body the fingers are
+# joints of the model and no hand driver runs.
 
-defaults: [robots/unitree_g1, end_effector/unitree/dex3_1]
-
-embodiment:
+assembly:
   name: unitree-g1-dex3
-
-body:
-  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)
-  # builtin_skills: g1   # with driver: unitree_sdk2, run the built-in walk / gestures by name
+  parts:
+    body: {from: body/unitree/g1, overrides: {driver: {type: toy}}}
+    left_hand: {from: end_effector/unitree/dex3_1_left}
+    right_hand: {from: end_effector/unitree/dex3_1_right}
+    head: {from: camera/intel/d435i}
+    head_mic: {from: microphone/unitree/g1}
+    head_speaker: {from: speaker/unitree/g1}
+  placement:
+    left_hand: {on: body.left_wrist}
+    right_hand: {on: body.right_wrist}
+    head: {on: body.head_camera}

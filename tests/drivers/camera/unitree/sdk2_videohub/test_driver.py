@@ -9,7 +9,7 @@ G1 = "unitree_g1"
 
 
 def test_make_robot_attaches_videohub_for_real_driver():
-    robot = make_robot(G1, body_overrides={"driver": "unitree_sdk2", "network_interface": "eth9"})
+    robot = make_robot(G1, overrides={"body": {"driver": {"type": "unitree_sdk2", "network_interface": "eth9"}}})
     assert isinstance(robot, RobotAssembly)
     assert type(robot.body).__name__ == "UnitreeRobot"
     cam = robot.cameras["head"]

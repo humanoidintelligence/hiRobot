@@ -1,20 +1,22 @@
 # Unitree H1 + Inspire hands, head camera from your own image server.
 #
-# Cameras merge by name: this entry changes only the head camera's size and
-# driver; the rest of unitree_h1_inspire stays. A different driver type
-# replaces the whole driver: entry. The server is scripts/camera_image_server.py
-# on the computer the camera is plugged into (docs/setup/unitree.md).
+# overrides change only the head camera's size and address; the rest of
+# unitree_h1_inspire stays. A different driver type replaces the whole driver:
+# entry. The server is scripts/camera_image_server.py on the computer the camera
+# is plugged into (docs/setup/unitree.md).
 
-defaults: [unitree_h1_inspire]
+defaults: [robots/unitree_h1_inspire]
 
-embodiment:
-  cameras:
-    - name: head
-      width: 640
-      height: 480
-      driver: {type: unitree_image_server, address: "tcp://<camera computer>:5555"}
-
-body:
-  driver: unitree_sdk2
-  network_interface: <nic>
-  msg_family: go     # the legacy H1 uses the unitree_go messages
+assembly:
+  parts:
+    head:
+      overrides:
+        width: 640
+        height: 480
+        driver: {address: "tcp://<camera computer>:5555"}
+    body:
+      overrides:
+        driver:
+          type: unitree_sdk2
+          network_interface: <nic>
+          msg_family: go     # the legacy H1 uses the unitree_go messages

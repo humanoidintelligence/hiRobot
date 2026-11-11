@@ -1,8 +1,9 @@
-# Unitree H2 — 31-DoF humanoid (with 2-DoF head).
+# Unitree H2: 31-DoF humanoid (unitree_sdk2, docs/setup/unitree.md).
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default; on hardware drop the toy override to use the
+# body file's driver.
 
-defaults: [body/unitree/h2]
-
-body:
-  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)
+assembly:
+  name: unitree-h2
+  parts:
+    body: {from: body/unitree/h2, overrides: {driver: {type: toy}}}

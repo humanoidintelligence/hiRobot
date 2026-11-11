@@ -2,7 +2,7 @@
 
 Real hardware is laid out as ``drivers/<component>/<SDK vendor>/<SDK or protocol>/``;
 each such directory has a ``driver.py`` and a ``manifest.yaml`` naming its SDK
-and the models and SDK versions it has run on (see :mod:`hirobot.sdk`).
+and the models and SDK versions it has run on (see :mod:`hirobot.loading.sdk`).
 
 - :mod:`hirobot.drivers.body`: real robot bodies (vendor SDKs).
 - :mod:`hirobot.drivers.sim`: simulated robots (toy integrator, MuJoCo).

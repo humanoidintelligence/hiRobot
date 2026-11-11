@@ -11,13 +11,13 @@ import contextlib
 import time
 from typing import List, Optional
 
-from hirobot.end_effector import (
+from hirobot.devices.end_effector import (
     END_EFFECTORS,
     EndEffectorDriver,
     OpeningState,
     check_opening,
 )
-from hirobot.stamps import Stamp
+from hirobot.core.stamps import Stamp
 
 NAME = "test_fake_gripper"
 

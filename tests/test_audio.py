@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from hirobot import RobotAssembly, load_embodiment, make_robot
-from hirobot.audio import (
+from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     MicrophoneDriver,
     QueuedMicrophone,
@@ -158,7 +158,8 @@ class _Spk(SpeakerDriver):
 
 def test_config_declares_g1_audio():
     emb = load_embodiment(G1)
-    assert [m.name for m in emb.microphones] == ["head"]
+    assert [m.name for m in emb.microphones] == ["head_mic"]
+    assert [s.name for s in emb.speakers] == ["head_speaker"]
     assert emb.microphones[0].driver == {"type": "unitree_voice_mic"}
     assert emb.speakers[0].driver == {"type": "unitree_voice_speaker", "volume": 60}
 
@@ -176,9 +177,10 @@ def test_make_robot_skips_audio_for_sim_driver():
 
 
 def test_make_robot_attaches_audio_for_real_driver():
-    robot = make_robot(G1, body_overrides={"driver": "unitree_sdk2", "network_interface": "eth9"})
+    robot = make_robot(G1, overrides={"body": {"driver": {"type": "unitree_sdk2",
+                                                          "network_interface": "eth9"}}})
     assert isinstance(robot, RobotAssembly)
-    mic, spk = robot.microphones["head"], robot.speakers["head"]
+    mic, spk = robot.microphones["head_mic"], robot.speakers["head_speaker"]
     assert isinstance(mic, UnitreeG1Microphone) and isinstance(spk, UnitreeG1Speaker)
     assert mic._network_interface == "eth9" and spk._network_interface == "eth9"
     assert spk._volume == 60
@@ -187,9 +189,9 @@ def test_make_robot_attaches_audio_for_real_driver():
 def test_make_robot_rejects_a_speaker_driver_as_microphone(tmp_path):
     cfg = tmp_path / "bad.yaml"
     cfg.write_text(
-        "embodiment:\n  name: x\n  joints: [{name: a}]\n"
-        "  microphones: [{name: m, driver: {type: unitree_voice_speaker}}]\n"
-        "body: {driver: unitree_sdk2}\n"
+        "assembly:\n  name: x\n  parts:\n"
+        "    body: {device: body, joints: [{name: a}], driver: {type: unitree_sdk2}}\n"
+        "    m: {device: microphone, driver: {type: unitree_voice_speaker}}\n"
     )
     with pytest.raises(ValueError, match="not a MicrophoneDriver"):
         make_robot(str(cfg))

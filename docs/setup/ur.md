@@ -65,6 +65,7 @@ body:
   # home_speed: 0.5         # moveJ to home_q (rad/s)
   # home_acceleration: 0.5  # (rad/s^2)
   # stop_deceleration: 2.0  # stopJ on estop() (rad/s^2)
+  # command_timeout_s: 0.2  # speedStop when no new VELOCITY came for this long; null: off
 ```
 
 Joint order: base → wrist (`shoulder_pan, shoulder_lift, elbow, wrist_1/2/3`),

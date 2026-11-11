@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-from hirobot.camera import get_camera
+from hirobot.devices.camera import get_camera
 from hirobot.drivers.camera import ArrayCamera, VideoFileCamera
 
 

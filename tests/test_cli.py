@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from hirobot.cli import main
-from hirobot.config import load_config
+from tests.conftest import mjcf_of
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 
@@ -21,8 +21,9 @@ def test_sim_runs_the_toy_humanoid(capsys):
 
 def test_sim_refuses_a_real_robot(tmp_path, capsys):
     cfg = tmp_path / "real.yaml"
-    cfg.write_text(f"defaults: [{EXAMPLES / 'humanoid.yaml'}]\nbody:\n  driver: unitree_sdk2\n"
-                   "  network_interface: eth9\n")
+    cfg.write_text(f"defaults: [{EXAMPLES / 'humanoid.yaml'}]\n"
+                   "assembly:\n  parts:\n    body:\n      driver: {type: unitree_sdk2, "
+                   "network_interface: eth9}\n")
     pytest.importorskip("unitree_sdk2py")
     assert main(["sim", str(cfg)]) == 2
     assert "only runs simulated ones" in capsys.readouterr().err
@@ -30,12 +31,12 @@ def test_sim_refuses_a_real_robot(tmp_path, capsys):
 
 def test_sim_viewer_needs_mujoco(capsys):
     assert main(["sim", str(EXAMPLES / "arm.yaml"), "--viewer"]) == 2
-    assert "--viewer needs a MuJoCo body" in capsys.readouterr().err
+    assert "--viewer needs the MuJoCo simulation" in capsys.readouterr().err
 
 
 def _g1_model_or_skip(name):
     pytest.importorskip("mujoco")
-    path = os.path.expanduser(load_config(name)["body"]["model_path"])
+    path = mjcf_of(name)
     if not os.path.isfile(path):
         pytest.skip(f"G1 MJCF not found at {path}")
 

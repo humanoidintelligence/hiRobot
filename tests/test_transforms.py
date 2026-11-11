@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from hirobot.transforms import (
+from hirobot.geometry.transforms import (
     IDENTITY_POSE,
     axis_angle_to_quat,
     matrix_to_quat,

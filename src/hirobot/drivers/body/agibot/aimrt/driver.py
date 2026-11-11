@@ -33,12 +33,12 @@ from typing import Optional
 
 import numpy as np
 
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot
-from hirobot.stamps import StampCounter
-from hirobot.sdk import require_sdk
-from hirobot.types import Action, ControlMode, Observation
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot
+from hirobot.core.stamps import StampCounter
+from hirobot.loading.sdk import require_sdk
+from hirobot.core.types import Action, ControlMode, Observation
 
 _JOINT_STATES_TOPIC = "/joint_states"
 _IMU_TOPIC = "/imu/data"

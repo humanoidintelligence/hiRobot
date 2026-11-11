@@ -20,7 +20,7 @@ import time
 import numpy as np
 
 from hirobot import load_embodiment
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
 
 CFG = "unitree_h1_inspire"
 

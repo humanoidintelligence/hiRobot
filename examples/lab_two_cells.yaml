@@ -1,0 +1,32 @@
+# Three levels: a lab holding two dual-arm cells (ur5e_dual), each holding two
+# arms (ur_ur5e), each an arm body. Nodes inside nodes.
+#
+# Assembled names carry the whole path: cell_a/left/shoulder_pan,
+# cell_a/left/tcp, cell_b/right/tcp, overview. Poses compose down the tree.
+# Per-part actions can nest: Action(parts={"cell_a": Action(parts={"left": ...})}).
+#
+# Both cells run on the toy driver, so this loads without hardware. For the real
+# lab, override each arm's body driver by its path down the tree:
+#
+#   make_robot("examples/lab_two_cells.yaml", overrides={
+#       "cell_a/left/body":  {"driver": {"type": "ur_rtde", "ip": "192.168.1.101"}},
+#       "cell_a/right/body": {"driver": {"type": "ur_rtde", "ip": "192.168.1.102"}},
+#       "cell_b/left/body":  {"driver": {"type": "ur_rtde", "ip": "192.168.2.101"}},
+#       "cell_b/right/body": {"driver": {"type": "ur_rtde", "ip": "192.168.2.102"}}})
+
+assembly:
+  name: lab_two_cells
+  parts:
+    cell_a: {from: robots/ur5e_dual}
+    cell_b:
+      from: robots/ur5e_dual
+      safety: {max_joint_step: 0.1}                # tightens every joint under cell_b only
+    overview: {from: camera/intel/d435i}           # a camera watching both cells
+  placement:
+    cell_a:   {pose: [0, 0, 0, 0, 0, 0, 1]}
+    cell_b:   {pose: [3.0, 0, 0, 0, 0, 1, 0]}      # 3 m away, turned 180 deg to face cell_a
+    overview: {pose: [1.5, 0, 3.0, 1, 0, 0, 0]}    # overhead between them, looking straight down
+
+# Sections only the root may carry; the referenced ur5e_dual / ur_ur5e cannot.
+safety: {max_joint_step: 0.2}
+arbiter: {require_claim: false}

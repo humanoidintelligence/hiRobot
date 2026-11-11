@@ -1,7 +1,7 @@
 """The ``opening`` contract check runs, on the test gripper (no built-in driver has it yet)."""
 
 from hirobot import Embodiment
-from hirobot.end_effector import build_end_effectors
+from hirobot.devices.end_effector import build_end_effectors
 from tests.drivers.contract import check_opening
 from tests.drivers.end_effector.fake_gripper import NAME, registered
 

@@ -20,8 +20,8 @@ from typing import Any, Iterator, Optional, Tuple
 
 import numpy as np
 
-from hirobot.camera import PollingCameraDriver, register_camera
-from hirobot.sdk import require_sdk
+from hirobot.devices.camera import PollingCameraDriver, register_camera
+from hirobot.loading.sdk import require_sdk
 
 
 @register_camera("video_file")

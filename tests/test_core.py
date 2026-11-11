@@ -9,10 +9,11 @@ import warnings
 import numpy as np
 import pytest
 
-from hirobot import Action, ActionChunk, ControlMode, Observation, Robot, registry, sdk
-from hirobot.audio import available_audio
-from hirobot.camera import available_cameras
-from hirobot.end_effector import available_end_effectors
+from hirobot import Action, ActionChunk, ControlMode, Observation, Robot
+from hirobot.loading import registry, sdk
+from hirobot.devices.audio import available_audio
+from hirobot.devices.camera import available_cameras
+from hirobot.devices.end_effector import available_end_effectors
 
 # ------------------------------------------------------------------ registries
 

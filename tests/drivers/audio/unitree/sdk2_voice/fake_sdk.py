@@ -6,7 +6,7 @@ import sys
 import time
 import types
 
-from hirobot.audio import (
+from hirobot.devices.audio import (
     SAMPLE_WIDTH,
 )
 

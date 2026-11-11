@@ -47,12 +47,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from hirobot.drivers.body.agibot.gdk.chassis import ChassisClient, pose_from_state
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot, RobotFaultError
-from hirobot.sdk import require_sdk
-from hirobot.stamps import Stamp, StampCounter
-from hirobot.types import Action, BatteryState, ControlMode, Observation, RobotStatus
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot, RobotFaultError
+from hirobot.loading.sdk import require_sdk
+from hirobot.core.stamps import Stamp, StampCounter
+from hirobot.core.types import Action, BatteryState, ControlMode, Observation, RobotStatus
 
 logger = logging.getLogger(__name__)
 

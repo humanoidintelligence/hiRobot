@@ -3,7 +3,7 @@
 import numpy as np
 
 from hirobot import Action, ControlMode, get_body, load_embodiment
-from hirobot.transforms import pose_from_axis_angle
+from hirobot.geometry.transforms import pose_from_axis_angle
 from tests.drivers.body.ur.rtde import fake_sdk
 from tests.drivers.contract import check_robot
 

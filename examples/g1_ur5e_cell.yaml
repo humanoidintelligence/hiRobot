@@ -1,0 +1,26 @@
+# A workcell: a Unitree G1, a UR5e on a bench, and an overview camera. All
+# three device kinds are here (the G1 brings a body, a head camera, a mic and a
+# speaker; the arm adds a second body; scene adds another camera).
+#
+# The G1's frame is fixed in the cell with pose:, like the arm and the camera.
+# The G1 body still carries floating_base, so its base_position /
+# base_orientation are reported relative to that fixed cell frame (on the toy
+# driver, integrated from BASE_VELOCITY; the real Unitree driver reports no
+# base_position and is treated as having no odometry).
+#
+# The G1 runs on the toy driver here. A whole-body controller for it would be a
+# per-part layer (part: g1), added by hiWBC, not shipped with hiRobot.
+
+assembly:
+  name: g1_ur5e_cell
+  parts:
+    g1:    {from: robots/unitree_g1_dex3, overrides: {body: {driver: {type: toy}}}}
+    arm:   {from: robots/ur_ur5e}
+    scene: {from: camera/intel/d435i}
+  placement:
+    g1:    {pose: [0, 0, 0, 0, 0, 0, 1]}              # at the cell origin
+    arm:   {pose: [1.2, 0, 0.75, 0, 0, 1, 0]}         # on the bench, turned to face the G1
+    scene: {pose: [0.6, 1.5, 1.6, -0.6124, -0.6124, 0.3536, 0.3536]}
+
+# Observations: the G1's base_* stay at the top level (it is the only part with
+# a floating base). Actions: base_velocity / base_target go to the G1.

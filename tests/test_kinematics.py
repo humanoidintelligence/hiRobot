@@ -5,7 +5,7 @@ import os
 import numpy as np
 import pytest
 
-from hirobot.kinematics import Kinematics
+from hirobot.geometry.kinematics import Kinematics
 
 # A free-floating base, a 2-link arm with an offset joint anchor and rotated bodies,
 # and a fixed child body.
@@ -146,7 +146,7 @@ def test_floating_base_and_anchor(tmp_path):
 
 
 def _rot(q):
-    from hirobot.transforms import quat_to_matrix
+    from hirobot.geometry.transforms import quat_to_matrix
 
     return quat_to_matrix(q)
 

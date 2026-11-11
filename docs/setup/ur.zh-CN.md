@@ -53,6 +53,7 @@ body:
   # home_speed: 0.5         # moveJ to home_q (rad/s)
   # home_acceleration: 0.5  # (rad/s^2)
   # stop_deceleration: 2.0  # stopJ on estop() (rad/s^2)
+  # command_timeout_s: 0.2  # 这么久没有新的 VELOCITY 就 speedStop；null 关掉
 ```
 
 关节顺序：从基座到手腕（`shoulder_pan, shoulder_lift, elbow, wrist_1/2/3`），与 RTDE 的 `actual_q` 一致。

@@ -73,7 +73,7 @@ G1 配置声明了一个 `head` 相机，`driver: {type: unitree_videohub}`。
 
 画面来自 PC2 上 Unitree 的 `videohub_pc4` 服务，走和本体相同的 DDS
 网卡，所以机器人上不需要额外运行任何程序。这个图像源只读取，因此
-在 `read_only` 和 `sim: shadow` 下也能用。它需要 `opencv-python`
+在 `read_only` 下也能用。它需要 `opencv-python`
 （`pip install -e '.[camera]'`）。在机器人局域网内的一台台式机上实测：每秒约
 24 个新帧，帧龄中位数 21 ms。如果 `connect()` 后 3 s 内相机没有给出任何帧，
 会记录一条警告，`images` 中不含 `head`，直到有帧到达；本体照常工作。
@@ -86,8 +86,7 @@ H1 没有 videohub 服务。它头部的 RealSense D435i 由 Unitree 的
 （Unitree avp_teleoperate / xr_teleoperate 中的 `image_server.py`）。
 `unitree_h1` 和 `unitree_h1_inspire` 配置声明了一个 `head` 相机，
 `driver: {type: unitree_image_server, address: tcp://192.168.123.162:5555}`
-（PC2，1280x720），H1 上由 avp_teleoperate 在这里运行该服务器。这个图像源只订阅，所以在 `read_only` 和
-`sim: shadow` 下也能用。它需要 `opencv-python` 和 `pyzmq`（`pip install -e '.[camera]'`）。
+（PC2，1280x720），H1 上由 avp_teleoperate 在这里运行该服务器。这个图像源只订阅，所以在 `read_only` 下也能用。它需要 `opencv-python` 和 `pyzmq`（`pip install -e '.[camera]'`）。
 
 如果相机插在另一台计算机上，或者那台计算机上没有图像
 服务器，就在那里运行 `scripts/camera_image_server.py`。它只需要 Python 3.8+、
@@ -138,7 +137,7 @@ spk.stop()                                  # 从另一个线程调用：提前�
 - **麦克风**：原始 PCM 通过 UDP 组播到 `239.168.123.161:5555`，16 kHz
   单声道 int16，每次一个 5120 字节的包（160 ms），与 Unitree 的 C++
   `g1_audio_client_example.cpp` 相同。驱动只监听，所以在
-  `read_only` 和 `sim: shadow` 下也能用，而且不需要 SDK。它在
+  `read_only` 下也能用，而且不需要 SDK。它在
   `network_interface` 的地址上加入组播组。最多为读得慢的一方缓存 10 s
   音频；超出后丢弃较旧的块（计入 `dropped`）。
 - **扬声器**：SDK 的 `voice` 服务（`AudioClient.PlayStream` / `PlayStop`）。
@@ -194,7 +193,7 @@ end_effectors:
 拒绝。增益默认 kp 1.5、kd 0.2（Unitree xr_teleoperate
 使用的值）。`disconnect()` 让两只手进入阻尼：零增益并置超时标志，与
 SDK 示例相同。本体上设 `read_only: true` 时灵巧手也变为只读，所以
-`sim: shadow` 不会在任何话题上发布任何内容。
+只读的机器人不会在任何话题上发布任何内容。
 
 观测的 `joint_pos` / `joint_vel` 覆盖全部 43 个关节。手部力矩是
 NaN：手上报的 `tau_est` 单位不是 Nm（数值是
@@ -397,7 +396,7 @@ body:
 此时由内置运动服务（`ai`）占用 `rt/lowcmd`，所以驱动不创建
 `rt/lowcmd` 发布者：`send_action` 抛出 `SafetyError`，`reset()` 什么
 也不做。`builtin_skills` 不能与 `release_motion_mode` 或
-`read_only` 同时使用，`sim: shadow` 会丢弃它。`ai` 服务必须处于活动状态；运行过
+`read_only` 同时使用。`ai` 服务必须处于活动状态；运行过
 `--release-motion-mode` 之后，用 `unitree_setup.py restore` 把它恢复
 （第 6 节，第 5 步）。否则每个 skill 都会失败，返回 RPC 错误码 3102，并给出
 说明这一点的错误信息。
@@ -434,7 +433,7 @@ unitree_sdk2_python（a035ade，2025-11-28）。`list_robot_skills()` 不连接�
 ## 5. MuJoCo（G1，可选）
 
 驱动真机不需要 MuJoCo。有了它，G1 可以单独在仿真中运行
-（完全不需要机器人），或者作为真机旁边的数字孪生运行。安装 MuJoCo 并
+（完全不需要机器人），或者从真机姿态起步，在上真机之前预演一个动作。安装 MuJoCo 并
 从 [unitree_ros](https://github.com/unitreerobotics/unitree_ros) 获取 G1 模型
 （hiRobot 不附带）：
 
@@ -491,34 +490,26 @@ embodiment:
 场景为空）、动力学（电机模型、摩擦、延迟）、IMU 噪声。
 内置 skill 在仿真中不存在。
 
-### 真机旁的数字孪生
+### 从真机姿态起步预演
 
-数字孪生提供两样东西：在运行一个动作之前，从机器人当前姿态出发在仿真中预演它；
-以及在运行时用 3D 查看器观察实测状态。它不渲染任何相机：图像来自真实相机。在你的
-`driver: unitree_sdk2` 配置中加一个 `sim:` 段：
+在真机上运行一个动作之前，先让它在 MuJoCo 中从真机当前的姿态出发跑一遍。
+[`examples/rehearse_in_sim.py`](../../examples/rehearse_in_sim.py) 用两个独立的机器人完成这件事：
 
-```yaml
-sim:
-  mode: "off"        # 要加引号：裸写的 off 会被读成 YAML 布尔值
-  model: ~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml
-  viewer: true
-  fixed_base: true   # 骨盆焊接固定，就像机器人吊在龙门架上
-  base_height: 1.0
-  armature: [...]    # 从内置的 sim/mujoco/unitree_g1 拷贝这个列表
+1. 用 `read_only: true` 打开真机（不创建 `rt/lowcmd` 发布者），读取一次观测，然后断开。
+2. 把 MuJoCo 配置（`unitree_g1_mujoco`）建成第二个机器人，用 MuJoCo 驱动的 `set_state`
+   把它放到实测姿态。
+3. `reset()` 在保持这个姿态的同时把增益升上去；之后动作只在仿真中运行。
+
+```bash
+python examples/rehearse_in_sim.py my_g1.yaml unitree_g1_mujoco \
+    --body network_interface=eth0 --joint right_elbow --target 0.0
 ```
 
-| `mode` | 真机 | 仿真 |
-|---|---|---|
-| `off`（默认） | 接收命令 | 不使用；不 import MuJoCo |
-| `mirror` | 接收命令 | 显示实测状态（运动学拷贝，无物理） |
-| `shadow` | **只读**：不创建 `rt/lowcmd` 发布者 | 从实测姿态开始，执行每个动作 |
-
-`scripts/unitree_setup.py hold|move --sim <mode>` 和
-`make_robot(cfg, sim_overrides={"mode": "shadow"})` 会覆盖配置。在
-`shadow` 模式下脚本忽略 `--release-motion-mode`，所以正在运行的内置
-服务不会被动到（`make_robot` 拒绝 `release_motion_mode` 与
-`shadow` 同时使用）。数字孪生的增益（`default_kp` / `default_kd`）从
-`body:` 段拷贝，除非 `sim:` 设了自己的增益。
+不向真机发送任何内容，正在运行的内置服务也不会被动到。仿真使用 MuJoCo 配置的增益；
+要用你自己的增益预演，把它们写进一份 `defaults: [unitree_g1_mujoco]` 的本地配置。
+仿真从模型渲染头部相机，不是真实图像。要预演别的动作，把示例中的 `read_real_pose` 和
+`sim_from_pose` 拷贝到你自己的代码里。在 MuJoCo 中实时显示真机状态的功能已在计划中
+（`hirobot view <config>`）。
 
 ### 模型说明
 
@@ -546,6 +537,7 @@ body:
   network_interface: eth0
   ramp_seconds: 3.0
   damping_kd: 8.0
+  # command_timeout_s: 0.2  # 这么久没有新的 VELOCITY 就发零速（kp 0）；null 关掉
   #            hip_p hip_r hip_y knee ank_p ank_r   （先左后右）
   default_kp: [100, 100, 100, 150, 40, 40,
                100, 100, 100, 150, 40, 40,
@@ -583,19 +575,16 @@ python scripts/unitree_estop.py --iface eth0
 任何发送命令的步骤之前启动它。它依赖 DDS 链路正常工作，所以物理急停
 或遥控器也要拿在手里。
 
-**第 3 步：在数字孪生中预演（只读）。**
+**第 3 步：在仿真中预演（只读）。** 需要先完成第 5 节的 MuJoCo 设置。
 
 ```bash
-python scripts/unitree_setup.py move --config my_g1.yaml --iface eth0 \
-    --joint right_elbow --target 0.0 --ramp 3 --sim shadow
+python examples/rehearse_in_sim.py my_g1.yaml unitree_g1_mujoco \
+    --body network_interface=eth0 --joint right_elbow --target 0.0
 ```
 
-仿真从实测姿态开始，运行完整的动作：3 s 增益斜坡，
-4 s 沿最小加加速度轨迹出发，保持 2 s，4 s 返回，1 s 稳定。
-打印的表格和最后一行（`Sim twin left in damping mode; the real
-robot was never commanded.`）应显示跟踪误差在几百分之一
-弧度以内，且没有其他关节漂移。如果在这里中止了，先修正目标或增益，
-再靠近硬件。
+真机只被读取。仿真 G1 从实测姿态开始，升起增益，在 3 s（`--seconds`）内把肘关节移到目标。
+最后一行打印真机的起始角度和仿真肘关节的终点。终点应接近目标：重力对抗 kp 40 会留下约
+0.05 rad 的偏差。如果差得远，先修正目标或增益，再靠近硬件。
 
 **第 4 步：在机器人上运行（向机器人发送命令）。** 机器人吊起，
 双脚离地，右臂周围区域已清空，并且有人
@@ -603,20 +592,18 @@ robot was never commanded.`）应显示跟踪误差在几百分之一
 
 ```bash
 python scripts/unitree_setup.py move --config my_g1.yaml --iface eth0 \
-    --joint right_elbow --target 0.0 --ramp 3 --release-motion-mode --sim mirror \
+    --joint right_elbow --target 0.0 --ramp 3 --release-motion-mode \
     --log elbow.csv
 ```
 
 `--release-motion-mode` 会先释放内置服务（如果第 1 步
-显示没有内置服务，就省略它）。`--sim mirror` 可选：真机运动时在
-查看器中显示实测姿态；`--sim off`（或没有 `sim:` 段）则
-不用 MuJoCo 运行。如果肘关节落后其轨迹
+显示没有内置服务，就省略它）。如果肘关节落后其轨迹
 超过 `--max-track-error`（0.3 rad），或任何其他关节漂移超过
 `--max-error`（0.3 rad），脚本会中止并进入阻尼，而且无论如何都以阻尼模式结束。
 
-一次 G1 运行的结果，真机对比第 3 步的预演：
+一次 G1 运行的结果，真机对比同一动作在 MuJoCo 中从真机姿态起步的运行：
 
-| | 真机 | 数字孪生（`shadow`） |
+| | 真机 | 仿真 |
 |---|---|---|
 | 目标 0.0 处的稳态 | 0.048 rad | 0.046 rad |
 | 保持时的肘关节力矩 | −1.69 到 −1.75 Nm | −1.82 Nm |
@@ -642,7 +629,7 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
 该服务。
 
 其他关节按同样的流程进行；`--max-travel`（1.6 rad）会拒绝
-离实测姿态太远的目标。`hold` 执行第 3、4 步但不做运动，
+离实测姿态太远的目标。`hold` 执行第 4 步但不做运动，
 在 `--seconds` 时间内保持实测姿态（适合先检查增益）。
 
 ### 旧版 H1（19 自由度）
@@ -673,8 +660,8 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
                  1.5, 1.5, 1.5, 1.5]
   ```
 
-- **数字孪生模型：** 按第 5 节的方法从 unitree_ros 获取 `robots/h1_description`。
-  它的 `mjcf/h1.xml` 需要在本地副本中修改后，数字孪生才能
+- **仿真模型：** 按第 5 节的方法从 unitree_ros 获取 `robots/h1_description`。
+  它的 `mjcf/h1.xml` 需要在本地副本中修改后，MuJoCo 才能
   加载。模型把腰部命名为 `torso_joint`，而配置称之为
   `waist_yaw`。一旦 `fixed_base` 去掉自由关节，它的 `home` 关键帧也
   不再适用。由于副本放在别处，要把 `meshdir` 设为 `meshes/` 的绝对路径：
@@ -686,7 +673,23 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
       -e '/<keyframe>/,/<\/keyframe>/d' $M/mjcf/h1.xml > h1_sim.xml
   ```
 
-  然后把 `sim.model` 指向 `h1_sim.xml`，并设 `fixed_base: true` 和 `base_height: 1.2`。
+  然后写一份本地仿真配置，比如 `my_h1_mujoco.yaml`，用
+  `python examples/rehearse_in_sim.py my_h1.yaml my_h1_mujoco.yaml ...` 预演：
+
+  ```yaml
+  defaults: [unitree_h1]
+  assembly:
+    parts:
+      body:
+        overrides:
+          model: {mjcf: h1_sim.xml}   # kp / kd / armature：从真机配置照抄
+  sim:
+    fixed_base: [body]
+    base_height: {body: 1.2}
+    ramp_seconds: 2.0
+    damping_kd: 8.0
+  ```
+
 - **手臂姿态：** 手臂下垂时 `right_elbow` 读数约 1.52 rad。角度越小
   前臂抬得越高，0.0 是水平朝前。测试中把它移到了
   0.8 rad，比下垂时抬高约 40°。
@@ -694,9 +697,9 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
   内置服务。
 
 在 H1 上运行 `move --joint right_elbow --target 0.8` 的结果，真机对比
-`shadow` 预演：
+同一动作在 MuJoCo 中从真机姿态起步的运行：
 
-| | 真机 | 数字孪生（`shadow`） |
+| | 真机 | 仿真 |
 |---|---|---|
 | 目标 0.8 处的稳态 | 0.835 rad | 0.857 rad |
 | 最大跟踪误差 | 0.043 rad | 0.172 rad |
@@ -705,7 +708,7 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
 | 回到起点（命令值 1.523） | 1.519 rad | 1.508 rad |
 
 事先做的 5 s `hold` 在全部 19 个电机使能的情况下跟踪误差在 0.001 rad 以内。
-与 G1 不同，这里数字孪生的跟踪效果*比硬件差*：使用的 unitree_ros H1 模型
+与 G1 不同，这里仿真的跟踪效果*比硬件差*：使用的 unitree_ros H1 模型
 没有调过 armature 或摩擦，所以应把它的数字当作
 保守的预演，而不是预测。
 
@@ -713,7 +716,7 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
 
 单关节运动跑通之后，同一个驱动就能运行任何使用
 `Robot` 接口的控制循环。前几次运行时让机器人保持吊起，并且
-先用 `sim: {mode: shadow}` 预演新动作。基本循环见
+先在 MuJoCo 中从真机姿态起步预演新动作（[第 5 节](#从真机姿态起步预演)）。基本循环见
 [快速开始](../../README.zh-CN.md#仿真)；在真机上，按
 `robot.embodiment.control_hz` 控制循环节奏。
 

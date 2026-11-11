@@ -1,8 +1,9 @@
-# AgiBot X1 — humanoid, driven via a ROS2/AimRT bridge (see the 'agibot_aimrt' driver).
+# AgiBot X1 humanoid, driven via a ROS2/AimRT bridge (agibot_aimrt).
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default; on hardware drop the toy override to use the
+# body file's driver.
 
-defaults: [body/agibot/x1]
-
-body:
-  driver: toy              # swap for 'agibot_aimrt' once the ROS2 bridge is up
+assembly:
+  name: agibot-x1
+  parts:
+    body: {from: body/agibot/x1, overrides: {driver: {type: toy}}}

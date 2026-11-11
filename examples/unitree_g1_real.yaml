@@ -5,21 +5,25 @@
 # (RoboJuDo's G1 stiffness / damping, which hold the robot on its gantry
 # without shaking). See docs/setup/unitree.md before the first commanded motion.
 
-defaults: [unitree_g1]
+defaults: [robots/unitree_g1]
 
-body:
-  driver: unitree_sdk2
-  network_interface: <nic>   # the NIC on the robot's 192.168.123.x network, e.g. eth0
-  ramp_seconds: 3.0
-  damping_kd: 8.0
-  #            hip_p hip_r hip_y knee ank_p ank_r   (left, then right)
-  default_kp: [100, 100, 100, 150, 40, 40,
-               100, 100, 100, 150, 40, 40,
-               200, 200, 200,                        # waist yaw / roll / pitch
-               40, 40, 40, 40, 20, 20, 20,           # left arm
-               40, 40, 40, 40, 20, 20, 20]           # right arm
-  default_kd: [5, 5, 5, 5, 2, 2,
-               5, 5, 5, 5, 2, 2,
-               6, 6, 6,
-               2, 2, 2, 2, 2, 2, 2,
-               2, 2, 2, 2, 2, 2, 2]
+assembly:
+  parts:
+    body:
+      overrides:
+        driver:
+          type: unitree_sdk2
+          network_interface: <nic>   # the NIC on the robot's 192.168.123.x network, e.g. eth0
+          ramp_seconds: 3.0
+          damping_kd: 8.0
+          #            hip_p hip_r hip_y knee ank_p ank_r   (left, then right)
+          default_kp: [100, 100, 100, 150, 40, 40,
+                       100, 100, 100, 150, 40, 40,
+                       200, 200, 200,                        # waist yaw / roll / pitch
+                       40, 40, 40, 40, 20, 20, 20,           # left arm
+                       40, 40, 40, 40, 20, 20, 20]           # right arm
+          default_kd: [5, 5, 5, 5, 2, 2,
+                       5, 5, 5, 5, 2, 2,
+                       6, 6, 6,
+                       2, 2, 2, 2, 2, 2, 2,
+                       2, 2, 2, 2, 2, 2, 2]

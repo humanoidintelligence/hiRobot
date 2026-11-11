@@ -7,7 +7,7 @@ import pytest
 
 from hirobot import load_embodiment, make_robot
 from hirobot.drivers.end_effector import UnitreeMotorCmdsHand
-from hirobot.end_effector import build_end_effectors, end_effector_joint_names
+from hirobot.devices.end_effector import build_end_effectors, end_effector_joint_names
 from tests.drivers.end_effector.unitree.sdk2_motorcmds.fake_sdk import _install, _MotorStates
 
 CFG = "unitree_h1_inspire"
@@ -31,7 +31,7 @@ def test_config_layout():
 
 
 def test_make_robot_builds_assembly_with_inspire_hands():
-    r = make_robot(CFG, body_overrides={"driver": "unitree_sdk2", "msg_family": "go"})
+    r = make_robot(CFG, overrides={"body": {"driver": {"type": "unitree_sdk2", "msg_family": "go"}}})
     assert type(r).__name__ == "RobotAssembly"
     assert set(r.end_effectors) == {"left_hand", "right_hand"}
     assert all(isinstance(h, UnitreeMotorCmdsHand) for h in r.end_effectors.values())

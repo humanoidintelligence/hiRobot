@@ -1,8 +1,9 @@
 """Simulator drivers: simulated robots behind the Robot contract.
 
 - ``toy`` (:mod:`.toy`): a minimal in-process integrator, no dependencies.
-- ``mujoco``: MuJoCo physics, also the twin of a real robot (see
-  :mod:`hirobot.twin`).
+- ``mujoco``: MuJoCo physics. Also used to rehearse a motion before running it
+  on the real robot, started from the real robot's pose
+  (``examples/rehearse_in_sim.py``).
 
 Benchmark environments live in their own packages and register through the
 ``hirobot.drivers`` entry point.

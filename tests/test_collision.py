@@ -1,4 +1,4 @@
-"""Collision check between robot-group members (hirobot.collision, RobotGroup)."""
+"""Collision check between the parts of an assembly (hirobot.geometry.collision, RobotAssembly)."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import os
 
 import numpy as np
 import pytest
-import yaml
 
-from hirobot import Action, ControlMode, RobotGroup, SafetyError, make_robot
-from hirobot.collision import CollisionCheck, member_model, segment_distances
+from hirobot import Action, ControlMode, SafetyError
+from hirobot.assembly import RobotAssembly
+from hirobot.geometry.collision import CollisionCheck, member_model, segment_distances
 from hirobot.drivers.sim.toy import ToyRobot
-from hirobot.embodiment import Embodiment
-from hirobot.kinematics import Kinematics
+from hirobot.core.embodiment import Embodiment
+from hirobot.geometry.kinematics import Kinematics
 
 # A 3-joint arm standing on the floor: base -> j0 (yaw, z) -> 0.3 m up -> j1 (pitch, y)
 # -> 0.3 m -> j2 (pitch, y) -> 0.2 m tip. Upright at zero, reaching along +x when
@@ -70,17 +70,17 @@ def _pair(arm_xml, gap_x=0.8, min_distance=0.05, radius=0.04):
                             "right": member_model(kin, names, radius)}, min_distance)
     left, right = Arm(), Arm()
     # Right arm faces the left one: placed at +x, turned 180 degrees about z.
-    group = RobotGroup({"left": left, "right": right},
-                       base_poses={"left": [0, 0, 0, 0, 0, 0, 1],
-                                   "right": [gap_x, 0, 0, 0, 0, 1, 0]},
-                       collision=check)
+    group = RobotAssembly(None, parts={"left": left, "right": right},
+                          placement={"left": {"pose": [0, 0, 0, 0, 0, 0, 1]},
+                                     "right": {"pose": [gap_x, 0, 0, 0, 0, 1, 0]}},
+                          collision=check)
     group.connect()
     return group, left, right
 
 
 def _reach(left, right):
     # j1 = pi/2 tips the arm over towards +x of its own base.
-    return Action(members={
+    return Action(parts={
         "left": Action(mode=ControlMode.POSITION, joint_target=np.array([0, left, 0.0])),
         "right": Action(mode=ControlMode.POSITION, joint_target=np.array([0, right, 0.0])),
     })
@@ -170,51 +170,29 @@ def test_member_without_a_model_is_not_checked(arm_xml):
         CollisionCheck({"left": member_model(kin, names, 0.04)}, 0.05)
     check = CollisionCheck({"left": member_model(kin, names, 0.04),
                             "right": member_model(kin, names, 0.04)}, 0.05)
-    with pytest.raises(ValueError, match="no member"):
-        RobotGroup({"left": Arm(), "other": Arm()}, collision=check)
+    with pytest.raises(ValueError, match="no child part"):
+        RobotAssembly(None, parts={"left": Arm(), "other": Arm()}, collision=check)
     # A third arm with no model sits on top of the left one; it is not checked.
     third = Arm()
-    group = RobotGroup({"left": Arm(), "right": Arm(), "third": third},
-                       base_poses={"right": [0.8, 0, 0, 0, 0, 1, 0]}, collision=check)
+    group = RobotAssembly(None, parts={"left": Arm(), "right": Arm(), "third": third},
+                          placement={"right": {"pose": [0.8, 0, 0, 0, 0, 1, 0]}}, collision=check)
     group.connect()
-    group.send_action(Action(members={
+    group.send_action(Action(parts={
         "third": Action(mode=ControlMode.POSITION, joint_target=np.array([0, np.pi / 2, 0]))}))
     assert len(third.sent) == 1
 
 
-def test_floating_member_needs_a_base_pose(arm_xml):
+def test_floating_part_without_odometry_is_refused(arm_xml):
+    # A part that moves by itself has a position only while it reports odometry.
     floating = ToyRobot(Embodiment(name="h", control_hz=30, joints=[{"name": f"j{i}"} for i in range(3)]))
     kin = Kinematics.from_mjcf(arm_xml)
     names = [f"j{i}" for i in range(3)]
     check = CollisionCheck({"a": member_model(kin, names, 0.04), "h": member_model(kin, names, 0.04)}, 0.05)
-    with pytest.raises(ValueError, match="need a base_pose"):
-        RobotGroup({"a": Arm(), "h": floating}, collision=check)
-
-
-def test_group_config_collision_section(tmp_path, arm_xml):
-    for name in ("a", "b"):
-        (tmp_path / f"{name}.yaml").write_text(yaml.safe_dump({
-            "embodiment": _arm(name).model_dump(mode="json"), "body": {"driver": "toy"}}))
-    (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "arm.xml").write_text(ARM_XML)
-    cfg = {"group": {
-        "members": {"left": {"config": "./a.yaml"},
-                    "right": {"config": "./b.yaml", "base_pose": [0.8, 0, 0, 0, 0, 1, 0]}},
-        "collision": {"min_distance": 0.05, "radius": 0.04,
-                      "models": {"left": {"mjcf": "models/arm.xml"},
-                                 "right": {"mjcf": "models/arm.xml", "skip": ["link0"]}}}}}
-    path = tmp_path / "dual.yaml"
-    path.write_text(yaml.safe_dump(cfg))
-    group = make_robot(str(path))
-    assert group.collision is not None and group.collision.min_distance == 0.05
+    group = RobotAssembly(None, parts={"a": Arm(), "h": floating}, collision=check)
     group.connect()
-    with pytest.raises(SafetyError, match="collision check"):
-        group.send_action(Action(mode=ControlMode.POSITION,
-                                 joint_target=np.array([0, np.pi / 2, 0, 0, np.pi / 2, 0])))
-    cfg["group"]["collision"]["models"]["left"]["oops"] = 1
-    path.write_text(yaml.safe_dump(cfg))
-    with pytest.raises(ValueError, match="unknown key"):
-        make_robot(str(path))
+    with pytest.raises(SafetyError, match="no known position"):
+        group.send_action(Action(parts={"a": Action(mode=ControlMode.POSITION,
+                                                    joint_target=np.zeros(3))}))
 
 
 # ---------------------------------------------------------------- real model

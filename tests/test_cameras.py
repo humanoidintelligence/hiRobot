@@ -20,7 +20,7 @@ from hirobot import (
     load_embodiment,
     make_robot,
 )
-from hirobot.camera import PollingCameraDriver, available_cameras, get_camera
+from hirobot.devices.camera import PollingCameraDriver, available_cameras, get_camera
 from hirobot.drivers.camera import UnitreeVideohubCamera
 from hirobot.drivers.sim.toy import ToyRobot
 
@@ -162,7 +162,7 @@ def test_assembly_forwards_actions_through_its_safety_gate():
     robot = RobotAssembly(robot, {})
     from hirobot import SafetyGate
 
-    robot.set_safety(SafetyGate.from_embodiment(robot.embodiment))
+    robot._set_safety(SafetyGate.from_embodiment(robot.embodiment))
     robot.connect()
     n = robot.embodiment.num_dofs
     robot.send_action(Action(mode=ControlMode.POSITION, joint_target=np.zeros(n)))
@@ -203,8 +203,8 @@ def test_make_robot_skips_sources_for_sim_driver():
 
 
 def test_stamps_count_frames_and_stale_sources_reads_them():
-    from hirobot.stamps import Stamp, StampCounter, stale_sources
-    from hirobot.types import Observation
+    from hirobot.core.stamps import Stamp, StampCounter, stale_sources
+    from hirobot.core.types import Observation
 
     counter = StampCounter(clock=lambda: 5.0)
     assert counter.last is None

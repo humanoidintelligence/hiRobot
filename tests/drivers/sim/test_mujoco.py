@@ -1,8 +1,8 @@
-"""MuJoCo driver and real/sim pairing (TwinRobot).
+"""MuJoCo driver, and rehearsing from a real robot's pose (examples/rehearse_in_sim.py).
 
 The physics tests need ``mujoco`` and the G1 MJCF from unitree_ros (see
 the built-in config unitree_g1_mujoco); they are skipped when either is absent.
-The pairing tests use a fake real driver, so they never touch hardware.
+The rehearsal test uses a fake real driver, so it never touches hardware.
 """
 
 from __future__ import annotations
@@ -14,19 +14,36 @@ import pytest
 import yaml
 
 from hirobot import Action, ControlMode, Observation, Robot, load_embodiment, make_robot
-from hirobot.config import load_config
-from hirobot.twin import TwinRobot
+from tests.conftest import mjcf_of
 
 CFG = "unitree_g1_mujoco"
-MODEL = os.path.expanduser(load_config(CFG)["body"]["model_path"])
+MODEL = mjcf_of(CFG)
 
 mujoco = pytest.importorskip("mujoco")
 needs_model = pytest.mark.skipif(not os.path.isfile(MODEL), reason=f"G1 MJCF not found at {MODEL}")
 
 
-def _sim(**overrides):
-    over = {"realtime": False, "viewer": False, **overrides}
-    return make_robot(CFG, body_overrides=over)
+def _sim(fixed_base=True):
+    """The G1 in the shared simulation; ``set_state`` and ``_advance`` are on its view."""
+    from hirobot.loading.config import load_config
+
+    cfg = load_config(CFG)
+    cfg["sim"] = {**cfg["sim"], "realtime": False, "viewer": False,
+                  "fixed_base": ["body"] if fixed_base else []}
+    if not fixed_base:
+        cfg["sim"]["base_height"] = {}
+    return _view(make_robot(cfg))
+
+
+def _view(robot):
+    """The MuJoCo view under the gate (and the assembly holding the head camera)."""
+    from hirobot.drivers.sim.mujoco.driver import MujocoView
+
+    inner = robot
+    while not isinstance(inner, MujocoView):
+        inner = getattr(inner, "body", None) or inner._inner
+    robot.__dict__["view"] = inner
+    return inner
 
 
 def _hold(robot, target, seconds):
@@ -108,10 +125,14 @@ def test_floating_base_falls():
 
 @needs_model
 def test_standing_config_starts_with_feet_on_the_floor():
-    robot = make_robot("unitree_g1_mujoco_standing", body_overrides={"realtime": False})
+    from hirobot.loading.config import load_config
+
+    cfg = load_config("unitree_g1_mujoco_standing")
+    cfg["sim"]["realtime"] = False
+    robot = _view(make_robot(cfg))
     robot.connect()
     assert robot.get_observation().base_position[2] == pytest.approx(0.793, abs=1e-3)
-    robot.idle_step()  # one control period with no command
+    robot._idle_step()  # one control period with no command
     mj, m, d = robot._mj, robot.model, robot.data
     floor = mj.mj_name2id(m, mj.mjtObj.mjOBJ_GEOM, "floor")
     touching = {mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY, m.geom_bodyid[g])
@@ -124,8 +145,8 @@ def test_standing_config_starts_with_feet_on_the_floor():
 @needs_model
 @pytest.mark.parametrize("fixed_base", [True, False])
 def test_ee_poses_are_wrist_links_in_the_base_frame(fixed_base):
-    from hirobot.kinematics import Kinematics
-    from hirobot.transforms import pose_compose
+    from hirobot.geometry.kinematics import Kinematics
+    from hirobot.geometry.transforms import pose_compose
 
     robot = _sim(fixed_base=fixed_base)
     robot.connect()
@@ -160,11 +181,13 @@ def test_ee_poses_are_wrist_links_in_the_base_frame(fixed_base):
 
 @needs_model
 def test_ee_frame_offset_and_unknown_body():
-    cfg = load_config(CFG)
-    cfg["body"].update(realtime=False)
-    cfg["embodiment"]["end_effectors"] = [
-        {"name": "tool", "frame": {"body": "right_wrist_yaw_link", "pos": [0.1, 0.0, 0.0]}}]
-    robot = make_robot(cfg)
+    def cfg(frame):
+        body = {"frames": [{"name": "tool", **frame}], "grippers": []}
+        return {"defaults": [CFG], "sim": {"realtime": False},
+                "assembly": {"parts": {"body": {"overrides": body}}}}
+
+    robot = _view(make_robot(cfg({"link": "right_wrist_yaw_link",
+                                  "pose": [0.1, 0, 0, 0, 0, 0, 1]})))
     robot.connect()
     obs = robot.get_observation()
     d, m = robot.data, robot.model
@@ -173,13 +196,12 @@ def test_ee_frame_offset_and_unknown_body():
     np.testing.assert_allclose(obs.ee_poses["tool"][:3], expected, atol=1e-9)  # pelvis not rotated
     robot.disconnect()
 
-    cfg["embodiment"]["end_effectors"] = [{"name": "tool", "frame": {"body": "no_such_link"}}]
     with pytest.raises(ValueError, match="frame.body 'no_such_link'"):
-        make_robot(cfg).connect()
+        make_robot(cfg({"link": "no_such_link"})).connect()
 
 
 def test_missing_model_reports_path(tmp_path):
-    robot = make_robot(CFG, body_overrides={"model_path": str(tmp_path / "nope.xml")})
+    robot = make_robot(CFG, overrides={"body": {"model": {"mjcf": str(tmp_path / "nope.xml")}}})
     with pytest.raises(FileNotFoundError, match="nope.xml"):
         robot.connect()
 
@@ -223,106 +245,51 @@ class _FakeReal(Robot):
         self.disconnected = True
 
 
-def _twin(**kw):
-    from hirobot.drivers.sim.mujoco import MujocoRobot
+def _load_example():
+    import importlib.util
+    from pathlib import Path
 
-    emb = load_embodiment(CFG)
-    return MujocoRobot(emb, model_path=MODEL, fixed_base=True, base_height=1.0, realtime=False,
-                       default_kp=40.0, default_kd=2.0, **kw)
+    path = Path(__file__).resolve().parents[3] / "examples" / "rehearse_in_sim.py"
+    spec = importlib.util.spec_from_file_location("rehearse_in_sim", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 @needs_model
-def test_shadow_never_commands_real():
+def test_rehearsal_starts_from_the_real_pose_and_never_commands_it():
+    ex = _load_example()
     emb = load_embodiment(CFG)
     j = emb.joint_names.index("right_elbow")
     pose = np.zeros(29)
     pose[j] = 1.3
     real = _FakeReal(emb, read_only=True, pose=pose)
-    robot = TwinRobot(real, _twin(), mode="shadow")
-    robot.connect()
-    # Sim starts at the real robot's measured pose.
-    assert robot.get_observation().joint_pos[j] == pytest.approx(1.3)
-    robot.reset()
-    target = pose.copy()
-    target[j] = 0.0
-    for _ in range(100):
-        robot.send_action(Action(mode=ControlMode.PD, joint_target=target))
-    robot.set_gains(np.full(29, 50.0), None)
-    robot.disconnect()
+    real.connect()
+    obs = real.get_observation()
+    sim = ex.sim_from_pose(CFG, obs, {"realtime": False, "viewer": False})  # sim: overrides
+    try:
+        assert sim.get_observation().joint_pos[j] == pytest.approx(1.3, abs=0.05)
+        q = ex.rehearse(sim, "right_elbow", 0.0, 1.0)
+    finally:
+        sim.disconnect()
+    assert q[j] < 0.3  # the sim did move
     assert real.commands == [] and real.resets == 0
-    assert robot.sim.get_observation().joint_pos[j] < 0.2  # the sim did move
 
 
-def test_shadow_refuses_writable_real():
-    emb = load_embodiment(CFG)
-    robot = TwinRobot(_FakeReal(emb, read_only=False), _twin(), mode="shadow")
-    with pytest.raises(RuntimeError, match="read_only"):
-        robot.connect()
+def test_sim_false_builds_the_real_robot_and_sim_true_a_toy_config_in_the_world(tmp_path):
+    from hirobot.drivers.sim.mujoco.driver import MujocoView
 
-
-@needs_model
-def test_mirror_commands_real_and_renders_its_state():
-    emb = load_embodiment(CFG)
-    j = emb.joint_names.index("right_elbow")
-    real = _FakeReal(emb)
-    robot = TwinRobot(real, _twin(), mode="mirror", mirror_hz=200)
-    robot.connect()
-    robot.reset()
-    target = np.zeros(29)
-    robot.send_action(Action(mode=ControlMode.PD, joint_target=target))
-    assert real.resets == 1 and len(real.commands) == 1
-    real.pose[j] = 0.7  # the hardware moved
-    import time
-
-    deadline = time.time() + 2.0
-    while time.time() < deadline and abs(robot.sim.data.qpos[robot.sim._qadr[j]] - 0.7) > 1e-9:
-        time.sleep(0.01)
-    assert robot.sim.data.qpos[robot.sim._qadr[j]] == pytest.approx(0.7)
-    assert robot.get_observation().joint_pos[j] == pytest.approx(0.7)  # read from real
-    robot.disconnect()
-    assert real.disconnected and robot.mirror_error is None
-
-
-def test_safety_gate_applies_through_wrapper():
-    from hirobot import SafetyError, SafetyGate
-
-    emb = load_embodiment(CFG)
-    real = _FakeReal(emb)
-    robot = TwinRobot(real, _twin(), mode="mirror")
-    robot.set_safety(SafetyGate.from_embodiment(emb, joint_limit=1.0))
-    with pytest.raises(SafetyError):
-        robot.send_action(Action(mode=ControlMode.PD, joint_target=np.full(29, 2.0)))
-    assert real.commands == []
-
-
-def test_make_robot_sim_modes(tmp_path):
-    cfg = load_config(CFG)
-    cfg["body"] = {"driver": "unitree_sdk2", "network_interface": "eth9", "default_kp": 40.0}
-    cfg["sim"] = {"mode": False, "model": MODEL}  # bare `off` in YAML
+    real = make_robot(CFG, sim=False)
+    assert not isinstance(_inner_body(real), MujocoView)
     path = tmp_path / "g1.yaml"
-    path.write_text(yaml.safe_dump(cfg))
+    path.write_text(yaml.safe_dump({"defaults": ["unitree_g1"]}))
+    assert isinstance(_inner_body(make_robot(str(path), sim=True)), MujocoView)
 
-    # The G1 config carries the head camera and audio, so the robot comes
-    # wrapped in a RobotAssembly; the body underneath is what changes.
-    off = make_robot(str(path))
-    assert type(off.body).__name__ == "UnitreeRobot"
-    assert set(off.cameras) == {"head"}
 
-    shadow = make_robot(str(path), sim_overrides={"mode": "shadow"})
-    assert isinstance(shadow.body, TwinRobot) and shadow.body.mode == "shadow"
-    assert shadow.body.real._read_only and shadow.body.sim._kp[0] == 40.0
-    assert shadow.safety is not None
-
-    mirror = make_robot(str(path), sim_overrides={"mode": "mirror"}).body
-    assert not mirror.real._read_only
-    # The twin renders no cameras even if they carry a mount; images come from the real ones.
-    assert all(c.mount is None for c in mirror.sim.embodiment.cameras)
-
-    with pytest.raises(ValueError, match="release_motion_mode"):
-        make_robot(str(path), body_overrides={"release_motion_mode": True},
-                   sim_overrides={"mode": "shadow"})
-    with pytest.raises(ValueError, match="sim.mode"):
-        make_robot(str(path), sim_overrides={"mode": "bogus"})
+def _inner_body(robot):
+    while hasattr(robot, "_inner") or hasattr(robot, "body"):
+        robot = getattr(robot, "body", None) or robot._inner
+    return robot
 
 
 def test_floating_base_quaternion_is_scalar_last():

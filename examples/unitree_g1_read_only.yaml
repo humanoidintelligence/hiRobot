@@ -6,5 +6,6 @@
 
 defaults: [unitree_g1_real.yaml]
 
-body:
-  read_only: true
+assembly:
+  parts:
+    body: {overrides: {driver: {read_only: true}}}

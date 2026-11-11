@@ -1,6 +1,6 @@
 """Unitree humanoid driver (G1 / H1-2 / H2, and legacy H1).
 
-Wraps ``unitree_sdk2py`` behind the :class:`~hirobot.robot.Robot` contract. All
+Wraps ``unitree_sdk2py`` behind the :class:`~hirobot.core.robot.Robot` contract. All
 communication is DDS: we publish a ``LowCmd`` on ``rt/lowcmd`` and subscribe to
 ``LowState`` on ``rt/lowstate``. G1, H1-2 and H2 all use the ``unitree_hg``
 message family; the original 19-DoF H1 uses the older ``unitree_go`` family —
@@ -37,14 +37,15 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
 
 from hirobot.drivers._sdk.unitree_sdk2 import channel_api, init_channel
-from hirobot.embodiment import Embodiment
-from hirobot.registry import register_body
-from hirobot.robot import Robot
-from hirobot.robot_skills import RobotSkillError, RobotSkillSpec
-from hirobot.safety import SafetyError
-from hirobot.sdk import require_sdk
-from hirobot.stamps import Stamp, StampCounter
-from hirobot.types import Action, BatteryState, ControlMode, Observation, RobotStatus
+from hirobot.core.embodiment import Embodiment
+from hirobot.loading.registry import register_body
+from hirobot.core.robot import Robot
+from hirobot.core.robot_skills import RobotSkillError, RobotSkillSpec
+from hirobot.control.safety import SafetyError
+from hirobot.loading.sdk import require_sdk
+from hirobot.core.stamps import Stamp, StampCounter
+from hirobot.core.types import Action, BatteryState, ControlMode, Observation, RobotStatus
+from hirobot.control.watchdog import DEFAULT_COMMAND_TIMEOUT_S, CommandWatchdog
 
 # Topics are fixed by the SDK.
 _LOWCMD_TOPIC = "rt/lowcmd"
@@ -88,8 +89,14 @@ class UnitreeRobot(Robot):
         damping_kd: Per-motor damping used by :meth:`damp` (kp = 0), which
             :meth:`disconnect` sends so the robot goes limp-but-damped on exit.
         read_only: Subscribe to state but never create the ``rt/lowcmd``
-            publisher, so nothing this driver does can command the robot (used
-            by the sim ``shadow`` mode). Any command raises ``RuntimeError``.
+            publisher, so nothing this driver does can command the robot (for
+            reading the pose before a rehearsal in simulation, or watching).
+            Any command raises ``RuntimeError``.
+        command_timeout_s: Seconds without a new ``VELOCITY`` command before a
+            timer thread sends zero velocity (kp 0, the default kd) and logs a
+            warning, so a caller that hangs does not leave the joints
+            spinning; ``None`` turns it off. Not in the fault state: the next
+            command runs as usual.
         go_weak_motors: ``go`` family only: motor slots sent with mode 0x01
             instead of 0x0A. Defaults to the H1's ankles and arms.
         builtin_skills: Expose the robot's built-in skills (walk, sit, arm
@@ -117,6 +124,7 @@ class UnitreeRobot(Robot):
         motor_index: Optional[Sequence[int]] = None,
         go_weak_motors: Sequence[int] = _H1_WEAK_MOTORS,
         builtin_skills: Optional[str] = None,
+        command_timeout_s: Optional[float] = DEFAULT_COMMAND_TIMEOUT_S,
     ) -> None:
         if read_only and release_motion_mode:
             raise ValueError("read_only and release_motion_mode are mutually exclusive")
@@ -153,6 +161,10 @@ class UnitreeRobot(Robot):
                 "combined with read_only or release_motion_mode")
         self._builtin_skills = builtin_skills
         self._skills = None
+        self.command_timeout_s = command_timeout_s
+        self._watchdog = CommandWatchdog(type(self).__name__, command_timeout_s,
+                                         self._stop_velocity, thread=True,
+                                         lock=self._estop_signal.lock)
 
         self._publisher = None
         self._subscriber = None
@@ -313,7 +325,7 @@ class UnitreeRobot(Robot):
         ``builtin_skills`` the built-in service owns the motors, so this does nothing.
 
         An :meth:`estop` from another thread ends the ramp at the next step
-        (:class:`~hirobot.robot.RobotStoppedError`); the robot is left damped.
+        (:class:`~hirobot.core.robot.RobotStoppedError`); the robot is left damped.
         """
         if self._read_only:
             raise RuntimeError("UnitreeRobot is read_only; reset() would command the robot")
@@ -447,6 +459,14 @@ class UnitreeRobot(Robot):
             self._write_joint_command(None, np.zeros(self._n), np.zeros(self._n), dq=None, tau=target)
         else:
             raise ValueError(f"UnitreeRobot does not support mode {action.mode!r}")
+        self._watchdog.feed(action.mode)
+
+    def _stop_velocity(self, mode: ControlMode) -> None:
+        """Watchdog: zero velocity under damping (kp 0), unless stopped already."""
+        if self.fault is not None or self._publisher is None or self._builtin_skills is not None:
+            return
+        zeros = np.zeros(self._n)
+        self._write_joint_command(None, zeros, self._kd, dq=zeros, tau=None)
 
     def _write_joint_command(self, q, kp, kd, dq, tau) -> None:
         """Fill the per-motor command fields, CRC it, and publish one LowCmd."""
@@ -500,6 +520,7 @@ class UnitreeRobot(Robot):
             self.damp()
 
     def disconnect(self) -> None:
+        self._watchdog.close()
         # Leave the robot damped rather than holding the last PD target.
         if self._connected:
             self.damp()

@@ -8,7 +8,7 @@ what each kind of change needs so it can be reviewed quickly.
 
 ```bash
 git clone https://github.com/humanoidintelligence/hiRobot.git && cd hiRobot
-pip install -e '.[dev]'          # add '.[sim]' for the MuJoCo driver and twin
+pip install -e '.[dev]'          # add '.[sim]' for the MuJoCo driver
 python -m pytest                 # run from the repo root; no GPU, robot or SDK needed
 ruff check .                     # what CI enforces (rules in pyproject.toml)
 ```
@@ -51,6 +51,15 @@ naming. In short:
 - Keep health signals (battery, temperatures) in `get_status()`, not in
   `Observation`.
 
+Layers (`register_layer`, usually in a plugin package) are trusted code, like
+kernel modules: they run in the same process and could reach past the safety
+gate. Review them to that standard. A layer subclasses `hirobot.Layer`, commands
+the robot below only through public methods of `self.inner` (`send_action`,
+`hold`, ...), and overrides `_estop` to stop itself only (the base class
+e-stops the hardware first). Add `hirobot.testing.assert_layer_uses_public_api(MyLayer)`
+to its tests: it fails if the layer touched `_`-prefixed methods or the
+assembly's parts.
+
 ## Tests
 
 - A new driver passes the shared contract checks in `tests/drivers/contract.py`
@@ -77,11 +86,11 @@ naming. In short:
 
 A pull request that changes what a driver sends to the hardware must say how it
 was checked. For a first run, the setup guides in `docs/setup/` use this order:
-read-only, then a shadow rehearsal in MuJoCo where the driver supports it, then
-a hung or supported robot with low gains, with the e-stop in reach. Don't put
-real IP addresses, serial numbers or calibration from your lab into shared
-configs; keep them in a local config that uses `defaults:` to build on the
-built-in one.
+read-only, then a rehearsal in MuJoCo started from the real pose where a model
+exists (`examples/rehearse_in_sim.py`), then a hung or supported robot with low
+gains, with the e-stop in reach. Don't put real IP addresses, serial numbers or
+calibration from your lab into shared configs; keep them in a local config that
+uses `defaults:` to build on the built-in one.
 
 ## Pull requests
 

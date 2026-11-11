@@ -1,9 +1,17 @@
-# Unitree G1 — 29-DoF humanoid.
+# Unitree G1: 29-DoF humanoid with its head camera, microphone and speaker.
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default. On hardware drop the toy override (the
+# body file's driver is unitree_sdk2) and give the network interface, e.g.
+#   make_robot("unitree_g1", overrides={"body": {"driver": {"type": "unitree_sdk2",
+#                                                           "network_interface": "eth0"}}})
+# (docs/setup/unitree.md).
 
-defaults: [body/unitree/g1_29dof, camera/unitree/g1_head_d435i, audio/unitree/g1]
-
-body:
-  driver: toy   # set to 'unitree_sdk2' on hardware (docs/setup/unitree.md)
-  # builtin_skills: g1   # with driver: unitree_sdk2, run the built-in walk / gestures by name
+assembly:
+  name: unitree-g1
+  parts:
+    body: {from: body/unitree/g1, overrides: {driver: {type: toy}}}
+    head: {from: camera/intel/d435i}
+    head_mic: {from: microphone/unitree/g1}
+    head_speaker: {from: speaker/unitree/g1}
+  placement:
+    head: {on: body.head_camera}

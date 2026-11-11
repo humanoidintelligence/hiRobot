@@ -1,7 +1,7 @@
 """The stand-in audio devices pass the audio contract."""
 
-from hirobot.drivers.audio.generic.wav import wav_bytes
 from hirobot.drivers.audio import NullSpeaker, WavMicrophone, WavSpeaker
+from hirobot.drivers.audio.generic.wav import wav_bytes
 from tests.drivers.contract import check_microphone, check_speaker
 
 

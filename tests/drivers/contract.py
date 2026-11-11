@@ -2,8 +2,8 @@
 
 Each SDK directory's ``test_contract.py`` builds its driver against its own
 fake SDK and calls these. They check only what the base classes promise
-(``hirobot.robot.Robot``, ``hirobot.end_effector.EndEffectorDriver`` on each
-interface, ``hirobot.camera.CameraDriver``, ``hirobot.audio``), so a new driver that passes them works with
+(``hirobot.core.robot.Robot``, ``hirobot.devices.end_effector.EndEffectorDriver`` on each
+interface, ``hirobot.devices.camera.CameraDriver``, ``hirobot.devices.audio``), so a new driver that passes them works with
 ``make_robot``, ``RobotAssembly`` and hiAgent's control loop. What a driver
 does beyond that (gains, slot maps, vendor quirks) is in its own tests.
 
@@ -12,7 +12,7 @@ The checks:
 * **registered**: the driver is in its registry under the name, with the
   right base class.
 * **manifest**: an SDK driver's package carries a ``manifest.yaml`` whose
-  ``sdk`` list parses (``hirobot.sdk.load_manifest``).
+  ``sdk`` list parses (``hirobot.loading.sdk.load_manifest``).
 * **lifecycle**: construct without the SDK; connect / read / command /
   disconnect against the fake; disconnect twice is safe.
 * **shapes**: readings have one value per joint, the quaternion is
@@ -34,12 +34,12 @@ import numpy as np
 import pytest
 
 from hirobot import Action, ControlMode, Robot, RobotFaultError, SafetyError, SafetyGate
-from hirobot.audio import MicrophoneDriver, SpeakerDriver, get_audio
-from hirobot.camera import CameraDriver, get_camera
-from hirobot.end_effector import EndEffectorDriver, JointsState, OpeningState, get_end_effector
-from hirobot.registry import get_body
-from hirobot.sdk import load_manifest
-from hirobot.stamps import Stamp
+from hirobot.devices.audio import MicrophoneDriver, SpeakerDriver, get_audio
+from hirobot.devices.camera import CameraDriver, get_camera
+from hirobot.devices.end_effector import EndEffectorDriver, JointsState, OpeningState, get_end_effector
+from hirobot.loading.registry import get_body
+from hirobot.loading.sdk import load_manifest
+from hirobot.core.stamps import Stamp
 
 WBC_MODES = (ControlMode.BASE_VELOCITY, ControlMode.MOTION_LATENT)
 
@@ -102,11 +102,11 @@ def check_sim(name: str, make: Callable[[], Robot], sent: Callable[[], int],
 
 def check_robot_behaviour(robot: Robot, sent: Callable[[], int],
                           command_mode: Optional[ControlMode] = None, label: str = "robot") -> None:
-    """What any :class:`~hirobot.robot.Robot` promises, registered driver or not.
+    """What any :class:`~hirobot.core.robot.Robot` promises, registered driver or not.
 
     Lifecycle, reading shapes, one command reaching the hardware (or fake), and
     the gate refusing a wrong-sized target before anything is sent. Used by
-    :func:`check_robot` and directly for composites such as ``RobotGroup``.
+    :func:`check_robot` and directly for composites such as a ``RobotAssembly`` with parts.
 
     Args:
         robot: An unconnected robot.
@@ -145,12 +145,12 @@ def check_robot_behaviour(robot: Robot, sent: Callable[[], int],
         robot.send_action(Action(mode=mode, joint_target=np.asarray(obs.joint_pos, dtype=float)))
         assert sent() > before, f"{label}: a {mode.value} command reached nothing"
 
-        robot.set_safety(SafetyGate.from_embodiment(emb))
+        robot._set_safety(SafetyGate.from_embodiment(emb))
         before = sent()
         with pytest.raises(SafetyError):
             robot.send_action(Action(mode=mode, joint_target=np.zeros(n + 1)))
         assert sent() == before, "a refused action must not reach the robot"
-        robot.set_safety(None)
+        robot._set_safety(None)
 
         check_estop(robot, sent, mode, label)
     finally:

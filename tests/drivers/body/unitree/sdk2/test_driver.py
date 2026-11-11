@@ -27,7 +27,7 @@ def test_unitree_per_joint_gains():
 def test_make_robot_overrides_body_section():
     robot = make_robot(
         "unitree_g1",
-        body_overrides={"driver": "unitree_sdk2", "network_interface": "eth9", "msg_family": "hg"},
+        overrides={"body": {"driver": {"type": "unitree_sdk2", "network_interface": "eth9", "msg_family": "hg"}}},
     )
     # The G1 config declares a head camera, so the body comes wrapped in a RobotAssembly.
     assert type(robot).__name__ == "RobotAssembly"
@@ -43,7 +43,7 @@ def test_real_robot_without_sim_does_not_import_mujoco():
     code = (
         "import sys; from hirobot import make_robot; "
         "r = make_robot('unitree_g1', "
-        "body_overrides={'driver': 'unitree_sdk2', 'network_interface': 'eth9'}); "
+        "overrides={'body': {'driver': {'type': 'unitree_sdk2', 'network_interface': 'eth9'}}}); "
         "assert type(r.body).__name__ == 'UnitreeRobot'; "
         "assert 'mujoco' not in sys.modules, 'mujoco imported'"
     )

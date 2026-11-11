@@ -29,8 +29,8 @@ from typing import Any, Optional, Tuple
 
 import numpy as np
 
-from hirobot.camera import PollingCameraDriver, register_camera
-from hirobot.sdk import require_sdk
+from hirobot.devices.camera import PollingCameraDriver, register_camera
+from hirobot.loading.sdk import require_sdk
 
 #: Environment variables ``cosine_bus`` needs (set by the vendor's env.sh).
 REQUIRED_ENV = ("LOCATOR_IP", "AORTA_DISCOVERY_URI")

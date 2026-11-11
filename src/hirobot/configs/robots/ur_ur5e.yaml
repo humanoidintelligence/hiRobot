@@ -1,9 +1,9 @@
-# Universal Robots UR5e — 6-DoF fixed-base arm.
+# Universal Robots UR5e: 6-DoF fixed-base arm (ur_rtde, robot address in driver.ip).
 #
-# The parts are in the files listed under defaults: (hirobot/configs/).
+# Runs on the toy body by default; on hardware drop the toy override to use the
+# body file's driver.
 
-defaults: [body/ur/ur5e]
-
-body:
-  driver: toy              # swap for 'ur_rtde' on hardware
-  # ip: 192.168.1.102      # controller IP (uncomment for the 'ur_rtde' driver)
+assembly:
+  name: ur5e
+  parts:
+    body: {from: body/ur/ur5e, overrides: {driver: {type: toy}}}

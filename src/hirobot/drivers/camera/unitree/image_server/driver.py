@@ -8,7 +8,7 @@ concatenated side by side into one image; ``crop`` takes one of them out. Its
 bytes); set ``header: true`` for it. ``scripts/camera_image_server.py`` serves
 one OpenCV camera in the same format, for a computer without the Unitree server.
 
-The driver only subscribes, so it is safe in ``read_only`` and ``sim: shadow``.
+The driver only subscribes, so it is safe next to a ``read_only`` body.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from typing import Optional
 
 import numpy as np
 
-from hirobot.camera import PollingCameraDriver, register_camera
-from hirobot.sdk import require_sdk
+from hirobot.devices.camera import PollingCameraDriver, register_camera
+from hirobot.loading.sdk import require_sdk
 
 #: ``struct.pack('dI', ...)``: a float64 and a uint32, 12 bytes.
 _HEADER = struct.calcsize("dI")

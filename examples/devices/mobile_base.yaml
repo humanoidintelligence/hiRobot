@@ -1,0 +1,16 @@
+# Example body device: a mobile base. No real model — an illustration for
+# mobile_ur5e.yaml, kept out of the built-in configs for that reason.
+#
+# No joints: it takes BASE_VELOCITY and, on the toy driver with floating_base,
+# integrates base_position / base_orientation from it (odometry).
+device: body
+control_hz: 50
+floating_base: true
+
+joints: []
+
+mounts:
+  # Where the arm bolts onto the top plate, in the base_link frame.
+  arm_mount: {link: base_link, pose: [0.2, 0, 0.45, 0, 0, 0, 1]}
+
+driver: {type: toy, mobile_base: true}

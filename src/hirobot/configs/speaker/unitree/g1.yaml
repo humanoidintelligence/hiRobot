@@ -1,0 +1,7 @@
+# Unitree G1 built-in speaker: the SDK 'voice' service on the G1 audio board (.161).
+# Real driver only (docs/setup/unitree.md).
+
+device: speaker
+driver:
+  type: unitree_voice_speaker
+  volume: 60            # set on connect, the previous volume is restored on disconnect

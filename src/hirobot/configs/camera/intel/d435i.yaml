@@ -1,0 +1,12 @@
+# Intel RealSense D435i, colour stream at 1920x1080 as the Unitree G1 serves it.
+#
+# fovy is the colour camera's nominal vertical field of view (about 69 x 42 deg).
+# The driver is the G1's videohub on PC2 (JPEG at the native resolution); with
+# the toy body only stand-in cameras run, so it is skipped offline. Where it
+# sits is the robot config's placement (the G1 body's head_camera mount).
+
+device: camera
+width: 1920
+height: 1080
+fovy: 42
+driver: {type: unitree_videohub}

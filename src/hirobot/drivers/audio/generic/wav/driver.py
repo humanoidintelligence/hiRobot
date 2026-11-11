@@ -21,7 +21,7 @@ import wave
 from array import array
 from typing import List, Optional, Tuple
 
-from hirobot.audio import (
+from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     QueuedMicrophone,
     SpeakerDriver,
