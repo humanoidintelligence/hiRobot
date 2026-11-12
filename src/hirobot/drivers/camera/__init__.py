@@ -21,7 +21,9 @@ With a simulated body only camera drivers marked ``simulated = True`` are built
 from hirobot.drivers.camera.agibot.cosine import AgibotCosineCamera
 from hirobot.drivers.camera.generic import ArrayCamera, VideoFileCamera
 from hirobot.drivers.camera.intel.realsense import RealSenseCamera
+from hirobot.drivers.camera.orbbec.pyorbbecsdk import OrbbecCamera
+from hirobot.drivers.camera.stereolabs.zed import ZedCamera
 from hirobot.drivers.camera.unitree.image_server import UnitreeImageServerCamera
 from hirobot.drivers.camera.unitree.sdk2_videohub import UnitreeVideohubCamera
 
-__all__ = ["AgibotCosineCamera", "RealSenseCamera", "UnitreeVideohubCamera", "UnitreeImageServerCamera", "ArrayCamera", "VideoFileCamera"]
+__all__ = ["AgibotCosineCamera", "RealSenseCamera", "OrbbecCamera", "ZedCamera", "UnitreeVideohubCamera", "UnitreeImageServerCamera", "ArrayCamera", "VideoFileCamera"]

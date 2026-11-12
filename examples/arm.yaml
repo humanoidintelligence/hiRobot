@@ -1,7 +1,7 @@
 # Example robot config: a fixed-base 7-DoF arm (e.g. Franka / UR) with a wrist camera.
 #
 # Every device is written inline here (device: ...). A device file under
-# hirobot/configs/ (body/franka/fr3, ...) is the same mapping in its own file,
+# hirobot/configs/ (body/franka/fr3_droid, ...) is the same mapping in its own file,
 # named with from:. A fixed base has no IMU / base state in its observations.
 
 assembly:
@@ -24,7 +24,7 @@ assembly:
       grippers: [tcp]        # the body driver opens and closes it (Action.gripper)
       mounts:
         wrist_camera: {link: link7}
-      driver: {type: toy}    # swap for franka_libfranka / ur_rtde on hardware
+      driver: {type: toy}    # swap for franka_droid / ur_rtde on hardware
     wrist:
       device: camera
       width: 224

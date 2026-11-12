@@ -20,8 +20,9 @@
 | Fourier GR1T2 | 人形，32 自由度 | `fourier_grx` | fourier-grx-client | `fourier_gr1t2` | [fourier.zh-CN.md](fourier.zh-CN.md) |
 | AgiBot G1 | 轮式底盘上的双臂，18 自由度 | `agibot_gdk` | GDK topics (cosine_bus) | `agibot_g1` | [agibot_g1.zh-CN.md](agibot_g1.zh-CN.md) |
 | AgiBot X1 | 人形，29 自由度 | `agibot_aimrt` | ROS2 + AimRT bridge | `agibot_x1` | [agibot_x1.zh-CN.md](agibot_x1.zh-CN.md) |
-| Franka FR3 | 机械臂，7 自由度 | `franka_libfranka` | pylibfranka | `franka_fr3` | [franka.zh-CN.md](franka.zh-CN.md) |
+| Franka FR3 | 带夹爪的机械臂，7 自由度，DROID 平台 | `franka_droid` | zerorpc 连 DROID 机器人服务 | `franka_fr3_droid` | [franka.zh-CN.md](franka.zh-CN.md) |
 | UR5e | 机械臂，6 自由度 | `ur_rtde` | ur_rtde | `ur_ur5e` | [ur.zh-CN.md](ur.zh-CN.md) |
+| AgileX PiPER | 带夹爪的机械臂，6 自由度 | `agilex_piper_sdk` | piper_sdk | `agilex_piper` | [agilex_piper.zh-CN.md](agilex_piper.zh-CN.md) |
 
 ## 通用流程
 

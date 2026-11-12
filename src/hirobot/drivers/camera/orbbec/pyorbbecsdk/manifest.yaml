@@ -1,0 +1,12 @@
+# Drivers registered here: orbbec_pyorbbecsdk
+# pyorbbecsdk 1.x is built from source (https://github.com/orbbec/pyorbbecsdk,
+# v1 branch) and has no package metadata, so its version is not checked.
+sdk:
+  - distribution: pyorbbecsdk
+    module: pyorbbecsdk
+    install: build https://github.com/orbbec/pyorbbecsdk (v1 branch) and add its install/lib to PYTHONPATH
+verified:
+  - model: Orbbec Dabai DC1, colour + aligned depth at 640x480 (hw align) and 1280x720 (sw align), 30 fps
+    sdk: {pyorbbecsdk: "1.x (OrbbecSDK 1.10.5), numpy 1.26"}
+    date: 2026-11-12
+maintainers: []

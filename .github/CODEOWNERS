@@ -17,8 +17,9 @@
 /src/hirobot/drivers/_sdk/                          @artpli
 /src/hirobot/drivers/body/agibot/aimrt/             @artpli
 /src/hirobot/drivers/body/agibot/gdk/               @artpli
+/src/hirobot/drivers/body/agilex/piper_sdk/         @artpli
 /src/hirobot/drivers/body/fourier/grx/              @artpli
-/src/hirobot/drivers/body/franka/libfranka/         @artpli
+/src/hirobot/drivers/body/franka/droid/             @artpli
 /src/hirobot/drivers/body/unitree/sdk2/             @artpli
 /src/hirobot/drivers/body/ur/rtde/                  @artpli
 /src/hirobot/drivers/end_effector/inspire/sdkpy/            @artpli
@@ -27,6 +28,8 @@
 /src/hirobot/drivers/camera/agibot/cosine/          @artpli
 /src/hirobot/drivers/camera/generic/video_file/     @artpli
 /src/hirobot/drivers/camera/intel/realsense/        @artpli
+/src/hirobot/drivers/camera/orbbec/pyorbbecsdk/     @artpli
+/src/hirobot/drivers/camera/stereolabs/zed/         @artpli
 /src/hirobot/drivers/camera/unitree/image_server/   @artpli
 /src/hirobot/drivers/camera/unitree/sdk2_videohub/  @artpli
 /src/hirobot/drivers/audio/generic/sounddevice/     @artpli
@@ -36,8 +39,9 @@
 
 /tests/drivers/body/agibot/aimrt/                   @artpli
 /tests/drivers/body/agibot/gdk/                     @artpli
+/tests/drivers/body/agilex/piper_sdk/               @artpli
 /tests/drivers/body/fourier/grx/                    @artpli
-/tests/drivers/body/franka/libfranka/               @artpli
+/tests/drivers/body/franka/droid/                   @artpli
 /tests/drivers/body/unitree/sdk2/                   @artpli
 /tests/drivers/body/ur/rtde/                        @artpli
 /tests/drivers/end_effector/inspire/sdkpy/                  @artpli
@@ -46,6 +50,8 @@
 /tests/drivers/camera/agibot/cosine/                @artpli
 /tests/drivers/camera/generic/video_file/           @artpli
 /tests/drivers/camera/intel/realsense/              @artpli
+/tests/drivers/camera/orbbec/pyorbbecsdk/           @artpli
+/tests/drivers/camera/stereolabs/zed/               @artpli
 /tests/drivers/camera/unitree/image_server/         @artpli
 /tests/drivers/camera/unitree/sdk2_videohub/        @artpli
 /tests/drivers/audio/generic/sounddevice/           @artpli

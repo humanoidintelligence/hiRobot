@@ -1,0 +1,25 @@
+# Franka FR3 with its gripper and three ZED cameras, the DROID platform layout
+# (https://github.com/droid-dataset/droid): the arm and gripper behind a DROID
+# robot server (franka_droid), a ZED Mini on the wrist and two ZED 2i beside it.
+#
+# Runs on the toy body by default; on hardware drop the toy override (the body
+# file's driver is franka_droid, server address in driver.ip) and give each
+# camera's serial number in a local config, e.g.
+#   defaults: [robots/franka_fr3_droid]
+#   assembly:
+#     parts:
+#       body: {overrides: {driver: {type: franka_droid, ip: 172.16.0.2}}}
+#       wrist: {overrides: {driver: {serial: 10000000}}}
+#       ...
+# The cameras have no placement (the mounts differ per DROID station). See
+# docs/setup/franka.md, "DROID".
+
+assembly:
+  name: franka-fr3-droid
+  parts:
+    body: {from: body/franka/fr3_droid, overrides: {driver: {type: toy}}}
+    wrist: {from: camera/stereolabs/zed_mini}
+    left: {from: camera/stereolabs/zed2i}
+    right: {from: camera/stereolabs/zed2i}
+safety:
+  gripper_range: [0, 1]

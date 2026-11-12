@@ -54,6 +54,24 @@
    }
   }
  },
+ "robots/agilex_piper": {
+  "assembly": {
+   "name": "agilex-piper",
+   "parts": {
+    "body": {
+     "from": "body/agilex/piper",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "scene": {
+     "from": "camera/orbbec/dabai_dc1"
+    }
+   }
+  }
+ },
  "robots/fourier_gr1t1": {
   "assembly": {
    "name": "fourier-gr1t1",
@@ -84,19 +102,34 @@
    }
   }
  },
- "robots/franka_fr3": {
+ "robots/franka_fr3_droid": {
   "assembly": {
-   "name": "franka-fr3",
+   "name": "franka-fr3-droid",
    "parts": {
     "body": {
-     "from": "body/franka/fr3",
+     "from": "body/franka/fr3_droid",
      "overrides": {
       "driver": {
        "type": "toy"
       }
      }
+    },
+    "wrist": {
+     "from": "camera/stereolabs/zed_mini"
+    },
+    "left": {
+     "from": "camera/stereolabs/zed2i"
+    },
+    "right": {
+     "from": "camera/stereolabs/zed2i"
     }
    }
+  },
+  "safety": {
+   "gripper_range": [
+    0,
+    1
+   ]
   }
  },
  "robots/franka_ur5e_dual": {
@@ -105,7 +138,19 @@
    "control_hz": 30,
    "parts": {
     "left": {
-     "from": "robots/franka_fr3"
+     "assembly": {
+      "name": "franka-fr3",
+      "parts": {
+       "body": {
+        "from": "body/franka/fr3_droid",
+        "overrides": {
+         "driver": {
+          "type": "toy"
+         }
+        }
+       }
+      }
+     }
     },
     "right": {
      "from": "robots/ur_ur5e"

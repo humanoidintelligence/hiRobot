@@ -1,0 +1,10 @@
+# Drivers registered here: franka_droid
+sdk:
+  - distribution: zerorpc
+    module: zerorpc
+    install: pip install zerorpc
+verified:
+  - model: Franka FR3 + Robotiq 2F-85 on a DROID station, read, CARTESIAN (10 cm up and back) and gripper; POSITION, reset(home_q) and estop not yet on hardware
+    sdk: {zerorpc: "0.6.3"}
+    date: 2026-11-12
+maintainers: []

@@ -2,110 +2,67 @@
 
 English | [简体中文](./franka.zh-CN.md)
 
-Driver: `franka_libfranka` (`src/hirobot/drivers/body/franka/libfranka/`). A 7-DoF fixed-base arm with
-no IMU or base state. Wraps `pylibfranka`, the official pybind bindings of
-[libfranka](https://github.com/frankarobotics/libfranka).
+Driver: `franka_droid`. hiRobot drives a Franka FR3 through a DROID robot server;
+it does not talk to the arm over libfranka itself.
 
-libfranka's streaming controllers require a **1 kHz real-time loop on a
-PREEMPT_RT kernel**. To keep hiRobot's soft-real-time loop usable, the driver
-uses the **asynchronous joint-position controller**
-(`AsyncPositionControlHandler`): each `send_action` sets a new joint target that
-libfranka's own RT thread tracks, so a VLA policy can issue targets at its own,
-lower rate.
+On a [DROID](https://github.com/droid-dataset/droid) station the arm and its
+gripper are already run by DROID's robot server (`scripts/server/run_server.py`
+on the control computer, zerorpc on port 4242). The `franka_droid` driver
+(`src/hirobot/drivers/body/franka/droid/`) is a client of that server, so hiRobot
+needs no RT kernel, no libfranka and no direct FCI connection; it only needs
+`pip install zerorpc`. It calls only methods upstream DROID has
+(`get_robot_state`, `update_joints`, `update_pose`, `update_gripper`), and does
+not start or stop the server's controller. Start the server the DROID way.
 
-## 1. Prerequisites
+## Configuration
 
-Install the bindings (pre-built wheels; see `pylibfranka/README.md` in the
-libfranka repo):
-
-```bash
-pip install pylibfranka
-# unsupported platform: build from source per libfranka's pylibfranka/README.md (CMake + pybind11)
-```
-
-You need a libfranka version that matches the robot firmware, and a PREEMPT_RT
-kernel (required for production control).
-
-## 2. Network and robot setup
-
-- Connect the host to the robot's FCI port on the FCI subnet. Note the FCI
-  address (often `172.16.0.2`) and set it as `body.ip`.
-- In Desk (Franka's web UI): unlock the joints, activate **FCI**, and make sure
-  the robot is **not held by Desk**.
-- The status light must show the robot is ready for external control (blue).
-
-## 3. Power-on and safety
-
-1. Clear the workspace and keep the e-stop (and Franka's enabling device) within reach.
-2. `connect()` sets conservative collision thresholds
-   (`set_collision_behavior`); tune them for your payload.
-3. `reset()` calls `automatic_error_recovery()` to clear reflexes / faults and
-   **starts the async position controller**. So **on hardware, call `reset()`
-   before `send_action()`**, or the driver raises an error telling you to reset.
-4. `realtime=False` relaxes `RealtimeConfig` when there is no RT kernel. Use it
-   only for setup checks, **never for production control**.
-
-## 4. Configuration
-
-`franka_fr3`:
+Configs: `body/franka/fr3_droid` (arm plus gripper on the `ee` frame,
+`control_hz: 15` as in DROID) and `robots/franka_fr3_droid` (that body, a ZED
+Mini `wrist` camera and two ZED 2i, `left` and `right`). Put the server address
+and camera serial numbers in a local config:
 
 ```yaml
-embodiment:
-  control_hz: 100           # rate the VLA sends targets; libfranka's RT thread tracks at 1 kHz
-body:
-  driver: franka_libfranka
-  ip: 172.16.0.2            # FCI address
-  # max_joint_velocity: 1.0 # per-joint velocity cap of the async controller (rad/s)
-  # goal_tolerance: 0.01    # goal tolerance (rad)
-  # realtime: true          # set false without an RT kernel (setup only)
+defaults: [robots/franka_fr3_droid]
+
+assembly:
+  parts:
+    body: {overrides: {driver: {type: franka_droid, ip: 172.16.0.2}}}
+    wrist: {overrides: {driver: {serial: <wrist ZED serial>}}}
+    left: {overrides: {driver: {serial: <left ZED serial>}}}
+    right: {overrides: {driver: {serial: <right ZED serial>}}}
 ```
 
-Joint order: `joint1..joint7`, matching libfranka's `RobotState.q`.
+The ZED cameras use the `stereolabs_zed` camera driver, on the computer they are
+plugged into (it needs the ZED SDK, its `pyzed` wheel and an NVIDIA GPU). A ZED
+can be open in only one process, so stop DROID's own camera reader first.
 
-## 5. Minimal loop
+## What the driver does
 
-Check the connection with the basic loop from the
-[Quick start](../../README.md#simulation), run on your local config (built-in
-config plus the driver and address above): read an observation, send the
-current joint positions back as a POSITION target, and hold.
+| | `franka_droid` |
+|---|---|
+| Arguments | `ip` (default `172.16.0.2`), `port` (4242), `timeout_s` (10), `home_q` (7 joint angles for `reset()`, optional), `gripper` (`true`) |
+| `get_observation()` | `joint_pos`, `joint_vel`, `ee_poses["ee"]` (DROID's `cartesian_position`, Euler `xyz` angles converted to a quaternion), `gripper["ee"]` (DROID's 0 open / 1 closed turned into 0 closed / 1 open) |
+| `POSITION` | `update_joints(q, velocity=False, blocking=False)`: the server's controller tracks the joint target |
+| `CARTESIAN` | `ee_targets["ee"]` → `update_pose(pose, velocity=False, blocking=False)`; the server does the IK or impedance control |
+| `Action.gripper["ee"]` | `update_gripper(1 - opening, velocity=False, blocking=False)`, in either mode |
+| `reset()` | With `home_q`, a blocking `update_joints` to it; otherwise nothing |
+| `estop()` | Sends the measured joints as the target, so the arm holds where it is. The server's controller keeps running; use the Franka's own stop button for a hard stop |
 
-```python
-from hirobot import Action, ControlMode, make_robot
+Each OS thread gets its own zerorpc client (zerorpc runs on gevent), so
+`estop()` from another thread does not wait on the control loop's call.
+`connect()` reads the state once and raises `ConnectionError` if the server
+does not answer.
 
-robot = make_robot("my_franka.yaml")   # your local config with the driver and address
-robot.connect()
-robot.reset()
-obs = robot.get_observation()
-robot.send_action(Action(mode=ControlMode.POSITION, joint_target=obs.joint_pos))
-robot.hold()
-robot.disconnect()
-```
+## Verified on hardware
 
-What the driver does: `get_observation()` reads `q/dq/tau_J` from
-`read_once()` and converts the 4x4 column-major `O_T_EE` (base frame) into the
-7-vector pose `[x, y, z, qx, qy, qz, qw]` in `ee_poses["ee"]`.
-`send_action()` (POSITION / PD) calls `handler.set_joint_position_target(...)`.
+Verified on a DROID station (FR3, Robotiq 2F-85, three ZEDs, 2026-11-12):
+reads at 15 Hz with a median call time of 2.4 ms; a `CARTESIAN` move 10 cm up
+and back at up to 4 cm/s, streamed at 15 Hz, tracked within 6.3 mm and ended
+1.1 mm from the start; the gripper went to 0.50 (measured 0.502) and back;
+`make_robot` read the arm and three ZEDs (1280x720 colour plus depth) together.
 
-## 6. Common pitfalls
+## Common pitfalls
 
-- **Reset first:** the async controller starts in `reset()`; calling
-  `send_action` without it raises an error.
-- **RT kernel:** with `realtime=True` (the default) and no RT kernel, libfranka
-  raises. During setup you can temporarily set `realtime=False`.
-- **POSITION / PD only:** this driver uses async joint-position control.
-  Cartesian and torque control are not wrapped (libfranka supports them; extend
-  with `start_cartesian_*` / torque controllers).
-- **Collision thresholds:** the defaults are conservative; heavy payloads or
-  fast motions easily trigger a reflex stop. Adjust `set_collision_behavior`
-  in the driver as needed.
-- **Desk holds the robot:** if a Desk program is running or FCI is not
-  activated, external control cannot connect.
-- **Not run on a real arm yet:** the driver is tested against a fake
-  `pylibfranka` only. Not verified on hardware: that `pylibfranka` offers
-  `start_async_position_control` / `set_joint_position_target` as the driver
-  calls them, that `read_once()` works while the async controller runs, and what
-  the arm does after `estop()` stops the controller. libfranka also raises the
-  constructing thread (the Python main thread) to real-time priority, and
-  threads started from it inherit that.
-- **`reset()` does not move:** it clears errors and restarts the controller;
-  there is no home pose.
+After the connection between the server and the arm drops (the server
+reports `Socket is not connected`), every state read fails until the server
+recovers the arm. That is the server's job; `franka_droid` does not try.

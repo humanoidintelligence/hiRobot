@@ -6,18 +6,16 @@
 
 [OpenMOSS Group](https://openmoss.ai) / [Shanghai Innovation Institute](https://www.sii.edu.cn/) / [Fudan University](https://www.fudan.edu.cn/en/)
 
-[English](./README.md) | 简体中文
+[English](./README.md) | **简体中文** · **文档：** [支持的机器人](docs/supported_robots.zh-CN.md) · [设置指南](docs/setup/README.zh-CN.md) · [API 参考](docs/api.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [贡献指南](CONTRIBUTING.md)
 
 <!-- hardware-gallery:start -->
 
 <table>
 <tr><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/unitree_g1.png" width="100" alt="Unitree G1"></a><br><sub>Unitree G1</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/unitree_h1.png" width="100" alt="Unitree H1"></a><br><sub>Unitree H1</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/unitree_h1_2.png" width="100" alt="Unitree H1-2"></a><br><sub>Unitree H1-2</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/unitree_h2.png" width="100" alt="Unitree H2"></a><br><sub>Unitree H2</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/fourier_gr1.png" width="100" alt="Fourier GR1"></a><br><sub>Fourier GR1</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/fourier_gr2.png" width="100" alt="Fourier GR2"></a><br><sub>Fourier GR2</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agibot_x1.png" width="100" alt="AgiBot X1"></a><br><sub>AgiBot X1</sub></td></tr>
 <tr><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agibot_g1.png" width="100" alt="AgiBot G1"></a><br><sub>AgiBot G1</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agibot_g2.png" width="100" alt="AgiBot G2"></a><br><sub>AgiBot G2</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agilex_aloha.png" width="100" alt="AgileX ALOHA"></a><br><sub>AgileX ALOHA</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/franka_fr3.png" width="100" alt="Franka FR3"></a><br><sub>Franka FR3</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/ur_ur5e.png" width="100" alt="UR5e"></a><br><sub>UR5e</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agilex_piper.png" width="100" alt="AgileX PiPER"></a><br><sub>AgileX PiPER</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/widowx_250s.png" width="100" alt="WidowX 250S"></a><br><sub>WidowX 250S</sub></td></tr>
-<tr><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/unitree_dex3.png" width="100" alt="Unitree Dex3-1"></a><br><sub>Unitree Dex3-1</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/inspire_rh56dfx.png" width="100" alt="Inspire RH56DFX"></a><br><sub>Inspire RH56DFX</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agibot_omnipicker.png" width="100" alt="AgiBot OmniPicker"></a><br><sub>AgiBot OmniPicker</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/robotiq_2f85.png" width="100" alt="Robotiq 2F-85"></a><br><sub>Robotiq 2F-85</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_d435i.png" width="100" alt="RealSense D435i"></a><br><sub>RealSense D435i</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_d457.png" width="100" alt="RealSense D457"></a><br><sub>RealSense D457</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_d405.png" width="100" alt="RealSense D405"></a><br><sub>RealSense D405</sub></td></tr>
-<tr><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_l515.png" width="100" alt="RealSense L515"></a><br><sub>RealSense L515</sub></td></tr>
+<tr><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/unitree_dex3.png" width="100" alt="Unitree Dex3-1"></a><br><sub>Unitree Dex3-1</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/inspire_rh56dfx.png" width="100" alt="Inspire RH56DFX"></a><br><sub>Inspire RH56DFX</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agibot_omnipicker.png" width="100" alt="AgiBot OmniPicker"></a><br><sub>AgiBot OmniPicker</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/robotiq_2f85.png" width="100" alt="Robotiq 2F-85"></a><br><sub>Robotiq 2F-85</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/agilex_piper_gripper.png" width="100" alt="AgileX PiPER gripper"></a><br><sub>AgileX PiPER gripper</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_d435i.png" width="100" alt="RealSense D435i"></a><br><sub>RealSense D435i</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_d457.png" width="100" alt="RealSense D457"></a><br><sub>RealSense D457</sub></td></tr>
+<tr><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_d405.png" width="100" alt="RealSense D405"></a><br><sub>RealSense D405</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/realsense_l515.png" width="100" alt="RealSense L515"></a><br><sub>RealSense L515</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/stereolabs_zed.png" width="100" alt="ZED 2i / ZED Mini"></a><br><sub>ZED 2i / ZED Mini</sub></td><td align="center"><a href="docs/supported_robots.zh-CN.md"><img src="assets/hardware/orbbec_dabai_dc1.png" width="100" alt="Orbbec Dabai DC1"></a><br><sub>Orbbec Dabai DC1</sub></td></tr>
 </table>
-
-详细信息、配置和设置指南见 [docs/supported_robots.zh-CN.md](docs/supported_robots.zh-CN.md)。
 
 <!-- hardware-gallery:end -->
 
@@ -67,7 +65,7 @@ hiRobot 把这层胶水统一起来：
 - **与 VLA 无关**：无论是哪个模型，VLA 读取和产出的都是 hiRobot 的 `Observation` / `ActionChunk` 类型。
   把一个 VLA 换成另一个（GR00T、π0.5、StarVLA），改变的是 hiAgent 指向的 hiVLA 服务，而不是机器人代码。
 - **对 agent 友好**：接口便于 agent 作为工具调用：`Robot.action_modes` 列出驱动接受的控制模式，
-  `get_status` 报告电量、温度和关节故障，机器人 skill（行走、手势）附带说明和参数的 JSON Schema，
+  `get_status` 报告电量、温度和关节故障，`list_skills()` 列出机器人能按名字做的事（行走、手势），每个都附带说明和参数的 JSON Schema，
   `SafetyGate` 检查每一条命令，所以被拒绝的动作会抛出 `SafetyError`，而不会到达电机。
   [docs/api.zh-CN.md](docs/api.zh-CN.md) 记录了每个调用的参数和失败方式。
 - **分步部署文档**：真机部署涉及许多新手猜不到的细节，所以每台支持的机器人都有一份设置指南，
@@ -193,7 +191,7 @@ python scripts/unitree_setup.py move --config my_g1.yaml --iface eth0 \
 其他机器人请参考各自的指南：[总览](docs/setup/README.zh-CN.md) ·
 [Fourier GR1](docs/setup/fourier.zh-CN.md) ·
 [AgiBot G1](docs/setup/agibot_g1.zh-CN.md) · [AgiBot X1](docs/setup/agibot_x1.zh-CN.md) · [Franka FR3](docs/setup/franka.zh-CN.md) ·
-[Universal Robots UR5e](docs/setup/ur.zh-CN.md)。
+[Universal Robots UR5e](docs/setup/ur.zh-CN.md) · [AgileX PiPER](docs/setup/agilex_piper.zh-CN.md)。
 
 ### 多台机器人作为一个
 
@@ -249,7 +247,7 @@ hiRobot 负责机器人的输入输出。`make_robot` 读取一份配置（一�
 | --- | --- |
 | `Embodiment` | 机器人在 policy 眼中的样子：关节（按名称，按 SDK 的顺序）、`floating_base`、末端执行器、摄像头、麦克风 / 扬声器、`control_hz`。由配置构建（一份设备文件或一棵 `assembly:` 树）。 |
 | `Observation` / `Action` / `ActionChunk` | 类型化的输入输出。关节空间（通用）+ 可选的基座（人形机器人）+ 可选的任务空间（机械臂）+ 图像。`ControlMode` 选择关节、笛卡尔、基座速度或运动目标；一个 `ActionChunk` 包含多个预测步。 |
-| `Robot` | 每个驱动、仿真器和包装器都实现的接口约定：`connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`，加上 `action_modes`（它接受的模式）和机器人 skill（由机器人自带控制器执行的动作）。驱动实现 `_send_action`；`send_action` 先运行安全门。[详情](docs/api.zh-CN.md#robot)。 |
+| `Robot` | 每个驱动、仿真器和包装器都实现的接口约定：`connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`，加上 `action_modes`（它接受的模式）和技能 `list_skills` / `run_skill` / `stop_skill`（由机器人控制器或某一层执行、按名字启动的动作）。驱动实现 `_send_action`；`send_action` 先运行安全门。[详情](docs/api.zh-CN.md#robot)。 |
 | `SafetyGate` / `SafetyError` | 在 `send_action` 内检查每个动作：形状、DoF 数量和数值是否有限总会检查；配置了时还检查关节限位、步长和跟踪误差上限、电量和温度，以及 MuJoCo 仿真检查。拒绝时抛出 `SafetyError`（`clamp: true` 时改为截断）。由配置的 `safety:` 部分设置。[详情](docs/api.zh-CN.md#safetygate)。 |
 | `CommandArbiter` / `CommandLease` | 命令仲裁器和租约。`robot.claim(name, priority)` 让一个程序持有命令流；其他调用方得到 `RobotBusyError`，更高的优先级（`TAKEOVER` > `LAYER_SKILL` > `CALLER`）会抢占。租约可以带一套更严的 `envelope`；claim、抢占和被拒的命令记在审计里（`robot.command_events()`）。没人持有租约时谁都能发命令。[详情](docs/api.zh-CN.md#命令仲裁)。 |
 | `Layer` | layer 的基类：包住下面栈的一个 `Robot`（`inner`，只有公开 API）。可以提供层技能（`run_layer_skill`）。[写一个 layer](docs/api.zh-CN.md#编写层)。 |
@@ -276,7 +274,7 @@ hiRobot/
 │   │   ├── body/ end_effector/ camera/ microphone/ speaker/   # 每个型号一份设备文件，按厂商分目录
 │   │   └── robots/          # 整台机器人和多机 assembly（franka_ur5e_dual）；*_mujoco 加 sim: 段
 │   └── drivers/             # <part>/<SDK vendor>/<SDK or protocol>/{driver.py, manifest.yaml}
-│       ├── body/            # unitree/sdk2, fourier/grx, agibot/aimrt, franka/libfranka, ur/rtde
+│       ├── body/            # unitree/sdk2, fourier/grx, agibot/aimrt, franka/droid, ur/rtde, agilex/piper_sdk
 │       ├── end_effector/    # 手：unitree/sdk2_handcmd (Dex3-1), unitree/sdk2_motorcmds, inspire/sdkpy
 │       ├── camera/          # unitree/sdk2_videohub, unitree/image_server; generic/{video_file,array}
 │       ├── audio/           # unitree/sdk2_voice; generic/{wav,sounddevice}
@@ -297,8 +295,11 @@ hiRobot/
 ├── tests/                   # pytest 测试集；仿真器和 SDK 都是假的，不需要 GPU
 │   ├── drivers/             # 与 src/hirobot/drivers/ 对应：每个 SDK 一个 fake_sdk.py + test_contract.py
 │   └── data/                # expanded_configs.json：每个内置机器人配置的快照
-└── assets/                  # README 和文档图片；hardware/：机器人照片
+├── assets/                  # README 和文档图片；hardware/：机器人照片
+└── CHANGELOG.md             # 每个版本的变化（中文：CHANGELOG.zh-CN.md）
 ```
+
+每个版本改了什么见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)。
 
 ## 添加新机器人
 

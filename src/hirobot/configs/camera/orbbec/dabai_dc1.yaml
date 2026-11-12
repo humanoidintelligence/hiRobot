@@ -1,0 +1,17 @@
+# Orbbec Dabai DC1 over pyorbbecsdk 1.x (orbbec_pyorbbecsdk): colour 640x480 @ 30
+# (MJPEG), with depth in metres aligned to colour on the camera.
+#
+# Set driver.serial (printed on the camera) or driver.uid (its USB port path, as
+# the SDK lists it) when more than one Orbbec camera is attached. The colour
+# sensor also offers 1280x720 MJPEG at up to 30 fps; depth is 640x400. Only runs
+# with a real body; skipped offline with the toy.
+
+device: camera
+width: 640
+height: 480
+depth: true
+driver:
+  type: orbbec_pyorbbecsdk
+  # serial: CC1N00000000   # set when more than one Orbbec camera is attached
+  fps: 30
+  depth: true

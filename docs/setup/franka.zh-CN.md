@@ -2,88 +2,56 @@
 
 [English](./franka.md) | 简体中文
 
-驱动：`franka_libfranka`（`src/hirobot/drivers/body/franka/libfranka/`）。一台 7 自由度固定基座机械臂，
-没有 IMU 和基座状态。它封装了 `pylibfranka`，即 [libfranka](https://github.com/frankarobotics/libfranka)
-官方的 pybind 绑定。
+驱动：`franka_droid`。hiRobot 通过 DROID 机器人服务控制 Franka FR3，自己不经 libfranka 连机械臂。
 
-libfranka 的流式控制器需要**在 PREEMPT_RT 内核上运行 1 kHz 实时循环**。为了让 hiRobot 的软实时循环
-仍然可用，驱动使用**异步关节位置控制器**（`AsyncPositionControlHandler`）：每次 `send_action` 设置一个新的
-关节目标，由 libfranka 自己的实时线程跟踪，所以 VLA policy 可以按自己较低的频率发出目标。
+在 [DROID](https://github.com/droid-dataset/droid) 平台上，机械臂和夹爪已经由 DROID 的机器人服务运行
+（控制计算机上的 `scripts/server/run_server.py`，zerorpc，端口 4242）。`franka_droid` 驱动
+（`src/hirobot/drivers/body/franka/droid/`）是这个服务的客户端，所以 hiRobot 不需要实时内核、libfranka，也不直连 FCI，
+只需要 `pip install zerorpc`。它只调用上游 DROID 就有的方法（`get_robot_state`、`update_joints`、`update_pose`、
+`update_gripper`），不启动也不停止服务的控制器。服务按 DROID 的方式启动。
 
-## 1. 前置条件
+## 配置
 
-安装绑定（预编译 wheel；见 libfranka 仓库中的 `pylibfranka/README.md`）：
-
-```bash
-pip install pylibfranka
-# unsupported platform: build from source per libfranka's pylibfranka/README.md (CMake + pybind11)
-```
-
-你需要与机器人固件匹配的 libfranka 版本，以及 PREEMPT_RT 内核（正式控制必需）。
-
-## 2. 网络与机器人设置
-
-- 把主机接到机器人在 FCI 子网上的 FCI 端口。记下 FCI 地址（通常是 `172.16.0.2`），设为 `body.ip`。
-- 在 Desk（Franka 的网页界面）中：解锁关节，激活 **FCI**，并确保机器人**没有被 Desk 占用**。
-- 状态灯必须显示机器人已准备好接受外部控制（蓝色）。
-
-## 3. 上电与安全
-
-1. 清空工作空间，急停（以及 Franka 的使能装置）放在手边。
-2. `connect()` 会设置保守的碰撞阈值（`set_collision_behavior`）；按你的负载调整。
-3. `reset()` 调用 `automatic_error_recovery()` 清除反射 / 故障，并**启动异步位置控制器**。所以**在硬件上，
-   必须先调用 `reset()` 再调用 `send_action()`**，否则驱动会抛出错误，提示你先 reset。
-4. 没有实时内核时，`realtime=False` 会放宽 `RealtimeConfig`。只用于设置检查，**绝不能用于正式控制**。
-
-## 4. 配置
-
-`franka_fr3`：
+配置：`body/franka/fr3_droid`（机械臂，夹爪在 `ee` 坐标系上，和 DROID 一样 `control_hz: 15`）和
+`robots/franka_fr3_droid`（这个本体，加一台 ZED Mini `wrist` 相机和两台 ZED 2i `left`、`right`）。
+服务地址和相机序列号写进本地配置：
 
 ```yaml
-embodiment:
-  control_hz: 100           # rate the VLA sends targets; libfranka's RT thread tracks at 1 kHz
-body:
-  driver: franka_libfranka
-  ip: 172.16.0.2            # FCI address
-  # max_joint_velocity: 1.0 # per-joint velocity cap of the async controller (rad/s)
-  # goal_tolerance: 0.01    # goal tolerance (rad)
-  # realtime: true          # set false without an RT kernel (setup only)
+defaults: [robots/franka_fr3_droid]
+
+assembly:
+  parts:
+    body: {overrides: {driver: {type: franka_droid, ip: 172.16.0.2}}}
+    wrist: {overrides: {driver: {serial: <腕部 ZED 序列号>}}}
+    left: {overrides: {driver: {serial: <左侧 ZED 序列号>}}}
+    right: {overrides: {driver: {serial: <右侧 ZED 序列号>}}}
 ```
 
-关节顺序：`joint1..joint7`，与 libfranka 的 `RobotState.q` 一致。
+ZED 相机用 `stereolabs_zed` 相机驱动，跑在插着相机的那台计算机上（要 ZED SDK、它的 `pyzed` wheel 和 NVIDIA GPU）。
+一台 ZED 同一时间只能被一个进程打开，先停掉 DROID 自己的相机读取。
 
-## 5. 最小循环
+## 驱动做了什么
 
-用[快速开始](../../README.zh-CN.md#仿真)中的基本循环检查连接，在你的本地配置（内置配置加上面的
-驱动和地址）上运行：读一次观测，把当前关节位置作为 POSITION 目标发回去，然后保持。
+| | `franka_droid` |
+|---|---|
+| 参数 | `ip`（默认 `172.16.0.2`）、`port`（4242）、`timeout_s`（10）、`home_q`（`reset()` 用的 7 个关节角，可选）、`gripper`（`true`） |
+| `get_observation()` | `joint_pos`、`joint_vel`、`ee_poses["ee"]`（DROID 的 `cartesian_position`，欧拉角 `xyz` 换成四元数）、`gripper["ee"]`（DROID 的 0 开 1 合换成 0 合 1 开） |
+| `POSITION` | `update_joints(q, velocity=False, blocking=False)`：服务的控制器跟踪关节目标 |
+| `CARTESIAN` | `ee_targets["ee"]` → `update_pose(pose, velocity=False, blocking=False)`；IK 或阻抗控制由服务做 |
+| `Action.gripper["ee"]` | `update_gripper(1 - opening, velocity=False, blocking=False)`，两种模式都可以带 |
+| `reset()` | 设了 `home_q` 时阻塞地 `update_joints` 过去；否则什么也不做 |
+| `estop()` | 把测得的关节作为目标发出，机械臂停在原地。服务的控制器继续运行；要硬停用 Franka 自己的急停按钮 |
 
-```python
-from hirobot import Action, ControlMode, make_robot
+每个系统线程有自己的 zerorpc 客户端（zerorpc 跑在 gevent 上），所以别的线程调 `estop()` 不用等控制循环的调用。
+`connect()` 先读一次状态，服务不应答时抛出 `ConnectionError`。
 
-robot = make_robot("my_franka.yaml")   # your local config with the driver and address
-robot.connect()
-robot.reset()
-obs = robot.get_observation()
-robot.send_action(Action(mode=ControlMode.POSITION, joint_target=obs.joint_pos))
-robot.hold()
-robot.disconnect()
-```
+## 真机验证
 
-驱动做了什么：`get_observation()` 从 `read_once()` 读取 `q/dq/tau_J`，并把 4x4 列主序的 `O_T_EE`
-（基座坐标系）转换成 7 维位姿 `[x, y, z, qx, qy, qz, qw]`，存入 `ee_poses["ee"]`。
-`send_action()`（POSITION / PD）调用 `handler.set_joint_position_target(...)`。
+在一台 DROID 平台上验证过（FR3、Robotiq 2F-85、三台 ZED，2026-11-12）：15 Hz 读状态，单次调用中位 2.4 ms；
+`CARTESIAN` 以 15 Hz 流式发目标，末端上移 10 cm 再回来，最快 4 cm/s，跟踪误差不超过 6.3 mm，结束时离起点 1.1 mm；
+夹爪到 0.50（测得 0.502）再回去；`make_robot` 同时读机械臂和三台 ZED（1280x720 彩色加深度）。
 
-## 6. 常见问题
+## 常见问题
 
-- **先 reset**：异步控制器在 `reset()` 中启动；不调用它就调用 `send_action` 会抛出错误。
-- **实时内核**：`realtime=True`（默认）且没有实时内核时，libfranka 会抛出异常。设置阶段可以临时设为
-  `realtime=False`。
-- **只支持 POSITION / PD**：本驱动使用异步关节位置控制。笛卡尔控制和力矩控制没有封装（libfranka
-  支持它们；可用 `start_cartesian_*` / 力矩控制器扩展）。
-- **碰撞阈值**：默认值偏保守；重负载或快速运动很容易触发反射停止。按需在驱动中调整
-  `set_collision_behavior`。
-- **Desk 占用机器人**：如果 Desk 程序正在运行，或 FCI 没有激活，外部控制就连不上。
-- **还没在真机上跑过**：驱动只对假的 `pylibfranka` 测过。没在硬件上核实的：`pylibfranka` 是否按驱动的调用方式提供
-  `start_async_position_control` / `set_joint_position_target`；异步控制器运行时 `read_once()` 能不能用；`estop()` 停掉控制器后
-  机械臂怎么做。另外 libfranka 会把构造它的线程（Python 主线程）提成实时优先级，从这个线程启动的线程会继承。
-- **`reset()` 不动**：只清错并重启控制器，没有初始姿态。
+服务和机械臂之间的连接断开后（服务报 `Socket is not connected`），读状态全部失败，直到服务恢复机械臂。
+这由服务负责，`franka_droid` 不处理。

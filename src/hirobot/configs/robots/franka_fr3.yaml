@@ -1,9 +1,0 @@
-# Franka FR3 (Panda): 7-DoF fixed-base arm (franka_libfranka, FCI address in driver.ip).
-#
-# Runs on the toy body by default; on hardware drop the toy override to use the
-# body file's driver.
-
-assembly:
-  name: franka-fr3
-  parts:
-    body: {from: body/franka/fr3, overrides: {driver: {type: toy}}}

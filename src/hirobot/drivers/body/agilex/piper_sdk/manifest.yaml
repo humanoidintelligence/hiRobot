@@ -1,0 +1,10 @@
+# Drivers registered here: agilex_piper_sdk
+sdk:
+  - distribution: piper_sdk
+    module: piper_sdk
+    install: pip install piper_sdk
+verified:
+  - model: AgileX PiPER with its gripper (SocketCAN), read, POSITION (10 cm lift and back) and gripper; estop not yet on hardware
+    sdk: {piper_sdk: "0.6.1"}
+    date: 2026-11-12
+maintainers: []

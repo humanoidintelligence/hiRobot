@@ -21,7 +21,6 @@ from hirobot.drivers.body import (
     AgibotG1Robot,
     AgibotX1Robot,
     FourierRobot,
-    FrankaRobot,
     UnitreeRobot,
     URRobot,
 )
@@ -34,7 +33,6 @@ __all__ = [
     "UnitreeRobot",
     "FourierRobot",
     "URRobot",
-    "FrankaRobot",
     "AgibotX1Robot",
     "AgibotG1Robot",
     "UnitreeDex3Hand",

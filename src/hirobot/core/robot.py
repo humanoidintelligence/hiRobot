@@ -668,6 +668,54 @@ class Robot(Stoppable, ABC):
         """Whether a layer skill holds the command stream. Default: ``False``."""
         return False
 
+    # Skills: the robot skills and the layer skills as one list, for callers
+    # (an agent, a voice front end) that need not know who runs a skill. Built
+    # on the eight methods above; drivers and layers implement those, not these.
+
+    def list_skills(self) -> List[RobotSkillSpec]:
+        """Every skill this robot can run: the layers' first, then the robot's own.
+
+        A layer skill with the same name as a robot skill hides it (the outer
+        one wins, as a subclass method hides its base's). In an assembly the
+        names carry the part path (``left/grasp``).
+        """
+        layer = self.list_layer_skills()
+        names = {s.name for s in layer}
+        return layer + [s for s in self.list_robot_skills() if s.name not in names]
+
+    def run_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> RobotSkillResult:
+        """Start skill ``name`` from :meth:`list_skills`; returns once it has started.
+
+        Goes to :meth:`run_layer_skill` or :meth:`run_robot_skill`, with their
+        argument checks and command-lease rules.
+
+        Raises:
+            RobotSkillError: Unknown skill, bad arguments, or the robot refused.
+            RobotBusyError: Someone else holds the robot's command stream.
+        """
+        if any(s.name == name for s in self.list_layer_skills()):
+            return self.run_layer_skill(name, args)
+        if any(s.name == name for s in self.list_robot_skills()):
+            return self.run_robot_skill(name, args)
+        raise RobotSkillError(f"unknown skill {name!r}; available: "
+                              f"{[s.name for s in self.list_skills()] or 'none'}")
+
+    def stop_skill(self) -> None:
+        """Stop the running skill, whichever kind it is, and leave the robot standing still."""
+        try:
+            self.stop_layer_skill()
+        finally:
+            self.stop_robot_skill()
+
+    @property
+    def skill_running(self) -> bool:
+        """Whether a layer skill is still running.
+
+        A robot skill is not tracked: :meth:`run_skill` returns once the robot
+        accepts it, and how long it runs is only estimated (``duration_s``).
+        """
+        return self.layer_skill_running
+
     def disconnect(self) -> None:
         """Release the connection and stop the robot. Override if needed."""
 

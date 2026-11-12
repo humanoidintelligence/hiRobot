@@ -23,8 +23,9 @@ safety, connection parameters, the minimal hiRobot loop, and common pitfalls.
 | Fourier GR1T2 | humanoid, 32 DoF | `fourier_grx` | fourier-grx-client | `fourier_gr1t2` | [fourier.md](fourier.md) |
 | AgiBot G1 | dual arm on a wheeled base, 18 DoF | `agibot_gdk` | GDK topics (cosine_bus) | `agibot_g1` | [agibot_g1.md](agibot_g1.md) |
 | AgiBot X1 | humanoid, 29 DoF | `agibot_aimrt` | ROS2 + AimRT bridge | `agibot_x1` | [agibot_x1.md](agibot_x1.md) |
-| Franka FR3 | arm, 7 DoF | `franka_libfranka` | pylibfranka | `franka_fr3` | [franka.md](franka.md) |
+| Franka FR3 | arm with gripper, 7 DoF, on a DROID station | `franka_droid` | zerorpc to a DROID robot server | `franka_fr3_droid` | [franka.md](franka.md) |
 | UR5e | arm, 6 DoF | `ur_rtde` | ur_rtde | `ur_ur5e` | [ur.md](ur.md) |
+| AgileX PiPER | arm with gripper, 6 DoF | `agilex_piper_sdk` | piper_sdk | `agilex_piper` | [agilex_piper.md](agilex_piper.md) |
 
 ## General workflow
 

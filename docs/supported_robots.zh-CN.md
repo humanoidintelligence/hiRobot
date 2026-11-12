@@ -31,11 +31,12 @@
 <tr><td colspan="5"><b>轮式双臂</b></td></tr>
 <tr><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md"><img src="../assets/hardware/agibot_g1.png" width="150" alt="AgiBot G1"></a><br><b>AgiBot G1</b><br><sub>18 自由度</sub><br><sub>✅</sub></td><td align="center" valign="top"><img src="../assets/hardware/agibot_g2.png" width="150" alt="AgiBot G2"><br><b>AgiBot G2</b><br><sub>22 自由度</sub><br><sub>11 月 20 日前</sub></td><td align="center" valign="top"><img src="../assets/hardware/agilex_aloha.png" width="150" alt="AgileX ALOHA"><br><b>AgileX ALOHA</b><br><sub>12 自由度</sub><br><sub>11 月 12 日前</sub></td></tr>
 <tr><td colspan="5"><b>机械臂</b></td></tr>
-<tr><td align="center" valign="top"><a href="setup/franka.zh-CN.md"><img src="../assets/hardware/franka_fr3.png" width="150" alt="Franka FR3"></a><br><b>Franka FR3</b><br><sub>7 自由度</sub><br><sub>11 月 12 日前</sub></td><td align="center" valign="top"><a href="setup/ur.zh-CN.md"><img src="../assets/hardware/ur_ur5e.png" width="150" alt="UR5e"></a><br><b>UR5e</b><br><sub>6 自由度</sub><br><sub>✅</sub></td><td align="center" valign="top"><img src="../assets/hardware/agilex_piper.png" width="150" alt="AgileX PiPER"><br><b>AgileX PiPER</b><br><sub>6 自由度</sub><br><sub>11 月 12 日前</sub></td><td align="center" valign="top"><img src="../assets/hardware/widowx_250s.png" width="150" alt="WidowX 250S"><br><b>WidowX 250S</b><br><sub>6 自由度</sub><br><sub>11 月 20 日前</sub></td></tr>
+<tr><td align="center" valign="top"><a href="setup/franka.zh-CN.md"><img src="../assets/hardware/franka_fr3.png" width="150" alt="Franka FR3"></a><br><b>Franka FR3</b><br><sub>7 自由度</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/ur.zh-CN.md"><img src="../assets/hardware/ur_ur5e.png" width="150" alt="UR5e"></a><br><b>UR5e</b><br><sub>6 自由度</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agilex_piper.zh-CN.md"><img src="../assets/hardware/agilex_piper.png" width="150" alt="AgileX PiPER"></a><br><b>AgileX PiPER</b><br><sub>6 自由度</sub><br><sub>✅</sub></td><td align="center" valign="top"><img src="../assets/hardware/widowx_250s.png" width="150" alt="WidowX 250S"><br><b>WidowX 250S</b><br><sub>6 自由度</sub><br><sub>11 月 20 日前</sub></td></tr>
 <tr><td colspan="5"><b>灵巧手与夹爪</b></td></tr>
-<tr><td align="center" valign="top"><a href="setup/unitree.zh-CN.md#dex3-灵巧手g1"><img src="../assets/hardware/unitree_dex3.png" width="150" alt="Unitree Dex3-1"></a><br><b>Unitree Dex3-1</b><br><sub>7 自由度灵巧手，用于 Unitree G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/unitree.zh-CN.md#inspire-灵巧手h1"><img src="../assets/hardware/inspire_rh56dfx.png" width="150" alt="Inspire RH56DFX"></a><br><b>Inspire RH56DFX</b><br><sub>6 自由度灵巧手，用于 Unitree H1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md#4-观测与动作"><img src="../assets/hardware/agibot_omnipicker.png" width="150" alt="AgiBot OmniPicker"></a><br><b>AgiBot OmniPicker</b><br><sub>夹爪，用于 AgiBot G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/ur.zh-CN.md#8-夹爪robotiq-2f"><img src="../assets/hardware/robotiq_2f85.png" width="150" alt="Robotiq 2F-85"></a><br><b>Robotiq 2F-85</b><br><sub>夹爪，用于 UR 机械臂</sub><br><sub>✅</sub></td></tr>
+<tr><td align="center" valign="top"><a href="setup/unitree.zh-CN.md#dex3-灵巧手g1"><img src="../assets/hardware/unitree_dex3.png" width="150" alt="Unitree Dex3-1"></a><br><b>Unitree Dex3-1</b><br><sub>7 自由度灵巧手，用于 Unitree G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/unitree.zh-CN.md#inspire-灵巧手h1"><img src="../assets/hardware/inspire_rh56dfx.png" width="150" alt="Inspire RH56DFX"></a><br><b>Inspire RH56DFX</b><br><sub>6 自由度灵巧手，用于 Unitree H1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md#4-观测与动作"><img src="../assets/hardware/agibot_omnipicker.png" width="150" alt="AgiBot OmniPicker"></a><br><b>AgiBot OmniPicker</b><br><sub>夹爪，用于 AgiBot G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/ur.zh-CN.md#8-夹爪robotiq-2f"><img src="../assets/hardware/robotiq_2f85.png" width="150" alt="Robotiq 2F-85"></a><br><b>Robotiq 2F-85</b><br><sub>夹爪，用于 UR / Franka FR3</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agilex_piper.zh-CN.md#4-观测与动作"><img src="../assets/hardware/agilex_piper_gripper.png" width="150" alt="AgileX PiPER gripper"></a><br><b>AgileX PiPER gripper</b><br><sub>夹爪，用于 AgileX PiPER</sub><br><sub>✅</sub></td></tr>
 <tr><td colspan="5"><b>摄像头</b></td></tr>
-<tr><td align="center" valign="top"><a href="setup/unitree.zh-CN.md#头部相机g1"><img src="../assets/hardware/realsense_d435i.png" width="150" alt="RealSense D435i"></a><br><b>RealSense D435i</b><br><sub>头部，Unitree G1 / H1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md#3-配置"><img src="../assets/hardware/realsense_d457.png" width="150" alt="RealSense D457"></a><br><b>RealSense D457</b><br><sub>头部，AgiBot G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md#3-配置"><img src="../assets/hardware/realsense_d405.png" width="150" alt="RealSense D405"></a><br><b>RealSense D405</b><br><sub>腕部，AgiBot G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/ur.zh-CN.md#l515"><img src="../assets/hardware/realsense_l515.png" width="150" alt="RealSense L515"></a><br><b>RealSense L515</b><br><sub>激光雷达深度，任意机器人</sub><br><sub>✅</sub></td></tr>
+<tr><td align="center" valign="top"><a href="setup/unitree.zh-CN.md#头部相机g1"><img src="../assets/hardware/realsense_d435i.png" width="150" alt="RealSense D435i"></a><br><b>RealSense D435i</b><br><sub>头部，Unitree G1 / H1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md#3-配置"><img src="../assets/hardware/realsense_d457.png" width="150" alt="RealSense D457"></a><br><b>RealSense D457</b><br><sub>头部，AgiBot G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/agibot_g1.zh-CN.md#3-配置"><img src="../assets/hardware/realsense_d405.png" width="150" alt="RealSense D405"></a><br><b>RealSense D405</b><br><sub>腕部，AgiBot G1</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/ur.zh-CN.md#l515"><img src="../assets/hardware/realsense_l515.png" width="150" alt="RealSense L515"></a><br><b>RealSense L515</b><br><sub>激光雷达深度，任意机器人</sub><br><sub>✅</sub></td><td align="center" valign="top"><a href="setup/franka.zh-CN.md"><img src="../assets/hardware/stereolabs_zed.png" width="150" alt="ZED 2i / ZED Mini"></a><br><b>ZED 2i / ZED Mini</b><br><sub>双目深度，任意机器人</sub><br><sub>✅</sub></td></tr>
+<tr><td align="center" valign="top"><a href="setup/agilex_piper.zh-CN.md#6-orbbec-相机"><img src="../assets/hardware/orbbec_dabai_dc1.png" width="150" alt="Orbbec Dabai DC1"></a><br><b>Orbbec Dabai DC1</b><br><sub>深度，任意机器人</sub><br><sub>✅</sub></td></tr>
 </table>
 <!-- hardware-wall:end -->
 
@@ -53,10 +54,10 @@
 | AgiBot G2 | 22 | — | — | agibot_gdk (GDK 2.1) | — | 11 月 20 日前 |
 | AgiBot X1 | 29 | `agibot_x1` | `agibot_aimrt` | 到 AimRT 的 ROS2 桥接 | [agibot_x1.zh-CN.md](setup/agibot_x1.zh-CN.md) | 11 月 20 日前 |
 | AgileX ALOHA | 12 | — | — | pyAgxArm | — | 11 月 12 日前 |
-| AgileX PiPER | 6 | — | — | pyAgxArm | — | 11 月 12 日前 |
-| Franka FR3 | 7 | `franka_fr3` | `franka_libfranka` | pylibfranka | [franka.zh-CN.md](setup/franka.zh-CN.md) | 11 月 12 日前 |
-| UR5e | 6 | `ur_ur5e`, `ur5e_dual` | `ur_rtde` | ur_rtde | [ur.zh-CN.md](setup/ur.zh-CN.md) | ✅ |
-| WidowX 250S | 6 | — | — | dynamixel_sdk | — | 11 月 20 日前 |
+| AgileX PiPER | 6 | `agilex_piper` | `agilex_piper_sdk` | piper_sdk | [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md) | ✅ |
+| Franka FR3 | 7 | `franka_fr3_droid` | `franka_droid` | zerorpc 连 DROID 机器人服务 | [franka.zh-CN.md](setup/franka.zh-CN.md) | ✅ |
+| Universal Robots UR5e | 6 | `ur_ur5e`, `ur5e_dual` | `ur_rtde` | ur_rtde | [ur.zh-CN.md](setup/ur.zh-CN.md) | ✅ |
+| Trossen WidowX 250S | 6 | — | — | dynamixel_sdk | — | 11 月 20 日前 |
 
 每份配置中的关节名称和顺序都来自厂商 SDK，所以与硬件一一对应。机器人之间的差异放在配置中，
 硬件之间的差异放在驱动中：四份 Unitree 配置共用一个 `unitree_sdk2` 驱动。
@@ -80,10 +81,12 @@
 
 | 末端执行器 | 每只 DoF | 安装在 | 配置 | 驱动 | 接口 | 厂商 SDK | 设置指南 | 真机验证 |
 | --- | --- | --- | --- | --- | --- | --- | --- | :---: |
-| Unitree Dex3-1 | 7 | Unitree G1 | `unitree_g1_dex3` | `unitree_handcmd` | `joints` | unitree_sdk2py | [unitree.zh-CN.md](setup/unitree.zh-CN.md#dex3-灵巧手g1) | ✅ |
-| Inspire RH56DFX | 6 | Unitree H1 | `unitree_h1_inspire` | `unitree_motorcmds`（h1_inspire_service 1.0.1）或 `inspire_sdkpy` | `joints` | unitree_sdk2py | [unitree.zh-CN.md](setup/unitree.zh-CN.md#inspire-灵巧手h1) | ✅ |
-| AgiBot Omnipicker 夹爪（×2） | 1 | AgiBot G1 | `agibot_g1` | `agibot_gdk`（本体驱动） | `gripper` | GDK topics (cosine_bus) | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md#4-观测与动作) | ✅ |
-| Robotiq 2F-85 | 1 | UR 机械臂 | `ur_ur5e_robotiq` | `robotiq_urcap` | `opening` | 无（UR URCap socket，端口 63352） | [ur.zh-CN.md](setup/ur.zh-CN.md#8-夹爪robotiq-2f) | ✅ |
+| Unitree Dex3-1 | 7 | Unitree G1（×2） | `unitree_g1_dex3` | `unitree_handcmd` | `joints` | unitree_sdk2py | [unitree.zh-CN.md](setup/unitree.zh-CN.md#dex3-灵巧手g1) | ✅ |
+| Inspire RH56DFX | 6 | Unitree H1（×2） | `unitree_h1_inspire` | `unitree_motorcmds`（h1_inspire_service 1.0.1）或 `inspire_sdkpy` | `joints` | unitree_sdk2py | [unitree.zh-CN.md](setup/unitree.zh-CN.md#inspire-灵巧手h1) | ✅ |
+| AgiBot OmniPicker | 1 | AgiBot G1（×2） | `agibot_g1` | `agibot_gdk`（本体驱动） | `gripper` | GDK topics (cosine_bus) | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md#4-观测与动作) | ✅ |
+| AgileX PiPER 夹爪 | 1 | AgileX PiPER | `agilex_piper` | `agilex_piper_sdk`（本体驱动） | `gripper` | piper_sdk | [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md#4-观测与动作) | ✅ |
+| Robotiq 2F-85 | 1 | Universal Robots 机械臂 | `ur_ur5e_robotiq` | `robotiq_urcap` | `opening` | 无（UR URCap socket，端口 63352） | [ur.zh-CN.md](setup/ur.zh-CN.md#8-夹爪robotiq-2f) | ✅ |
+| Robotiq 2F-85 | 1 | DROID 平台上的 Franka FR3 | `franka_fr3_droid` | `franka_droid`（本体驱动） | `gripper` | DROID 机器人服务 | [franka.zh-CN.md](setup/franka.zh-CN.md) | ✅ |
 
 ### 摄像头
 
@@ -91,14 +94,16 @@
 `Observation.images[<name>]`。摄像头源只读，所以在 `read_only` 下也能运行。
 用于测试和仿真的替身（`video_file`、`array`）见 [api.zh-CN.md](api.zh-CN.md#扩展点相机末端执行器与音频)。
 
-| 摄像头 | 所在机器人 | 配置 | 源 | 传输 | 设置指南 | 真机验证 |
+| 摄像头 | 安装位置 | 配置 | 源 | 传输 | 设置指南 | 真机验证 |
 | --- | --- | --- | --- | --- | --- | :---: |
-| RealSense D435i / D405（任意位置） | 直接插在跑 hiRobot 的计算机上 | `intel/d435i_realsense` | `intel_realsense` | pyrealsense2，本地 USB；彩色 + 对齐到彩色的深度 | [ur.zh-CN.md](setup/ur.zh-CN.md#7-realsense-相机可选) | ✅（D435i） |
-| RealSense L515（任意位置） | 直接插在跑 hiRobot 的计算机上 | `intel/l515_realsense` | `intel_realsense` | pyrealsense2 2.54.2，本地 USB；彩色 + 对齐到彩色的深度 | [ur.zh-CN.md](setup/ur.zh-CN.md#l515) | ✅ |
-| RealSense D435i（头部） | Unitree G1 | `unitree_g1`, `unitree_g1_dex3` | `unitree_videohub` | unitree_sdk2py videohub（PC2 上的 `videohub_pc4`） | [unitree.zh-CN.md](setup/unitree.zh-CN.md#头部相机g1) | ✅ |
-| RealSense D435i（头部） | Unitree H1 | `unitree_h1`, `unitree_h1_inspire` | `unitree_image_server` | 基于 ZeroMQ 的 JPEG（Unitree `image_server`，或 `scripts/camera_image_server.py`） | [unitree.zh-CN.md](setup/unitree.zh-CN.md#头部相机h1) | ✅ |
-| RealSense D457（头部） | AgiBot G1 | `agibot_g1` | `agibot_cosine` | 机器人计算机上的 cosine_bus topics | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md#3-配置) | ✅ |
-| RealSense D405（腕部，×2） | AgiBot G1 | `agibot_g1` | `agibot_cosine` | 机器人计算机上的 cosine_bus topics | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md#3-配置) | ✅ |
+| Intel RealSense D435i / D405 | 任意位置，USB 接跑 hiRobot 的计算机 | `intel/d435i_realsense` | `intel_realsense` | pyrealsense2，本地 USB；彩色 + 对齐到彩色的深度 | [ur.zh-CN.md](setup/ur.zh-CN.md#7-realsense-相机可选) | ✅（D435i） |
+| Intel RealSense L515 | 任意位置，USB 接跑 hiRobot 的计算机 | `intel/l515_realsense` | `intel_realsense` | pyrealsense2 2.54.2，本地 USB；彩色 + 对齐到彩色的深度 | [ur.zh-CN.md](setup/ur.zh-CN.md#l515) | ✅ |
+| Orbbec Dabai DC1 | 任意位置，USB 接跑 hiRobot 的计算机 | `orbbec/dabai_dc1`、`agilex_piper` | `orbbec_pyorbbecsdk` | pyorbbecsdk 1.x（OrbbecSDK 1.10），本地 USB；彩色 + 对齐到彩色的深度 | [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md#6-orbbec-相机) | ✅ |
+| Stereolabs ZED 2i / ZED Mini | 任意位置，USB 接跑 hiRobot 的计算机 | `stereolabs/zed2i`、`stereolabs/zed_mini`、`franka_fr3_droid` | `stereolabs_zed` | pyzed（ZED SDK，NVIDIA GPU），本地 USB；左目彩色 + 对齐到它的深度 | [franka.zh-CN.md](setup/franka.zh-CN.md) | ✅ |
+| Intel RealSense D435i | Unitree G1 头部 | `unitree_g1`, `unitree_g1_dex3` | `unitree_videohub` | unitree_sdk2py videohub（PC2 上的 `videohub_pc4`） | [unitree.zh-CN.md](setup/unitree.zh-CN.md#头部相机g1) | ✅ |
+| Intel RealSense D435i | Unitree H1 头部 | `unitree_h1`, `unitree_h1_inspire` | `unitree_image_server` | 基于 ZeroMQ 的 JPEG（Unitree `image_server`，或 `scripts/camera_image_server.py`） | [unitree.zh-CN.md](setup/unitree.zh-CN.md#头部相机h1) | ✅ |
+| Intel RealSense D457 | AgiBot G1 头部 | `agibot_g1` | `agibot_cosine` | 机器人计算机上的 cosine_bus topics | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md#3-配置) | ✅ |
+| Intel RealSense D405 | AgiBot G1 腕部（×2） | `agibot_g1` | `agibot_cosine` | 机器人计算机上的 cosine_bus topics | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md#3-配置) | ✅ |
 
 ## 仿真机器人
 

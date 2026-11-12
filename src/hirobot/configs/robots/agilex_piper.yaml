@@ -1,0 +1,21 @@
+# AgileX PiPER: 6-DoF arm with its parallel gripper (agilex_piper_sdk over
+# SocketCAN), plus a scene camera (an Orbbec Dabai DC1, colour + depth).
+#
+# The gripper is driven by the arm's own driver and read / commanded as
+# Observation.gripper["ee"] / Action.gripper["ee"] (0 closed, 1 open).
+#
+# Runs on the toy body by default; the camera then is skipped. On hardware drop
+# the toy override and set the CAN interface and the camera, in a local config:
+#   defaults: [robots/agilex_piper]
+#   assembly:
+#     parts:
+#       body: {overrides: {driver: {type: agilex_piper_sdk, can: can0}}}
+#       scene: {overrides: {driver: {serial: CC1N00000000}}}
+# The camera has no placement (it depends on the station). See
+# docs/setup/agilex_piper.md.
+
+assembly:
+  name: agilex-piper
+  parts:
+    body: {from: body/agilex/piper, overrides: {driver: {type: toy}}}
+    scene: {from: camera/orbbec/dabai_dc1}

@@ -38,13 +38,12 @@ REAL_DRIVERS = {
     "unitree_sdk2": {"network_interface": "eth0"},
     "fourier_grx": {"server_ip": "localhost"},
     "ur_rtde": {"ip": "127.0.0.1"},
-    "franka_libfranka": {"ip": "172.16.0.2"},
     "agibot_aimrt": {},
 }
 
 
 def test_expected_drivers_registered():
-    for name in ["toy", "mujoco", "unitree_sdk2", "fourier_grx", "ur_rtde", "franka_libfranka", "agibot_aimrt"]:
+    for name in ["toy", "mujoco", "unitree_sdk2", "fourier_grx", "ur_rtde", "franka_droid", "agibot_aimrt"]:
         assert name in available_bodies()
 
 

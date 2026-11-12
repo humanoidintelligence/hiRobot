@@ -192,8 +192,8 @@ See `CONTRIBUTING.md` for the contribution workflow. Never commit machine-specif
 details (local paths, NIC names, environment names, lab IPs) to shared files; local
 configs inherit a built-in one with `defaults:`.
 
-Setup guides live in `docs/setup/` (`<robot>.md`). `README.md`, `docs/api.md` and
-each setup guide have a Simplified Chinese twin (`*.zh-CN.md`) with the same
+Setup guides live in `docs/setup/` (`<robot>.md`). `README.md`, `CHANGELOG.md`, `docs/api.md`
+and each setup guide have a Simplified Chinese twin (`*.zh-CN.md`) with the same
 headings, tables and code blocks; a change to one goes into both.
 
 License (Apache-2.0), `src/hirobot` layout, and ruff line-length 100 mirror the sibling

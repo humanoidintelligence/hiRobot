@@ -235,6 +235,22 @@ class CommandLease:
                 self.robot, "run_robot_skill", (name,))):
             return self.robot.run_robot_skill(name, args)
 
+    def run_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> Any:
+        """Run a skill from ``robot.list_skills()``.
+
+        A robot skill runs through this lease. A layer skill claims the stream
+        with ``Priority.LAYER_SKILL``, so this lease is preempted (its
+        ``on_preempt`` runs); claim again after the skill ends.
+        """
+        if any(s.name == name for s in self.robot.list_layer_skills()):
+            return self.robot.run_layer_skill(name, args)
+        if any(s.name == name for s in self.robot.list_robot_skills()):
+            return self.run_robot_skill(name, args)
+        from hirobot.core.robot_skills import RobotSkillError
+
+        raise RobotSkillError(f"unknown skill {name!r}; available: "
+                              f"{[s.name for s in self.robot.list_skills()] or 'none'}")
+
     def _own_nodes(self) -> Optional[set]:
         """The lease's own parts as touched nodes (its hold / reset stay inside them)."""
         return None if self._scope is None else {node for node, _ in self._scope}

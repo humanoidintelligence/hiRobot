@@ -8,6 +8,9 @@ entry has one layout.
 
 from __future__ import annotations
 
+import math
+from typing import Sequence
+
 import numpy as np
 
 
@@ -133,6 +136,34 @@ def pose_inverse(a) -> np.ndarray:
     a = np.asarray(a, dtype=float)
     qi = quat_conjugate(quat_normalize(a[3:7]))
     return np.concatenate([-rotate(qi, a[:3]), qi])
+
+
+def euler_xyz_to_quat(rpy: Sequence[float]) -> np.ndarray:
+    """``[qx, qy, qz, qw]`` of extrinsic ``xyz`` Euler angles (scipy's ``"xyz"``: ``R = Rz(c) Ry(b) Rx(a)``)."""
+    a, b, c = (float(v) for v in rpy)
+    ca, sa = math.cos(a), math.sin(a)
+    cb, sb = math.cos(b), math.sin(b)
+    cc, sc = math.cos(c), math.sin(c)
+    # R = Rz(c) @ Ry(b) @ Rx(a)
+    m = np.array([
+        [cc * cb, cc * sb * sa - sc * ca, cc * sb * ca + sc * sa],
+        [sc * cb, sc * sb * sa + cc * ca, sc * sb * ca - cc * sa],
+        [-sb, cb * sa, cb * ca],
+    ])
+    return matrix_to_quat(m)
+
+
+def quat_to_euler_xyz(quat: Sequence[float]) -> np.ndarray:
+    """Extrinsic ``xyz`` Euler angles of ``[qx, qy, qz, qw]`` (inverse of :func:`euler_xyz_to_quat`)."""
+    m = quat_to_matrix(quat)
+    b = math.asin(max(-1.0, min(1.0, -m[2, 0])))
+    if abs(m[2, 0]) < 1.0 - 1e-9:
+        a = math.atan2(m[2, 1], m[2, 2])
+        c = math.atan2(m[1, 0], m[0, 0])
+    else:  # gimbal lock: roll and yaw share one axis; put it all in yaw
+        a = 0.0
+        c = math.atan2(-m[0, 1], m[1, 1])
+    return np.array([a, b, c])
 
 
 IDENTITY_POSE = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])

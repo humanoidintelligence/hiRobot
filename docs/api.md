@@ -16,23 +16,62 @@ Conventions used throughout:
 
 ## Contents
 
-- [Top-level package](#top-level-package)
+- [Robot at a glance](#robot-at-a-glance)
 - [Quick example](#quick-example)
+- [Top-level package](#top-level-package)
+- [Building robots: make_robot and the driver registry](#building-robots-make_robot-and-the-driver-registry)
+- [Robot](#robot)
 - [Embodiment](#embodiment)
 - [Observation, Action, ActionChunk, ControlMode](#observation-action-actionchunk-controlmode)
-- [Robot](#robot)
-- [Command arbiter](#command-arbiter)
+- [Skills](#skills)
 - [Robot skills](#robot-skills)
-- [Building robots: make_robot and the driver registry](#building-robots-make_robot-and-the-driver-registry)
+- [Command arbiter](#command-arbiter)
 - [SafetyGate](#safetygate)
+- [RobotAssembly](#robotassembly)
+- [Control loops](#control-loops)
 - [DofMap](#dofmap)
 - [Kinematics](#kinematics)
-- [Control loops](#control-loops)
-- [RobotAssembly](#robotassembly)
-- [Writing a driver or a layer (SPI)](#writing-a-driver-or-a-layer-spi)
-- [Extension points: cameras, end-effectors and audio](#extension-points-cameras-end-effectors-and-audio)
 - [Config file reference](#config-file-reference)
 - [CLI](#cli)
+- [Writing a driver or a layer (SPI)](#writing-a-driver-or-a-layer-spi)
+- [Extension points: cameras, end-effectors and audio](#extension-points-cameras-end-effectors-and-audio)
+
+## Robot at a glance
+
+Everything a `Robot` has, by what it is for. Drivers, simulators, assemblies
+and layers all have every member below; signatures and behaviour are in
+[Robot](#robot).
+
+| For | Members | See |
+|---|---|---|
+| What the robot is | `embodiment`, `action_modes`, `motion_spaces`, `direct_joints`, `cartesian_targets`, `accepts_parts`, `simulated` | [Embodiment](#embodiment), [ControlMode](#controlmode) |
+| Attached devices | `cameras`, `microphones`, `speakers` (by name) | [Extension points](#extension-points-cameras-end-effectors-and-audio) |
+| Connect and reset | `connect()`, `reset(seed=None)`, `disconnect()` | [Robot](#robot) |
+| Read | `get_observation() -> Observation`, `get_status() -> RobotStatus`, `now()`, `fault` | [Observation](#observation), [RobotStatus](#robotstatus) |
+| Command | `send_action(action)`, `check_action(action) -> Action`, `hold()`, `set_gains(kp, kd)`, `command_timeout_s` | [Action](#action) |
+| Stop | `estop()` | [Robot](#robot) |
+| Share the command stream | `claim(name, ...) -> CommandLease`, `command_events()` | [Command arbiter](#command-arbiter) |
+| Skills | `list_skills()`, `run_skill(name, args=None)`, `stop_skill()`, `skill_running` | [Skills](#skills) |
+| Skills by kind | Robot skills: `has_robot_skills`, `list_robot_skills()`, `run_robot_skill(name, args=None)`, `stop_robot_skill()`. Layer skills: `list_layer_skills()`, `run_layer_skill(name, args=None)`, `stop_layer_skill()`, `layer_skill_running` | [Robot skills](#robot-skills), [Layers](#layers) |
+| Safety and episode outcome | `safety` (the attached `SafetyGate`), `success`, `done`, `reward` | [SafetyGate](#safetygate), [Control loops](#control-loops) |
+
+## Quick example
+
+```python
+import numpy as np
+from hirobot import Action, ControlMode, make_robot
+
+robot = make_robot("examples/humanoid.yaml")  # from the repository root; body.driver: toy
+robot.connect()
+try:
+    robot.reset()
+    for _ in range(100):                             # hold every joint at zero
+        obs = robot.get_observation()
+        robot.send_action(Action(mode=ControlMode.POSITION,
+                                 joint_target=np.zeros(robot.embodiment.num_dofs)))
+finally:
+    robot.disconnect()
+```
 
 ## Top-level package
 
@@ -62,23 +101,236 @@ The interfaces and registries for cameras, end-effectors and audio are in `hirob
 (`drivers/<part>/<SDK vendor>/<SDK or protocol>/`). Both are covered in [Building robots](#building-robots-make_robot-and-the-driver-registry)
 and [Extension points](#extension-points-cameras-end-effectors-and-audio).
 
-## Quick example
+## Building robots: make_robot and the driver registry
+
+### `load_embodiment(config) -> Embodiment`
+
+The `Embodiment` a robot config (`assembly:`) or a device file (`device:`)
+describes: a built-in name (`"unitree_g1"`, the same as `"robots/unitree_g1"`),
+a file path, or an already-loaded dict, after `defaults:` are expanded (see
+[Config file reference](#config-file-reference)). For an assembly with parts the
+embodiment is the merged tree, every part's names under its `<part>/` prefix.
+Nothing is connected or built. Raises `ValueError` if the config is neither.
+
+### `make_robot(config, overrides=None, sim=None) -> Robot`
+
+Builds the configured robot. `config` is a built-in name, a file path, or a dict:
+a robot config (`assembly:`) or a device file alone (`device:`). The config is
+loaded and built as a tree, one robot per node, the drivers looked up in the
+registry (built-in drivers and `hirobot.drivers` entry-point plugins). Steps, in
+order:
+
+1. Expand `defaults:` and load the tree. Each node's own devices (`body`, with
+   its hands, cameras and audio) form its own robot; each device's `driver:` is
+   looked up in the registry (`body` defaults to `toy`).
+2. With a real body and end-effectors that have a `driver:`, build one
+   end-effector driver for each and give the body driver only the body joints
+   (and none of the grippers those drivers own). Instantiate the body as
+   `driver_cls(embodiment, **driver_kwargs)`; the other `driver:` keys are
+   constructor arguments.
+3. Build a camera driver for each camera with a `driver:` and an audio driver
+   for each microphone / speaker with a `driver:`. With a simulated body, only
+   stand-ins (`simulated = True`, e.g. `array`, `video_file`, `wav_mic`) are
+   built, so the config runs without the robot.
+4. Join a node's devices (body, end-effectors, cameras, audio) in one
+   `RobotAssembly` when there is a device to attach. A node with child parts
+   becomes a `RobotAssembly` holding those parts (and the node's own body, if
+   any); nodes nest.
+5. Wrap the root in one `SafetyGate`, with per-joint limits merged from every
+   `safety:` in the tree (the joint-count and non-finite checks always apply);
+   `safety: false` detaches it.
+6. If `layers:` is set, wrap the robot in each layer in order (see
+   [Layers](#layers)). A layer with `part: <path>` wraps only that part of an
+   assembly (`hirobot.assembly.part_layers`; these sit under the whole-robot layers). The
+   gate under the layers checks the joint commands they send; with layers, a
+   second gate on top checks what the caller sends.
+
+`overrides` maps a part path to overrides merged over the config, so
+host-specific values (network interface, IP, `read_only`) can come from the
+command line: `{"body": {"driver": {"network_interface": "eth0"}}}` for a single
+robot, `{"left/body": {"driver": {"ip": ...}}}` for a part of an assembly.
+
+`sim=True` (or a `sim:` section with `sim` left `None`) builds the robot in one
+shared MuJoCo world instead (`hirobot.sim.sim_world`): each body from its device
+file's `model:`, at its placement, a view of the world as its driver, mounted
+cameras rendered by the world, no real driver built. `sim=False` builds the real
+robot of a config that has a `sim:` section. `sim` may also be a mapping merged
+over the config's `sim:` (`{"realtime": False, "viewer": True}`).
+
+To rehearse a motion in simulation before running it on hardware you can also
+open the real robot with `read_only: true`, build its `*_mujoco` config as a
+second robot, and start that one from the real pose with `MujocoRobot.set_state`
+(see `examples/rehearse_in_sim.py`).
+
+Raises `ValueError` for a camera / end-effector / audio / layer spec
+without `type`, an end-effector driver that does not support the interface its config asks for, a `layers:` that is not a list, or a speaker driver listed as a
+microphone (or the reverse). Raises `KeyError` for an unknown driver or layer name.
+
+### Layers
+
+A layer is a `Robot` that wraps another robot and changes how it is commanded:
+a whole-body controller that takes `BASE_VELOCITY` / `MOTION_CLIP` / `CARTESIAN`
+and sends balanced joint targets to the robot underneath every tick. hiRobot
+ships none; plugin packages (hiWBC) register them.
 
 ```python
-import numpy as np
-from hirobot import Action, ControlMode, make_robot
+from hirobot import Layer, Robot, register_layer
 
-robot = make_robot("examples/humanoid.yaml")  # from the repository root; body.driver: toy
-robot.connect()
-try:
-    robot.reset()
-    for _ in range(100):                             # hold every joint at zero
-        obs = robot.get_observation()
-        robot.send_action(Action(mode=ControlMode.POSITION,
-                                 joint_target=np.zeros(robot.embodiment.num_dofs)))
-finally:
-    robot.disconnect()
+@register_layer("my_wbc")
+class MyWbc(Layer):
+    def __init__(self, inner: Robot, **config):
+        super().__init__(inner)
+    def _send_action(self, action): ...   # compute, then self.inner.send_action(...)
 ```
+
+`register_layer`, `Layer` and the methods it implements are the extension side, see
+[Writing a layer](#writing-a-layer); a user only writes the `layers:` entry.
+
+```yaml
+layers:                     # first entry innermost
+  - type: my_wbc            # registered layer name
+    controller: sonic       # every other key -> the layer's constructor
+```
+
+`Layer` forwards everything to `inner` by default: `embodiment`, the
+capability declarations (`action_modes`, `motion_spaces`, `cartesian_targets`,
+`direct_joints`), the devices (`cameras`, `microphones`, `speakers`), the
+lifecycle, observations, `get_status`, `hold`, gains and robot skills; `fault`
+reports the layer's own fault or the one below. A subclass overrides what it
+changes. `estop()` reaches the robot at the bottom first, then each layer stops
+its own work. How to write one: [Writing a layer](#writing-a-layer).
+
+A layer sends its joint commands through `inner.send_action`, so the gate
+`make_robot` attaches underneath checks them. The layer's `inner` is the whole
+robot: with real dexterous hands it can drive the fingers itself, or leave them
+free (`direct_joints`) for the caller to command by `Action.joint_names`; the
+cameras and audio devices are reachable through it as on the robot below. Register
+layers from the same `hirobot.drivers` entry point as drivers.
+
+**Layer skills.** A layer can run its own skills over many control cycles (a
+behavior, a macro), apart from the vendor's robot skills:
+`list_layer_skills()` (this layer's and the layers' below), `run_layer_skill(name, args=None) -> RobotSkillResult`
+(arguments checked against the schema, returns once started),
+`stop_layer_skill()` and `layer_skill_running` (true while a skill of this layer
+or one below runs). The four are on every `Robot`, so callers need not check
+whether the outermost robot is a layer. While a skill runs, the layer
+holds the stack's [command lease](#command-arbiter) with `Priority.LAYER_SKILL`:
+a caller's lease is preempted, and direct commands raise `RobotBusyError` until
+the skill ends or `stop_layer_skill()` is called. A `TAKEOVER` preempts the
+skill (it is stopped). `estop()` ends it, so the caller can `reset()`.
+
+### Registry
+
+```python
+from hirobot import Robot, register_body, get_body, available_bodies
+
+@register_body("my_robot")
+class MyRobot(Robot):
+    ...
+```
+
+| Function | Description |
+|---|---|
+| `register_body(name)` | Class decorator. Raises `ValueError` if the name is taken or the class is not a `Robot` |
+| `get_body(name) -> Type[Robot]` | Raises `KeyError` listing the available names |
+| `available_bodies() -> List[str]` | Sorted registered names |
+
+Built-in drivers register when `hirobot.drivers` is imported (`make_robot` does
+this). Installed packages can add drivers through the `hirobot.drivers` entry-point
+group; they load with the built-ins. Vendor SDKs are imported lazily on `connect()`,
+which first calls `require_sdk` (below).
+
+| Name | Class | Module | Target |
+|---|---|---|---|
+| `toy` | `ToyRobot` | `drivers/sim/toy/` | Toy kinematic integrator, no dependencies |
+| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo physics, a robot of its own; renders cameras that have a `mount`; `ee_poses` for end-effectors that have a `frame`; `set_state` starts it from a measured pose |
+| `unitree_sdk2` | `UnitreeRobot` | `drivers/body/unitree/sdk2/` | Unitree G1 / H1 / H1-2 / H2 |
+| `fourier_grx` | `FourierRobot` | `drivers/body/fourier/grx/` | Fourier GR1T1 / GR1T2 |
+| `agibot_gdk` | `AgibotG1Robot` | `drivers/body/agibot/gdk/` | AgiBot G1 (精灵 G01): arms, waist, head and grippers over the GDK's DDS topics; chassis over its controller box |
+| `agibot_aimrt` | `AgibotX1Robot` | `drivers/body/agibot/aimrt/` | AgiBot X1 |
+| `franka_droid` | `FrankaDroidRobot` | `drivers/body/franka/droid/` | Franka FR3 and its gripper behind a DROID robot server (zerorpc) |
+| `ur_rtde` | `URRobot` | `drivers/body/ur/rtde/` | Universal Robots UR5e |
+| `agilex_piper_sdk` | `PiperRobot` | `drivers/body/agilex/piper_sdk/` | AgileX PiPER and its gripper over SocketCAN (`piper_sdk`) |
+
+Constructor arguments of each hardware driver are documented in its
+[setup guide](setup/README.md).
+
+### SDK manifests (`hirobot.loading.sdk`)
+
+Every hardware driver directory has a `manifest.yaml` naming the vendor SDK it
+needs, the oldest version that works, the install command, and which model ran
+on which SDK version on real hardware:
+
+```yaml
+sdk:
+  - distribution: unitree_sdk2py    # importlib.metadata name
+    module: unitree_sdk2py          # import name (default: distribution)
+    minimum: "1.0.1"
+    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
+verified:                           # append-only, one entry per model x SDK version
+  - model: Unitree G1 (29 DoF)
+    sdk: {unitree_sdk2py: "1.0.1 (a035ade)"}
+    date: 2026-11-04
+maintainers: []
+```
+
+`require_sdk(package, who=None)` reads it: a missing SDK raises `ImportError` with the
+install command, one older than `minimum` raises, and one newer than every version in
+`verified` logs a warning once and runs. It returns `{distribution: installed version}`.
+`load_manifest(package)` returns the parsed `Manifest`.
+
+## Robot
+
+`hirobot.core.robot.Robot`, the abstract driver contract every robot, simulator and
+wrapper implements.
+
+**Threads.** `get_observation`, `get_status`, `now` and `estop` may be called
+from any thread at any time. Every other method (`send_action`, `hold`,
+`reset`, `run_skill`, `run_robot_skill`, `set_gains`, `connect`, `disconnect`, ...) is
+called by one holder at a time: the holder of the [command
+lease](#command-arbiter), or the single caller when nobody holds one. A lease
+may be passed between threads, but its calls must not overlap. Drivers do not
+promise that two threads sending at once get any particular order.
+
+| Member | Kind | Description |
+|---|---|---|
+| `embodiment` | abstract property | The `Embodiment` this driver exposes |
+| `connect()` | abstract | Open the connection. Called once before control |
+| `reset(seed=None)` | abstract | Bring the robot to a safe initial state. Simulators use `seed` to pick the scene (e.g. an env seed or init-state index); other drivers ignore it |
+| `get_observation() -> Observation` | abstract | Read sensors |
+| `get_status() -> RobotStatus` | optional | Health and command progress, see [`RobotStatus`](#robotstatus). By default only `timestamp` and `fault` |
+| `send_action(action)` | concrete | `check_action`, then the driver's `_send_action` ([SPI](#writing-a-driver-or-a-layer-spi)). Raises `SafetyError` on refusal and nothing is sent, including when `action.joint_names` lists a joint outside `direct_joints`. Raises `RobotFaultError` in the fault state, and `RobotBusyError` (a `RuntimeError`) when someone else holds the robot's [command lease](#command-arbiter), e.g. it is a part of an assembly and the call does not come through the assembly |
+| `check_action(action) -> Action` | concrete | Every check `send_action` runs, without sending; returns the (possibly clamped) action. An assembly checks every part's piece before sending to any |
+| `fault` | property | Why the robot refuses commands, or `None`. Set when a driver or layer damped or stopped itself, and by `estop()`. Cleared when `reset()` returns, unless `estop()` ran meanwhile. A wrapper (`RobotAssembly`) reports its inner robot's too. Also `get_status().fault` |
+| `estop()` | concrete | Stop now; safe from any thread at any time, skips the safety gate and the [command arbiter](#command-arbiter). A long call on another thread (a `reset` ramp, a wait in `connect`) raises `RobotStoppedError` at its next step; the robot enters the fault state; a command already being sent finishes (at most `ESTOP_LOCK_TIMEOUT_S`, 0.2 s) and none goes out after; then the driver's own stop runs. Unitree and MuJoCo damp (Unitree with `builtin_skills` stops the skill), AgiBot G1 sends `MotionStop`, UR decelerates (`servoStop` / `speedStop` / `stopJ`), Franka stops its position controller; drivers without `damp()` (`toy`, `fourier_grx`, `agibot_aimrt`) only refuse further commands. `RobotAssembly` e-stops its body and every end-effector, or every part. On a layer, the robot at the bottom of the stack is e-stopped first, then each layer stops its own work, outermost first (see [Layer hooks](#layer-hooks); [Layers](#layers)) |
+| `claim(name, priority=Priority.CALLER, on_preempt=None, envelope=None, parts=None) -> CommandLease` | concrete | Take the robot's command stream. See [Command arbiter](#command-arbiter) |
+| `command_events() -> List[CommandEvent]` | concrete | The arbiter's audit events, oldest first; empty without an arbiter. See [Audit](#audit) |
+| `command_timeout_s` | attribute | Seconds without a new `VELOCITY` / `BASE_VELOCITY` command before the driver stops the motion and logs a warning (`hirobot.control.watchdog.CommandWatchdog`); not a fault, the next command runs as usual. Default 0.2 s on `toy`, `mujoco` (simulated time), `unitree_sdk2` (zero velocity, kp 0) and `ur_rtde` (`speedStop`); `agibot_gdk` has its own `command_timeout` (0.3 s) for the chassis; `None` on the other drivers. Set `body.command_timeout_s: null` to turn it off. Position targets are not watched |
+| `action_modes` | class attribute | Modes the robot accepts. Callers that build actions read it |
+| `motion_spaces` | class attribute | `MotionClip.space` values the robot tracks under `MOTION_CLIP`. Empty by default |
+| `direct_joints` | class attribute | Joints a caller may command by name beside a non-joint mode. Empty by default |
+| `cartesian_targets` | property | End-effectors that take `CARTESIAN` pose targets: every end-effector when `CARTESIAN` is in `action_modes`, else none. Overridden by robots that track only some |
+| `cameras`, `microphones`, `speakers` | attributes | Attached devices by name: camera drivers, microphones and speakers. Empty on a bare driver; the assembly `make_robot` builds fills them, and every layer passes them up. See [Extension points](#extension-points-cameras-end-effectors-and-audio) |
+| `accepts_parts` | class attribute | Whether `send_action` takes `Action.parts`: `True` on an assembly with child parts, else `False` |
+| `now()` | optional | The robot's clock in seconds, what `Observation.stamps` times are on: `time.monotonic()` by default, simulated time in `toy` / `mujoco`. Wrappers return the inner robot's |
+| `hold()` | optional | Keep the robot where it is, e.g. after a policy is stopped. By default sends the current `joint_pos` as a POSITION action when the driver accepts POSITION, otherwise does nothing. A simulator that takes only Cartesian deltas does nothing; Unitree with `builtin_skills` does nothing (the motion service keeps the robot standing). A driver with its own balance loop (a whole-body-controlled humanoid) must override it to command standing still (base velocity `[0, 0, 0]`): sending `joint_pos` freezes the joints and the humanoid falls. Goes through the safety gate |
+| `set_gains(kp, kd)` | optional | Per-joint PD gains. No-op by default |
+| `has_robot_skills` | property | Whether the driver offers robot skills at all. `False` by default |
+| `list_robot_skills() -> List[RobotSkillSpec]` | optional | The skills the robot's own controller runs. Empty by default. See [Robot skills](#robot-skills) |
+| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | Check `args` against the skill's schema, then run it. Raises `RobotSkillError` |
+| `stop_robot_skill()` | optional | Stop the running skill. No-op by default |
+| `list_layer_skills() -> List[RobotSkillSpec]` | concrete | The skills the stack's layers run. Every robot has it; without layers it is empty. See [Layer skills](#layers) |
+| `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | Start a layer skill. Without layers it raises `RobotSkillError` |
+| `stop_layer_skill()` | concrete | Stop the running layer skill. No-op without layers |
+| `layer_skill_running` | property | Whether a layer skill (of any layer in the stack) holds the command stream. `False` without layers |
+| `list_skills() -> List[RobotSkillSpec]` | concrete | Every skill the robot can run, layer skills and robot skills in one list. See [Skills](#skills) |
+| `run_skill(name, args=None) -> RobotSkillResult` | concrete | Start a skill from `list_skills()`, whichever kind it is |
+| `stop_skill()` | concrete | Stop the running skill, of either kind |
+| `skill_running` | property | Whether a layer skill is running. Robot skills are not tracked |
+| `disconnect()` | optional | Release and stop. No-op by default |
+| `safety` | attribute | The attached gate, or `None` |
+| `simulated` | class attribute | `True` for simulator drivers. With a simulated driver `make_robot` builds no end-effector drivers and only the cameras and audio devices whose class is also `simulated` (video file, WAV, the host's microphone) |
+| `success`, `done`, `reward` | attributes | Episode outcome. Every driver in hiRobot (`toy`, `mujoco`, the real robots) leaves them `None`: they run no task. Task environments set them, e.g. hiBench's benchmark environments and its referee. A control loop can stop on them |
 
 ## Embodiment
 
@@ -286,50 +538,88 @@ A horizon of `T` actions predicted in one inference call.
 - `step(i) -> Action`: the `i`-th step as a single `Action`. Raises `IndexError`
   outside `[0, horizon)`.
 
-## Robot
+## Skills
 
-`hirobot.core.robot.Robot`, the abstract driver contract every robot, simulator and
-wrapper implements.
+What a robot can do by name, for a caller (an agent, a voice front end) that
+shows it to a model. Two kinds sit underneath, [robot skills](#robot-skills)
+(the vendor's controller runs them) and [layer skills](#layers) (a layer runs
+them); these four calls list and run both without the caller telling them apart.
 
-**Threads.** `get_observation`, `get_status`, `now` and `estop` may be called
-from any thread at any time. Every other method (`send_action`, `hold`,
-`reset`, `run_robot_skill`, `set_gains`, `connect`, `disconnect`, ...) is
-called by one holder at a time: the holder of the [command
-lease](#command-arbiter), or the single caller when nobody holds one. A lease
-may be passed between threads, but its calls must not overlap. Drivers do not
-promise that two threads sending at once get any particular order.
+```python
+robot = make_robot("my_g1.yaml")
+robot.connect()
+for s in robot.list_skills():          # RobotSkillSpec: name, description, parameters (JSON Schema), ...
+    print(s.name, s.description)
+robot.run_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_skill()
+```
 
-| Member | Kind | Description |
+| Call | Description |
+|---|---|
+| `list_skills() -> List[RobotSkillSpec]` | Layer skills first, then robot skills. A layer skill with the same name as a robot skill hides it (the outer one wins). In an assembly names carry the part path (`left/grasp`) |
+| `run_skill(name, args=None) -> RobotSkillResult` | Goes to `run_layer_skill` or `run_robot_skill`, with their argument checks and lease rules: a layer skill holds the command stream until it ends. Raises `RobotSkillError` for an unknown name or bad arguments, `RobotBusyError` when someone else holds the robot |
+| `stop_skill()` | Stops both kinds: `stop_layer_skill()`, then `stop_robot_skill()` |
+| `skill_running` | `layer_skill_running`. A robot skill's `run_skill` returns once the robot accepts it, and how long it runs is only estimated (`duration_s`) |
+
+A `CommandLease` has `run_skill` too. A robot skill runs through the lease; a
+layer skill preempts it, so claim again after the skill.
+
+Drivers and layers do not implement these four. A driver offers robot skills
+through `list_robot_skills` / `_run_robot_skill`, a layer offers layer skills
+through `_layer_skills` / `_start_layer_skill` ([SPI](#writing-a-driver-or-a-layer-spi)).
+
+## Robot skills
+
+`hirobot.core.robot_skills`. A robot skill is a motion the robot's own controller
+carries out (walk, sit, wave), started by name instead of by streaming joint
+targets. Each driver declares the skills hiRobot supports on its robot, so
+callers (an agent, a voice front end) list them and show them to a model
+instead of hard-coding any.
+
+```python
+robot = make_robot("my_g1.yaml")      # robot.builtin_skills: g1
+robot.connect()
+[s.name for s in robot.list_robot_skills()]   # ['start_locomotion', 'walk', ...]
+robot.run_robot_skill("start_locomotion")
+robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_robot_skill()
+```
+
+### `RobotSkillSpec`
+
+| Field | Type | Description |
 |---|---|---|
-| `embodiment` | abstract property | The `Embodiment` this driver exposes |
-| `connect()` | abstract | Open the connection. Called once before control |
-| `reset(seed=None)` | abstract | Bring the robot to a safe initial state. Simulators use `seed` to pick the scene (e.g. an env seed or init-state index); other drivers ignore it |
-| `get_observation() -> Observation` | abstract | Read sensors |
-| `get_status() -> RobotStatus` | optional | Health and command progress, see [`RobotStatus`](#robotstatus). By default only `timestamp` and `fault` |
-| `send_action(action)` | concrete | `check_action`, then the driver's `_send_action` ([SPI](#writing-a-driver-or-a-layer-spi)). Raises `SafetyError` on refusal and nothing is sent, including when `action.joint_names` lists a joint outside `direct_joints`. Raises `RobotFaultError` in the fault state, and `RobotBusyError` (a `RuntimeError`) when someone else holds the robot's [command lease](#command-arbiter), e.g. it is a part of an assembly and the call does not come through the assembly |
-| `check_action(action) -> Action` | concrete | Every check `send_action` runs, without sending; returns the (possibly clamped) action. An assembly checks every part's piece before sending to any |
-| `fault` | property | Why the robot refuses commands, or `None`. Set when a driver or layer damped or stopped itself, and by `estop()`. Cleared when `reset()` returns, unless `estop()` ran meanwhile. A wrapper (`RobotAssembly`) reports its inner robot's too. Also `get_status().fault` |
-| `estop()` | concrete | Stop now; safe from any thread at any time, skips the safety gate and the [command arbiter](#command-arbiter). A long call on another thread (a `reset` ramp, a wait in `connect`) raises `RobotStoppedError` at its next step; the robot enters the fault state; a command already being sent finishes (at most `ESTOP_LOCK_TIMEOUT_S`, 0.2 s) and none goes out after; then the driver's own stop runs. Unitree and MuJoCo damp (Unitree with `builtin_skills` stops the skill), AgiBot G1 sends `MotionStop`, UR decelerates (`servoStop` / `speedStop` / `stopJ`), Franka stops its position controller; drivers without `damp()` (`toy`, `fourier_grx`, `agibot_aimrt`) only refuse further commands. `RobotAssembly` e-stops its body and every end-effector, or every part. On a layer, the robot at the bottom of the stack is e-stopped first, then each layer stops its own work, outermost first (see [Layer hooks](#layer-hooks); [Layers](#layers)) |
-| `command_timeout_s` | attribute | Seconds without a new `VELOCITY` / `BASE_VELOCITY` command before the driver stops the motion and logs a warning (`hirobot.control.watchdog.CommandWatchdog`); not a fault, the next command runs as usual. Default 0.2 s on `toy`, `mujoco` (simulated time), `unitree_sdk2` (zero velocity, kp 0) and `ur_rtde` (`speedStop`); `agibot_gdk` has its own `command_timeout` (0.3 s) for the chassis; `None` on the other drivers. Set `body.command_timeout_s: null` to turn it off. Position targets are not watched |
-| `action_modes` | class attribute | Modes the robot accepts. Callers that build actions read it |
-| `motion_spaces` | class attribute | `MotionClip.space` values the robot tracks under `MOTION_CLIP`. Empty by default |
-| `direct_joints` | class attribute | Joints a caller may command by name beside a non-joint mode. Empty by default |
-| `cartesian_targets` | property | End-effectors that take `CARTESIAN` pose targets: every end-effector when `CARTESIAN` is in `action_modes`, else none. Overridden by robots that track only some |
-| `now()` | optional | The robot's clock in seconds, what `Observation.stamps` times are on: `time.monotonic()` by default, simulated time in `toy` / `mujoco`. Wrappers return the inner robot's |
-| `hold()` | optional | Keep the robot where it is, e.g. after a policy is stopped. By default sends the current `joint_pos` as a POSITION action when the driver accepts POSITION, otherwise does nothing. A simulator that takes only Cartesian deltas does nothing; Unitree with `builtin_skills` does nothing (the motion service keeps the robot standing). A driver with its own balance loop (a whole-body-controlled humanoid) must override it to command standing still (base velocity `[0, 0, 0]`): sending `joint_pos` freezes the joints and the humanoid falls. Goes through the safety gate |
-| `set_gains(kp, kd)` | optional | Per-joint PD gains. No-op by default |
-| `has_robot_skills` | property | Whether the driver offers robot skills at all. `False` by default |
-| `list_robot_skills() -> List[RobotSkillSpec]` | optional | The skills the robot's own controller runs. Empty by default. See [Robot skills](#robot-skills) |
-| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | Check `args` against the skill's schema, then run it. Raises `RobotSkillError` |
-| `stop_robot_skill()` | optional | Stop the running skill. No-op by default |
-| `list_layer_skills() -> List[RobotSkillSpec]` | concrete | The skills the stack's layers run. Every robot has it; without layers it is empty. See [Layer skills](#layers) |
-| `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | Start a layer skill. Without layers it raises `RobotSkillError` |
-| `stop_layer_skill()` | concrete | Stop the running layer skill. No-op without layers |
-| `layer_skill_running` | property | Whether a layer skill (of any layer in the stack) holds the command stream. `False` without layers |
-| `disconnect()` | optional | Release and stop. No-op by default |
-| `safety` | attribute | The attached gate, or `None` |
-| `simulated` | class attribute | `True` for simulator drivers. With a simulated driver `make_robot` builds no end-effector drivers and only the cameras and audio devices whose class is also `simulated` (video file, WAV, the host's microphone) |
-| `success`, `done`, `reward` | attributes | Episode outcome. Every driver in hiRobot (`toy`, `mujoco`, the real robots) leaves them `None`: they run no task. Task environments set them, e.g. hiBench's benchmark environments and its referee. A control loop can stop on them |
+| `name` | `str` | Passed to `run_robot_skill` |
+| `description` | `str` | One or two sentences for a model |
+| `parameters` | `dict` | JSON Schema of the arguments (an `object` schema). Empty means none |
+| `requires` | `List[str]` | Preconditions in plain words, e.g. `"robot standing on the ground"`. Informational |
+| `duration_s` | `float` or `None` | Typical run time, if known |
+
+### `run_robot_skill(name, args=None) -> RobotSkillResult`
+
+Checks `args` against `parameters` before anything reaches the robot, then
+runs it on the driver. Supported schema keywords: property
+`type` (number / integer / boolean / string), `minimum`, `maximum`,
+`exclusiveMinimum`, `enum`, `default`, and `required`. Missing arguments take
+their `default`; unknown arguments are refused. It returns once the robot has
+accepted the command, not when the motion ends. `RobotSkillResult` carries
+`name`, the checked `args` (defaults filled in) and `duration_s`.
+
+`RobotSkillError` is raised for an unknown skill, a bad argument, or a robot
+that refused.
+
+### Wrappers
+
+`RobotAssembly` forwards all four skill calls to its body driver, and lists each
+child part's skills under the part's prefix (`<part>/<skill>`).
+
+### Drivers with skills
+
+| Driver | Config | Skills |
+|---|---|---|
+| `unitree_sdk2` | `builtin_skills: g1` | G1 locomotion and arm gestures, see the [Unitree setup guide](setup/unitree.md#robot-skills-g1) |
+
+Every other driver offers none.
 
 ## Command arbiter
 
@@ -340,7 +630,7 @@ the stack; a caller takes the command stream with `claim` and sends through the 
 from hirobot import Priority, PreemptedError
 
 with robot.claim("runner", on_preempt=lambda lease: stop_runner()) as r:
-    r.send_action(action)       # also r.hold(), r.reset(), r.run_robot_skill(...)
+    r.send_action(action)       # also r.hold(), r.reset(), r.run_skill(...)
 ```
 
 | Item | Meaning |
@@ -405,236 +695,6 @@ Each event has `t` (the robot's clock, `now()`), `wall` (`time.time()`), `lease`
 are counted, not recorded: `safety["audit"]` has `accepted`, `refused`,
 `by_lease` (`"(direct)"` for calls with nobody holding; the 64 most recent
 names), `holder` and `last_refusal`. A lease also has `accepted` and `refused`.
-
-## Robot skills
-
-`hirobot.core.robot_skills`. A robot skill is a motion the robot's own controller
-carries out (walk, sit, wave), started by name instead of by streaming joint
-targets. Each driver declares the skills hiRobot supports on its robot, so
-callers (an agent, a voice front end) list them and show them to a model
-instead of hard-coding any.
-
-```python
-robot = make_robot("my_g1.yaml")      # robot.builtin_skills: g1
-robot.connect()
-[s.name for s in robot.list_robot_skills()]   # ['start_locomotion', 'walk', ...]
-robot.run_robot_skill("start_locomotion")
-robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
-robot.stop_robot_skill()
-```
-
-### `RobotSkillSpec`
-
-| Field | Type | Description |
-|---|---|---|
-| `name` | `str` | Passed to `run_robot_skill` |
-| `description` | `str` | One or two sentences for a model |
-| `parameters` | `dict` | JSON Schema of the arguments (an `object` schema). Empty means none |
-| `requires` | `List[str]` | Preconditions in plain words, e.g. `"robot standing on the ground"`. Informational |
-| `duration_s` | `float` or `None` | Typical run time, if known |
-
-### `run_robot_skill(name, args=None) -> RobotSkillResult`
-
-Checks `args` against `parameters` before anything reaches the robot, then
-runs it on the driver. Supported schema keywords: property
-`type` (number / integer / boolean / string), `minimum`, `maximum`,
-`exclusiveMinimum`, `enum`, `default`, and `required`. Missing arguments take
-their `default`; unknown arguments are refused. It returns once the robot has
-accepted the command, not when the motion ends. `RobotSkillResult` carries
-`name`, the checked `args` (defaults filled in) and `duration_s`.
-
-`RobotSkillError` is raised for an unknown skill, a bad argument, or a robot
-that refused.
-
-### Wrappers
-
-`RobotAssembly` forwards all four skill calls to its body driver, and lists each
-child part's skills under the part's prefix (`<part>/<skill>`).
-
-### Drivers with skills
-
-| Driver | Config | Skills |
-|---|---|---|
-| `unitree_sdk2` | `builtin_skills: g1` | G1 locomotion and arm gestures, see the [Unitree setup guide](setup/unitree.md#robot-skills-g1) |
-
-Every other driver offers none.
-
-## Building robots: make_robot and the driver registry
-
-### `load_embodiment(config) -> Embodiment`
-
-The `Embodiment` a robot config (`assembly:`) or a device file (`device:`)
-describes: a built-in name (`"unitree_g1"`, the same as `"robots/unitree_g1"`),
-a file path, or an already-loaded dict, after `defaults:` are expanded (see
-[Config file reference](#config-file-reference)). For an assembly with parts the
-embodiment is the merged tree, every part's names under its `<part>/` prefix.
-Nothing is connected or built. Raises `ValueError` if the config is neither.
-
-### `make_robot(config, overrides=None, sim=None) -> Robot`
-
-Builds the configured robot. `config` is a built-in name, a file path, or a dict:
-a robot config (`assembly:`) or a device file alone (`device:`). The config is
-loaded and built as a tree, one robot per node, the drivers looked up in the
-registry (built-in drivers and `hirobot.drivers` entry-point plugins). Steps, in
-order:
-
-1. Expand `defaults:` and load the tree. Each node's own devices (`body`, with
-   its hands, cameras and audio) form its own robot; each device's `driver:` is
-   looked up in the registry (`body` defaults to `toy`).
-2. With a real body and end-effectors that have a `driver:`, build one
-   end-effector driver for each and give the body driver only the body joints
-   (and none of the grippers those drivers own). Instantiate the body as
-   `driver_cls(embodiment, **driver_kwargs)`; the other `driver:` keys are
-   constructor arguments.
-3. Build a camera driver for each camera with a `driver:` and an audio driver
-   for each microphone / speaker with a `driver:`. With a simulated body, only
-   stand-ins (`simulated = True`, e.g. `array`, `video_file`, `wav_mic`) are
-   built, so the config runs without the robot.
-4. Join a node's devices (body, end-effectors, cameras, audio) in one
-   `RobotAssembly` when there is a device to attach. A node with child parts
-   becomes a `RobotAssembly` holding those parts (and the node's own body, if
-   any); nodes nest.
-5. Wrap the root in one `SafetyGate`, with per-joint limits merged from every
-   `safety:` in the tree (the joint-count and non-finite checks always apply);
-   `safety: false` detaches it.
-6. If `layers:` is set, wrap the robot in each layer in order (see
-   [Layers](#layers)). A layer with `part: <path>` wraps only that part of an
-   assembly (`hirobot.assembly.part_layers`; these sit under the whole-robot layers). The
-   gate under the layers checks the joint commands they send; with layers, a
-   second gate on top checks what the caller sends.
-
-`overrides` maps a part path to overrides merged over the config, so
-host-specific values (network interface, IP, `read_only`) can come from the
-command line: `{"body": {"driver": {"network_interface": "eth0"}}}` for a single
-robot, `{"left/body": {"driver": {"ip": ...}}}` for a part of an assembly.
-
-`sim=True` (or a `sim:` section with `sim` left `None`) builds the robot in one
-shared MuJoCo world instead (`hirobot.sim.sim_world`): each body from its device
-file's `model:`, at its placement, a view of the world as its driver, mounted
-cameras rendered by the world, no real driver built. `sim=False` builds the real
-robot of a config that has a `sim:` section. `sim` may also be a mapping merged
-over the config's `sim:` (`{"realtime": False, "viewer": True}`).
-
-To rehearse a motion in simulation before running it on hardware you can also
-open the real robot with `read_only: true`, build its `*_mujoco` config as a
-second robot, and start that one from the real pose with `MujocoRobot.set_state`
-(see `examples/rehearse_in_sim.py`).
-
-Raises `ValueError` for a camera / end-effector / audio / layer spec
-without `type`, an end-effector driver that does not support the interface its config asks for, a `layers:` that is not a list, or a speaker driver listed as a
-microphone (or the reverse). Raises `KeyError` for an unknown driver or layer name.
-
-### Layers
-
-A layer is a `Robot` that wraps another robot and changes how it is commanded:
-a whole-body controller that takes `BASE_VELOCITY` / `MOTION_CLIP` / `CARTESIAN`
-and sends balanced joint targets to the robot underneath every tick. hiRobot
-ships none; plugin packages (hiWBC) register them.
-
-```python
-from hirobot import Layer, Robot, register_layer
-
-@register_layer("my_wbc")
-class MyWbc(Layer):
-    def __init__(self, inner: Robot, **config):
-        super().__init__(inner)
-    def _send_action(self, action): ...   # compute, then self.inner.send_action(...)
-```
-
-`register_layer`, `Layer` and the methods it implements are the extension side, see
-[Writing a layer](#writing-a-layer); a user only writes the `layers:` entry.
-
-```yaml
-layers:                     # first entry innermost
-  - type: my_wbc            # registered layer name
-    controller: sonic       # every other key -> the layer's constructor
-```
-
-`Layer` forwards everything to `inner` by default: `embodiment`, the
-capability declarations (`action_modes`, `motion_spaces`, `cartesian_targets`,
-`direct_joints`), the devices (`cameras`, `microphones`, `speakers`), the
-lifecycle, observations, `get_status`, `hold`, gains and robot skills; `fault`
-reports the layer's own fault or the one below. A subclass overrides what it
-changes. `estop()` reaches the robot at the bottom first, then each layer stops
-its own work. How to write one: [Writing a layer](#writing-a-layer).
-
-A layer sends its joint commands through `inner.send_action`, so the gate
-`make_robot` attaches underneath checks them. The layer's `inner` is the whole
-robot: with real dexterous hands it can drive the fingers itself, or leave them
-free (`direct_joints`) for the caller to command by `Action.joint_names`; the
-cameras and audio devices are reachable through it as on the robot below. Register
-layers from the same `hirobot.drivers` entry point as drivers.
-
-**Layer skills.** A layer can run its own skills over many control cycles (a
-behavior, a macro), apart from the vendor's robot skills:
-`list_layer_skills()` (this layer's and the layers' below), `run_layer_skill(name, args=None) -> RobotSkillResult`
-(arguments checked against the schema, returns once started),
-`stop_layer_skill()` and `layer_skill_running` (true while a skill of this layer
-or one below runs). The four are on every `Robot`, so callers need not check
-whether the outermost robot is a layer. While a skill runs, the layer
-holds the stack's [command lease](#command-arbiter) with `Priority.LAYER_SKILL`:
-a caller's lease is preempted, and direct commands raise `RobotBusyError` until
-the skill ends or `stop_layer_skill()` is called. A `TAKEOVER` preempts the
-skill (it is stopped). `estop()` ends it, so the caller can `reset()`.
-
-### Registry
-
-```python
-from hirobot import Robot, register_body, get_body, available_bodies
-
-@register_body("my_robot")
-class MyRobot(Robot):
-    ...
-```
-
-| Function | Description |
-|---|---|
-| `register_body(name)` | Class decorator. Raises `ValueError` if the name is taken or the class is not a `Robot` |
-| `get_body(name) -> Type[Robot]` | Raises `KeyError` listing the available names |
-| `available_bodies() -> List[str]` | Sorted registered names |
-
-Built-in drivers register when `hirobot.drivers` is imported (`make_robot` does
-this). Installed packages can add drivers through the `hirobot.drivers` entry-point
-group; they load with the built-ins. Vendor SDKs are imported lazily on `connect()`,
-which first calls `require_sdk` (below).
-
-| Name | Class | Module | Target |
-|---|---|---|---|
-| `toy` | `ToyRobot` | `drivers/sim/toy/` | Toy kinematic integrator, no dependencies |
-| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo physics, a robot of its own; renders cameras that have a `mount`; `ee_poses` for end-effectors that have a `frame`; `set_state` starts it from a measured pose |
-| `unitree_sdk2` | `UnitreeRobot` | `drivers/body/unitree/sdk2/` | Unitree G1 / H1 / H1-2 / H2 |
-| `fourier_grx` | `FourierRobot` | `drivers/body/fourier/grx/` | Fourier GR1T1 / GR1T2 |
-| `agibot_gdk` | `AgibotG1Robot` | `drivers/body/agibot/gdk/` | AgiBot G1 (精灵 G01): arms, waist, head and grippers over the GDK's DDS topics; chassis over its controller box |
-| `agibot_aimrt` | `AgibotX1Robot` | `drivers/body/agibot/aimrt/` | AgiBot X1 |
-| `franka_libfranka` | `FrankaRobot` | `drivers/body/franka/libfranka/` | Franka FR3 |
-| `ur_rtde` | `URRobot` | `drivers/body/ur/rtde/` | Universal Robots UR5e |
-
-Constructor arguments of each hardware driver are documented in its
-[setup guide](setup/README.md).
-
-### SDK manifests (`hirobot.loading.sdk`)
-
-Every hardware driver directory has a `manifest.yaml` naming the vendor SDK it
-needs, the oldest version that works, the install command, and which model ran
-on which SDK version on real hardware:
-
-```yaml
-sdk:
-  - distribution: unitree_sdk2py    # importlib.metadata name
-    module: unitree_sdk2py          # import name (default: distribution)
-    minimum: "1.0.1"
-    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
-verified:                           # append-only, one entry per model x SDK version
-  - model: Unitree G1 (29 DoF)
-    sdk: {unitree_sdk2py: "1.0.1 (a035ade)"}
-    date: 2026-11-04
-maintainers: []
-```
-
-`require_sdk(package, who=None)` reads it: a missing SDK raises `ImportError` with the
-install command, one older than `minimum` raises, and one newer than every version in
-`verified` logs a warning once and runs. It returns `{distribution: installed version}`.
-`load_manifest(package)` returns the parsed `Manifest`.
 
 ## SafetyGate
 
@@ -761,64 +821,6 @@ counted (calibration or model off), and does not refuse the command.
 prediction takes about 1.5 ms on a desktop CPU; on the robot's PC2 it is not
 measured yet. `safety: false` turns this check off together with the rest of the gate.
 
-## DofMap
-
-`hirobot.core.dof.DofMap(source_names, target_names)` maps between two joint orderings
-by name. Raises `ValueError` if a target name is missing from the source.
-
-| Method | Description |
-|---|---|
-| `remap(values)` | Source-ordered array → target order (first axis). Checks the length |
-| `scatter(values, default=None)` | Target-ordered array → source order. Source joints not in the target take `default` (or `0`). Use it when a policy commands a subset of joints |
-
-```python
-m = DofMap(robot.embodiment.joint_names, policy_joint_names)
-policy_q = m.remap(obs.joint_pos)
-robot_target = m.scatter(policy_target, default=obs.joint_pos)
-```
-
-## Kinematics
-
-`hirobot.geometry.kinematics.Kinematics.from_mjcf(path, backend="numpy")` loads an MJCF model and
-computes world poses of every body from joint angles and the base pose. Positions are in
-metres, quaternions `[x, y, z, w]` with `w >= 0`.
-
-| Backend | Needs | Notes |
-|---|---|---|
-| `"numpy"` (default) | numpy only | Reads the body tree from the MJCF: nested `<body>` with `pos` / `quat`, hinge joints (`axis`, `pos`), one free joint on a top-level body. Raises `ValueError` for MJCF features it does not read (`euler` / `axisangle` / `xyaxes` / `zaxis`, slide / ball joints, joint `ref`, `<default>` joint attributes, `<include>`, `<frame>`) |
-| `"mujoco"` | `pip install 'hirobot[sim]'` | `mujoco.mj_kinematics` on the same file. Raises `ImportError` without mujoco. Use it to cross-check the numpy result or for models the numpy parser rejects |
-
-The backend is chosen explicitly, never by what is installed. The tests check the numpy
-backend against `mj_kinematics` (G1 29 DoF: max difference below 1e-12).
-
-| Member | Description |
-|---|---|
-| `body_names`, `parents` | Bodies in model order (world body excluded) and their parent index (`-1` = top level) |
-| `joint_names` | Hinge joints in model order, as named in the MJCF |
-| `floating_base` | True when a top-level body has a free joint |
-| `forward(joint_pos, base_pos=None, base_quat=None, joint_names=None) -> BodyPoses` | `joint_pos` is `(..., n)`. With `joint_names` (`name` or `name_joint`), columns are matched by name and model joints not listed are at 0; without it, columns follow `Kinematics.joint_names`. `base_pos` / `base_quat` place the free-joint body (default: its MJCF pose; floating-base models only) |
-
-`BodyPoses` has `names`, `pos` `(..., num_bodies, 3)` and `quat` `(..., num_bodies, 4)`;
-`poses["left_wrist_yaw_link"]` returns that body's `(pos, quat)`.
-
-```python
-from hirobot.geometry.kinematics import Kinematics
-
-kin = Kinematics.from_mjcf("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
-poses = kin.forward(obs.joint_pos, base_pos=[0, 0, 0.79], base_quat=[0, 0, 0, 1],
-                    joint_names=robot.embodiment.joint_names)
-pos, quat = poses["torso_link"]
-```
-
-## Control loops
-
-hiRobot has no policy classes, control loop or model-server client; it only
-supplies the `Robot` a loop drives. What a loop uses from a driver:
-`reset(seed=None)`, `get_observation()`, `send_action()`, `hold()` after a stop,
-`embodiment.control_hz` for pacing a real robot, `simulated` (step a simulator
-unpaced), and on simulators `success` / `done` / `reward`.
-`ActionChunk.step(i)` turns one step of a predicted chunk into an `Action`.
-
 ## RobotAssembly
 
 A `Robot` wrapper that `make_robot` builds from the config. You rarely
@@ -908,6 +910,155 @@ collision:
     right: {mjcf: ~/models/ur5e.xml, radius: 0.06, skip: [base_mount]}
 ```
 
+## Control loops
+
+hiRobot has no policy classes, control loop or model-server client; it only
+supplies the `Robot` a loop drives. What a loop uses from a driver:
+`reset(seed=None)`, `get_observation()`, `send_action()`, `hold()` after a stop,
+`embodiment.control_hz` for pacing a real robot, `simulated` (step a simulator
+unpaced), and on simulators `success` / `done` / `reward`.
+`ActionChunk.step(i)` turns one step of a predicted chunk into an `Action`.
+
+## DofMap
+
+`hirobot.core.dof.DofMap(source_names, target_names)` maps between two joint orderings
+by name. Raises `ValueError` if a target name is missing from the source.
+
+| Method | Description |
+|---|---|
+| `remap(values)` | Source-ordered array → target order (first axis). Checks the length |
+| `scatter(values, default=None)` | Target-ordered array → source order. Source joints not in the target take `default` (or `0`). Use it when a policy commands a subset of joints |
+
+```python
+m = DofMap(robot.embodiment.joint_names, policy_joint_names)
+policy_q = m.remap(obs.joint_pos)
+robot_target = m.scatter(policy_target, default=obs.joint_pos)
+```
+
+## Kinematics
+
+`hirobot.geometry.kinematics.Kinematics.from_mjcf(path, backend="numpy")` loads an MJCF model and
+computes world poses of every body from joint angles and the base pose. Positions are in
+metres, quaternions `[x, y, z, w]` with `w >= 0`.
+
+| Backend | Needs | Notes |
+|---|---|---|
+| `"numpy"` (default) | numpy only | Reads the body tree from the MJCF: nested `<body>` with `pos` / `quat`, hinge joints (`axis`, `pos`), one free joint on a top-level body. Raises `ValueError` for MJCF features it does not read (`euler` / `axisangle` / `xyaxes` / `zaxis`, slide / ball joints, joint `ref`, `<default>` joint attributes, `<include>`, `<frame>`) |
+| `"mujoco"` | `pip install 'hirobot[sim]'` | `mujoco.mj_kinematics` on the same file. Raises `ImportError` without mujoco. Use it to cross-check the numpy result or for models the numpy parser rejects |
+
+The backend is chosen explicitly, never by what is installed. The tests check the numpy
+backend against `mj_kinematics` (G1 29 DoF: max difference below 1e-12).
+
+| Member | Description |
+|---|---|
+| `body_names`, `parents` | Bodies in model order (world body excluded) and their parent index (`-1` = top level) |
+| `joint_names` | Hinge joints in model order, as named in the MJCF |
+| `floating_base` | True when a top-level body has a free joint |
+| `forward(joint_pos, base_pos=None, base_quat=None, joint_names=None) -> BodyPoses` | `joint_pos` is `(..., n)`. With `joint_names` (`name` or `name_joint`), columns are matched by name and model joints not listed are at 0; without it, columns follow `Kinematics.joint_names`. `base_pos` / `base_quat` place the free-joint body (default: its MJCF pose; floating-base models only) |
+
+`BodyPoses` has `names`, `pos` `(..., num_bodies, 3)` and `quat` `(..., num_bodies, 4)`;
+`poses["left_wrist_yaw_link"]` returns that body's `(pos, quat)`.
+
+```python
+from hirobot.geometry.kinematics import Kinematics
+
+kin = Kinematics.from_mjcf("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
+poses = kin.forward(obs.joint_pos, base_pos=[0, 0, 0.79], base_quat=[0, 0, 0, 1],
+                    joint_names=robot.embodiment.joint_names)
+pos, quat = poses["torso_link"]
+```
+
+## Config file reference
+
+A YAML file read by `load_embodiment` / `make_robot` / the CLI, given as a
+built-in name (`"unitree_g1"`, `"body/unitree/h1"`; list them with
+`hirobot configs`) or a file path. A built-in name is looked up as `configs/<name>.yaml` in the package, then
+`configs/robots/<name>.yaml`, so `"unitree_g1"` and `"robots/unitree_g1"` (the form
+`hirobot configs` lists) name the same file. A string ending in `.yaml` / `.yml`
+or starting with `/`, `~` or `.` is a path. A config can list others under `defaults:`;
+they are merged in order and the file itself last. Mappings merge key by key;
+`joints`, `frames`, `mounts` and the device lists merge by `name` (same name:
+fields merged; new name: appended); any other value is replaced. A device's
+`driver:` merges key by key while its `type` stays the same and is replaced
+whole when `type` changes. `hirobot info --config <name> --resolved` prints the
+result. Rules and examples: `hirobot.loading.config`, `hirobot.loading.tree`.
+
+A config is one of two shapes. A **device file** describes one device model; its
+top level is the `device:` kind (`body`, `end_effector`, `camera`, `microphone`
+or `speaker`):
+
+```yaml
+device: body                # the kind; the other keys depend on it
+control_hz: 125
+floating_base: false
+joints:                     # body / end_effector
+  - name: shoulder_pan
+  - {name: wrist_3, position_limit: [-6.28, 6.28], torque_limit: 28}
+frames:                     # task-space frames (end-effector sites)
+  - {name: tcp}
+mounts:                     # where components may hang (link -> site)
+  wrist_camera: {link: wrist_3_link}
+model:                      # optional MJCF for sim / collision / kinematics
+  mjcf: ~/models/ur5e.xml
+driver: {type: ur_rtde}     # registered driver name + its constructor kwargs
+```
+
+A camera file carries `width` / `height` / `fps` / `depth` / `fovy`; an
+end-effector file `interface` (`joints` or `opening`), `joints`, `tcp`; a
+microphone or speaker only `driver`.
+
+A **robot config** has an `assembly:` node listing its parts. A part is a device
+or another node, referenced with `from:` (a built-in name or a path, relative to
+the file that names it) or written inline (`device:` or `assembly:`):
+
+```yaml
+assembly:
+  name: ur5e_dual
+  control_hz: 30            # optional; default: the slowest part's
+  parts:                    # name -> part; joint order follows this order
+    left:  {from: robots/ur_ur5e, overrides: {body: {driver: {ip: 192.168.1.101}}}}
+    right: {from: robots/ur_ur5e, safety: {max_joint_step: 0.1}}   # tightens this part only
+    scene: {device: camera, width: 640, height: 480, driver: {type: array}}   # inline device
+  placement:               # where each part sits in the node
+    left:  {pose: [0, 0.4, 0, 0, 0, 0, 1]}         # fixed: [x, y, z, qx, qy, qz, qw]
+    right: {pose: [0, -0.4, 0, 0, 0, 0, 1]}
+    scene: {on: body.wrist_camera, pose: [0, -0.07, 0.03, 0, 0, 0, 1]}  # on a part's mount
+    # a part that moves by itself uses origin: instead of pose:
+    # rover: {origin: [0, 0, 0, 0, 0, 0, 1]}
+  collision: {min_distance: 0.05}                  # optional, see RobotAssembly
+
+# Sections only the root config may carry (a referenced part cannot):
+safety:                    # optional; `safety: false` detaches the gate
+  max_joint_step: 0.2      # SafetyGate kwargs (joint_limit, clamp, gripper_range, ...)
+layers:                    # optional; registered layers, first innermost
+  - {type: my_wbc, part: left}    # part: wraps only that part (else the whole robot)
+arbiter:
+  require_claim: false     # optional; refuse commands without a lease (see Command arbiter)
+  audit_size: 256          # optional; events the audit ring keeps
+sim:                       # optional; make_robot(..., sim=True) builds a shared MuJoCo world
+  realtime: true
+```
+
+A single-robot config is an `assembly:` with one `body` part (see
+`robots/ur_ur5e`). `overrides` on a device reference is merged into the device
+file; on a node reference it maps a child part's name to that part's overrides,
+level by level. `make_robot(cfg, overrides={"left/body": {"driver": {"ip": ...}}})`
+merges host-specific values the same way from the command line.
+
+Policy settings (model server, chunk length) are not part of a robot config.
+
+## CLI
+
+Installed as `hirobot`.
+
+| Command | Description |
+|---|---|
+| `hirobot --version` | Print the version |
+| `hirobot info --config NAME_OR_PATH [--resolved]` | Print the embodiment: kind, control rate, floating base, joints, end-effectors, cameras. `--resolved` prints the whole config after `defaults:` are merged |
+| `hirobot configs [GROUP]` | List the built-in configs (`robots`, `body`, `end_effector`, `camera`, `microphone`, `speaker`). Names under `robots/` also work without the prefix (`unitree_g1`) |
+| `hirobot sim CONFIG [--seconds N] [--viewer] [--fast]` | Run a simulated robot: connect, hold the start pose for N s (default 3), print the joint error left, the base height, the rendered images and `get_observation` time. Says when a free base fell. Exit 2 for a real body; `--viewer` needs a MuJoCo body |
+| `hirobot check --sim CONFIG [--against-real] [--driver PART:KEY=VALUE ...] [--tolerance 0.02]` | Build the world the simulation check uses, without stepping it: every body needs a `model:`, every joint must be in its MJCF with an actuator, every end-effector frame a body of it; joint limits that differ from the MJCF's range by more than 0.1 rad are printed as warnings. `--against-real` also opens every body's real driver `read_only: true` (refused without that mode), reads one observation and prints each end effector's measured vs model position at those joint angles. Exit 1 on an error or an error above `--tolerance` m. Library: `hirobot.sim.check_sim` |
+| `hirobot view CONFIG [--model MUJOCO_CONFIG] [--body KEY=VALUE ...] [--hz 30] [--seconds N]` | Show a real robot's pose in a MuJoCo viewer. Opens CONFIG with `read_only: true` (a driver without a `read_only` mode is refused), copies the measured joints (by name) and base orientation into the model each frame, and never sends a command. `--model` defaults to the built-in `<config>_mujoco`. Exit 2 for a simulated robot or no model. Library: `hirobot.sim.view` |
 
 ## Writing a driver or a layer (SPI)
 
@@ -1047,6 +1198,8 @@ from the body driver. Like body drivers, they import vendor SDKs lazily.
 | `Frame` | `Tuple[np.ndarray, Stamp]`: the image and when it arrived (`Stamp(t, seq)`, `t` on `time.monotonic()`) |
 | `RgbdFrame` | `Tuple[np.ndarray, Optional[np.ndarray], Stamp]`: colour image, depth registered to it (HxW float32, metres) or `None`, and their common `Stamp` |
 | `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | One Intel RealSense (D435i, D405, L515, ...) on the local USB of the computer running hiRobot, over `pyrealsense2`. `serial` picks a device when several are attached (else the first enumerated). With `depth: true` it is an RGB-D camera: the depth sensor is aligned to colour so `Observation.depth` shares the colour pixel grid, device units scaled to metres by the sensor's `depth_scale`. `depth_width` / `depth_height` set the depth stream size when it differs from colour (default: the colour size); the aligned depth image still comes out at the colour size. Needs `pyrealsense2` (`pip install pyrealsense2`); the L515 needs an older release (2.54.2 verified; 2.59.1 does not list it) |
+| `orbbec_pyorbbecsdk` → `OrbbecCamera(name, serial=None, uid=None, width=640, height=480, fps=30, color_format="MJPG", depth=False, align="hw", timeout_ms=1000, poll_hz=60.0)` | One Orbbec camera (Dabai DC1, ...) on the local USB of the computer running hiRobot, over the 1.x `pyorbbecsdk` bindings (OrbbecSDK 1.10; older cameras do not enumerate under 2.x). `uid` (USB port path) or `serial` picks the device. With `depth: true` it is an RGB-D camera: depth aligned to colour (`align`: `hw` on the camera, `sw` in the SDK), device units scaled to metres. MJPEG / YUYV colour is decoded with OpenCV. The bindings are built from source; see [agilex_piper.md](setup/agilex_piper.md#6-orbbec-camera) |
+| `stereolabs_zed` → `ZedCamera(name, serial=None, resolution="HD720", fps=30, depth=False, depth_mode="NEURAL", min_depth_m=0.1, poll_hz=60.0)` | One Stereolabs ZED (ZED 2i, ZED Mini, ...) on the local USB of the computer running hiRobot, over `pyzed`. `serial` picks a camera when several are attached (else the first). The image is the left camera's colour (`resolution`: `HD2K`, `HD1080`, `HD1200`, `HD720`, `SVGA`, `VGA`). With `depth: true` it is an RGB-D camera: depth in metres registered to the left image from the SDK's `depth_mode` (`NEURAL`, `ULTRA`, `QUALITY`, `PERFORMANCE`), 0 where there is no reading. Needs the ZED SDK, its `pyzed` wheel and an NVIDIA GPU |
 | `agibot_cosine` → `AgibotCosineCamera(name, topic, depth_topic=None, depth_scale=0.001, max_pair_skew_s=0.005, pair_wait_s=0.02, queue=4, poll_hz=60.0)` | AgiBot G1 cameras on the robot's `cosine_bus` topics (`/camera/head_color` + `/camera/head_depth`, `/camera/hand_left_color`, ...). With `depth_topic` it is an RGB-D camera: each colour frame is paired with the depth frame of the same capture (`source_timestamp`), Z16 scaled to metres. Runs on the robot's computer with the vendor environment sourced (`LOCATOR_IP`, `AORTA_DISCOVERY_URI`) |
 | `unitree_videohub` → `UnitreeVideohubCamera(name, network_interface=None, domain_id=0, timeout_s=1.0, poll_hz=30.0)` | G1 head camera |
 | `unitree_image_server` → `UnitreeImageServerCamera(name, address, header=False, crop=None, timeout_s=1.0, poll_hz=60.0)` | H1 head camera: JPEG frames over ZeroMQ SUB from Unitree's teleoperation `image_server` (or `scripts/camera_image_server.py`). `header` strips the `Unit_Test` timestamp / frame id (kept in `remote_stamp` / `remote_frame_id`); `crop: [x, y, w, h]` takes one camera out of a side-by-side frame. Needs the `camera` extra |
@@ -1119,95 +1272,3 @@ All PCM is mono int16 little-endian.
 | `sounddevice_speaker` → `SoundDeviceSpeaker(name, device=None, block_ms=50)` | The computer's output device, written in `block_ms` blocks so `stop()` is prompt. Needs the `audio` extra. Simulated |
 | `build_audio(microphones, speakers, network_interface=None, sim_only=False) -> (mics, speakers)` | Drivers for the devices with a `driver:`, same rules as `build_cameras` |
 | `read_wav(path) -> (pcm, rate)`, `wav_bytes(pcm, rate)` | 16-bit WAV helpers in `hirobot.drivers.audio` (mono; the first channel of a multi-channel file) |
-
-## Config file reference
-
-A YAML file read by `load_embodiment` / `make_robot` / the CLI, given as a
-built-in name (`"unitree_g1"`, `"body/unitree/h1"`; list them with
-`hirobot configs`) or a file path. A built-in name is looked up as `configs/<name>.yaml` in the package, then
-`configs/robots/<name>.yaml`, so `"unitree_g1"` and `"robots/unitree_g1"` (the form
-`hirobot configs` lists) name the same file. A string ending in `.yaml` / `.yml`
-or starting with `/`, `~` or `.` is a path. A config can list others under `defaults:`;
-they are merged in order and the file itself last. Mappings merge key by key;
-`joints`, `frames`, `mounts` and the device lists merge by `name` (same name:
-fields merged; new name: appended); any other value is replaced. A device's
-`driver:` merges key by key while its `type` stays the same and is replaced
-whole when `type` changes. `hirobot info --config <name> --resolved` prints the
-result. Rules and examples: `hirobot.loading.config`, `hirobot.loading.tree`.
-
-A config is one of two shapes. A **device file** describes one device model; its
-top level is the `device:` kind (`body`, `end_effector`, `camera`, `microphone`
-or `speaker`):
-
-```yaml
-device: body                # the kind; the other keys depend on it
-control_hz: 125
-floating_base: false
-joints:                     # body / end_effector
-  - name: shoulder_pan
-  - {name: wrist_3, position_limit: [-6.28, 6.28], torque_limit: 28}
-frames:                     # task-space frames (end-effector sites)
-  - {name: tcp}
-mounts:                     # where components may hang (link -> site)
-  wrist_camera: {link: wrist_3_link}
-model:                      # optional MJCF for sim / collision / kinematics
-  mjcf: ~/models/ur5e.xml
-driver: {type: ur_rtde}     # registered driver name + its constructor kwargs
-```
-
-A camera file carries `width` / `height` / `fps` / `depth` / `fovy`; an
-end-effector file `interface` (`joints` or `opening`), `joints`, `tcp`; a
-microphone or speaker only `driver`.
-
-A **robot config** has an `assembly:` node listing its parts. A part is a device
-or another node, referenced with `from:` (a built-in name or a path, relative to
-the file that names it) or written inline (`device:` or `assembly:`):
-
-```yaml
-assembly:
-  name: ur5e_dual
-  control_hz: 30            # optional; default: the slowest part's
-  parts:                    # name -> part; joint order follows this order
-    left:  {from: robots/ur_ur5e, overrides: {body: {driver: {ip: 192.168.1.101}}}}
-    right: {from: robots/ur_ur5e, safety: {max_joint_step: 0.1}}   # tightens this part only
-    scene: {device: camera, width: 640, height: 480, driver: {type: array}}   # inline device
-  placement:               # where each part sits in the node
-    left:  {pose: [0, 0.4, 0, 0, 0, 0, 1]}         # fixed: [x, y, z, qx, qy, qz, qw]
-    right: {pose: [0, -0.4, 0, 0, 0, 0, 1]}
-    scene: {on: body.wrist_camera, pose: [0, -0.07, 0.03, 0, 0, 0, 1]}  # on a part's mount
-    # a part that moves by itself uses origin: instead of pose:
-    # rover: {origin: [0, 0, 0, 0, 0, 0, 1]}
-  collision: {min_distance: 0.05}                  # optional, see RobotAssembly
-
-# Sections only the root config may carry (a referenced part cannot):
-safety:                    # optional; `safety: false` detaches the gate
-  max_joint_step: 0.2      # SafetyGate kwargs (joint_limit, clamp, gripper_range, ...)
-layers:                    # optional; registered layers, first innermost
-  - {type: my_wbc, part: left}    # part: wraps only that part (else the whole robot)
-arbiter:
-  require_claim: false     # optional; refuse commands without a lease (see Command arbiter)
-  audit_size: 256          # optional; events the audit ring keeps
-sim:                       # optional; make_robot(..., sim=True) builds a shared MuJoCo world
-  realtime: true
-```
-
-A single-robot config is an `assembly:` with one `body` part (see
-`robots/ur_ur5e`). `overrides` on a device reference is merged into the device
-file; on a node reference it maps a child part's name to that part's overrides,
-level by level. `make_robot(cfg, overrides={"left/body": {"driver": {"ip": ...}}})`
-merges host-specific values the same way from the command line.
-
-Policy settings (model server, chunk length) are not part of a robot config.
-
-## CLI
-
-Installed as `hirobot`.
-
-| Command | Description |
-|---|---|
-| `hirobot --version` | Print the version |
-| `hirobot info --config NAME_OR_PATH [--resolved]` | Print the embodiment: kind, control rate, floating base, joints, end-effectors, cameras. `--resolved` prints the whole config after `defaults:` are merged |
-| `hirobot configs [GROUP]` | List the built-in configs (`robots`, `body`, `end_effector`, `camera`, `microphone`, `speaker`). Names under `robots/` also work without the prefix (`unitree_g1`) |
-| `hirobot sim CONFIG [--seconds N] [--viewer] [--fast]` | Run a simulated robot: connect, hold the start pose for N s (default 3), print the joint error left, the base height, the rendered images and `get_observation` time. Says when a free base fell. Exit 2 for a real body; `--viewer` needs a MuJoCo body |
-| `hirobot check --sim CONFIG [--against-real] [--driver PART:KEY=VALUE ...] [--tolerance 0.02]` | Build the world the simulation check uses, without stepping it: every body needs a `model:`, every joint must be in its MJCF with an actuator, every end-effector frame a body of it; joint limits that differ from the MJCF's range by more than 0.1 rad are printed as warnings. `--against-real` also opens every body's real driver `read_only: true` (refused without that mode), reads one observation and prints each end effector's measured vs model position at those joint angles. Exit 1 on an error or an error above `--tolerance` m. Library: `hirobot.sim.check_sim` |
-| `hirobot view CONFIG [--model MUJOCO_CONFIG] [--body KEY=VALUE ...] [--hz 30] [--seconds N]` | Show a real robot's pose in a MuJoCo viewer. Opens CONFIG with `read_only: true` (a driver without a `read_only` mode is refused), copies the measured joints (by name) and base orientation into the model each frame, and never sends a command. `--model` defaults to the built-in `<config>_mujoco`. Exit 2 for a simulated robot or no model. Library: `hirobot.sim.view` |

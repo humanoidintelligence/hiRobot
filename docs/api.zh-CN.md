@@ -15,23 +15,61 @@
 
 ## 目录
 
-- [顶层包](#顶层包)
+- [Robot 一览](#robot-一览)
 - [快速示例](#快速示例)
+- [顶层包](#顶层包)
+- [构建机器人：make_robot 与驱动注册表](#构建机器人make_robot-与驱动注册表)
+- [Robot](#robot)
 - [Embodiment](#embodiment)
 - [Observation, Action, ActionChunk, ControlMode](#observation-action-actionchunk-controlmode)
-- [Robot](#robot)
-- [命令仲裁](#命令仲裁)
+- [技能](#技能)
 - [机器人 skill](#机器人-skill)
-- [构建机器人：make_robot 与驱动注册表](#构建机器人make_robot-与驱动注册表)
+- [命令仲裁](#命令仲裁)
 - [SafetyGate](#safetygate)
+- [RobotAssembly](#robotassembly)
+- [控制循环](#控制循环)
 - [DofMap](#dofmap)
 - [Kinematics](#kinematics)
-- [控制循环](#控制循环)
-- [RobotAssembly](#robotassembly)
-- [编写驱动和层（SPI）](#编写驱动和层spi)
-- [扩展点：相机、末端执行器与音频](#扩展点相机末端执行器与音频)
 - [配置文件参考](#配置文件参考)
 - [CLI](#cli)
+- [编写驱动和层（SPI）](#编写驱动和层spi)
+- [扩展点：相机、末端执行器与音频](#扩展点相机末端执行器与音频)
+
+## Robot 一览
+
+`Robot` 的全部成员，按用途分组。驱动、仿真器、assembly 和 layer 都有下面每一个成员；签名和行为见
+[Robot](#robot)。
+
+| 用途 | 成员 | 见 |
+|---|---|---|
+| 机器人是什么 | `embodiment`、`action_modes`、`motion_spaces`、`direct_joints`、`cartesian_targets`、`accepts_parts`、`simulated` | [Embodiment](#embodiment)、[ControlMode](#controlmode) |
+| 挂载的设备 | `cameras`、`microphones`、`speakers`（按名字） | [扩展点](#扩展点相机末端执行器与音频) |
+| 连接和复位 | `connect()`、`reset(seed=None)`、`disconnect()` | [Robot](#robot) |
+| 读 | `get_observation() -> Observation`、`get_status() -> RobotStatus`、`now()`、`fault` | [Observation](#observation)、[RobotStatus](#robotstatus) |
+| 发命令 | `send_action(action)`、`check_action(action) -> Action`、`hold()`、`set_gains(kp, kd)`、`command_timeout_s` | [Action](#action) |
+| 急停 | `estop()` | [Robot](#robot) |
+| 共用命令流 | `claim(name, ...) -> CommandLease`、`command_events()` | [命令仲裁](#命令仲裁) |
+| 技能 | `list_skills()`、`run_skill(name, args=None)`、`stop_skill()`、`skill_running` | [技能](#技能) |
+| 按类别的技能 | 机器人 skill：`has_robot_skills`、`list_robot_skills()`、`run_robot_skill(name, args=None)`、`stop_robot_skill()`。层技能：`list_layer_skills()`、`run_layer_skill(name, args=None)`、`stop_layer_skill()`、`layer_skill_running` | [机器人 skill](#机器人-skill)、[Layer](#layer) |
+| 安全和回合结果 | `safety`（挂上的 `SafetyGate`）、`success`、`done`、`reward` | [SafetyGate](#safetygate)、[控制循环](#控制循环) |
+
+## 快速示例
+
+```python
+import numpy as np
+from hirobot import Action, ControlMode, make_robot
+
+robot = make_robot("examples/humanoid.yaml")  # from the repository root; body.driver: toy
+robot.connect()
+try:
+    robot.reset()
+    for _ in range(100):                             # hold every joint at zero
+        obs = robot.get_observation()
+        robot.send_action(Action(mode=ControlMode.POSITION,
+                                 joint_target=np.zeros(robot.embodiment.num_dofs)))
+finally:
+    robot.disconnect()
+```
 
 ## 顶层包
 
@@ -60,23 +98,194 @@
 驱动本身在 `hirobot.drivers` 下（`drivers/<part>/<SDK vendor>/<SDK or protocol>/`）。两者分别在
 [构建机器人](#构建机器人make_robot-与驱动注册表)和[扩展点](#扩展点相机末端执行器与音频)中介绍。
 
-## 快速示例
+## 构建机器人：make_robot 与驱动注册表
+
+### `load_embodiment(config) -> Embodiment`
+
+一份机器人配置（`assembly:`）或设备文件（`device:`）描述的 `Embodiment`：可以是内置名字
+（`"unitree_g1"`，等同于 `"robots/unitree_g1"`）、文件路径或已加载的 dict，在展开 `defaults:` 之后
+（见[配置文件参考](#配置文件参考)）。对带部件的 assembly，embodiment 是合并后的整棵树，每个部件的名字都在它的
+`<part>/` 前缀下。不连接、不构建任何东西。配置两者都不是时抛出 `ValueError`。
+
+### `make_robot(config, overrides=None, sim=None) -> Robot`
+
+构建配置描述的机器人。`config` 是内置名字、文件路径或 dict：一份机器人配置（`assembly:`）或单独一份设备
+文件（`device:`）。配置被加载并按树构建，每个节点一台机器人，驱动在注册表中查找（内置驱动和 `hirobot.drivers`
+entry-point 插件）。按顺序执行以下步骤：
+
+1. 展开 `defaults:` 并加载树。每个节点自己的设备（`body` 及其手、相机、音频）组成它自己的机器人；
+   每个设备的 `driver:` 在注册表中查找（`body` 默认 `toy`）。
+2. 本体为真机、且有末端执行器带 `driver:` 时，为每个这样的末端执行器构建一个末端执行器驱动，并只把躯体关节
+   （不含这些驱动自己管的夹爪）交给本体驱动。以 `driver_cls(embodiment, **driver_kwargs)` 实例化本体；
+   `driver:` 的其他键都作为构造参数传入。
+3. 为每个带 `driver:` 的相机构建相机驱动，为每个带 `driver:` 的麦克风 / 扬声器构建音频驱动。本体是仿真时，
+   只构建替身（`simulated = True`，例如 `array`、`video_file`、`wav_mic`），所以配置不需要机器人也能跑。
+4. 有设备可挂时，把一个节点的设备（本体、末端执行器、相机、音频）拼进一个 `RobotAssembly`。带子部件的节点
+   成为一个持有这些部件（以及该节点自己的本体，如果有）的 `RobotAssembly`；节点可以嵌套。
+5. 给根挂一个 `SafetyGate`，按关节的阈值从树中每个 `safety:` 合并而来（关节数和非有限值检查始终生效）；
+   `safety: false` 会把它摘掉。
+6. 如果设置了 `layers:`，按顺序用每个 layer 包装机器人（见 [Layer](#layer)）。带 `part: <path>` 的 layer
+   只包装 assembly 的那个部件（`hirobot.assembly.part_layers`；它们位于整机 layer 之下）。layer 下面的安全门检查它们发出的
+   关节指令；有 layer 时，最外层再加一个安全门检查调用方发送的内容。
+
+`overrides` 把部件路径映射到合并进配置的 overrides，所以与主机相关的值（网络接口、IP、`read_only`）可以来自命令行：
+单台机器人写 `{"body": {"driver": {"network_interface": "eth0"}}}`，assembly 的某个部件写
+`{"left/body": {"driver": {"ip": ...}}}`。
+
+`sim=True`（或配置带 `sim:` 段而 `sim` 留 `None`）改为在一个共享的 MuJoCo 世界里构建机器人
+（`hirobot.sim.sim_world`）：每个本体来自它设备文件的 `model:`，放在它的 placement 上，用世界的视图作为它的驱动，
+带挂载点的相机由世界渲染，不建任何真机驱动。`sim=False` 为带 `sim:` 段的配置构建真机。`sim` 也可以是一个
+合并进配置 `sim:` 的映射（`{"realtime": False, "viewer": True}`）。
+
+要在上真机之前先在仿真中预演一个动作，也可以用 `read_only: true` 打开真机，用它的 `*_mujoco` 配置另建一个机器人，
+再用 `MujocoRobot.set_state` 让它从真机姿态起步（见 `examples/rehearse_in_sim.py`）。
+
+以下情况抛出 `ValueError`：相机 / 末端执行器 / 音频 / layer 规格没有 `type`、末端执行器驱动不支持配置要求的接口、
+`layers:` 不是列表，或扬声器驱动被列为麦克风（或反过来）。驱动名或 layer 名未知时抛出 `KeyError`。
+
+### Layer
+
+layer 是一个包装另一台机器人、改变其指挥方式的 `Robot`：例如一个全身控制器，接受 `BASE_VELOCITY` /
+`MOTION_CLIP` / `CARTESIAN`，每个 tick 向下层机器人发送保持平衡的关节目标。hiRobot 本身不提供任何
+layer；由插件包（hiWBC）注册。
 
 ```python
-import numpy as np
-from hirobot import Action, ControlMode, make_robot
+from hirobot import Layer, Robot, register_layer
 
-robot = make_robot("examples/humanoid.yaml")  # from the repository root; body.driver: toy
-robot.connect()
-try:
-    robot.reset()
-    for _ in range(100):                             # hold every joint at zero
-        obs = robot.get_observation()
-        robot.send_action(Action(mode=ControlMode.POSITION,
-                                 joint_target=np.zeros(robot.embodiment.num_dofs)))
-finally:
-    robot.disconnect()
+@register_layer("my_wbc")
+class MyWbc(Layer):
+    def __init__(self, inner: Robot, **config):
+        super().__init__(inner)
+    def _send_action(self, action): ...   # compute, then self.inner.send_action(...)
 ```
+
+`register_layer`、`Layer` 和它要实现的方法属于扩展接口，见[编写层](#编写层)；使用者只写 `layers:` 条目。
+
+```yaml
+layers:                     # first entry innermost
+  - type: my_wbc            # registered layer name
+    controller: sonic       # every other key -> the layer's constructor
+```
+
+`Layer` 默认把一切转给 `inner`：`embodiment`、能力声明（`action_modes`、`motion_spaces`、`cartesian_targets`、
+`direct_joints`）、设备（`cameras`、`microphones`、`speakers`）、生命周期、观测、`get_status`、`hold`、增益和 robot
+skills；`fault` 报告 layer 自己的故障或下面的故障。子类只覆盖自己改的部分。`estop()` 先到最底下的机器人，再让每一层停下自己的
+工作。怎么写一个层见[编写层](#编写层)。
+
+layer 通过 `inner.send_action` 发送关节指令，所以 `make_robot` 挂在下面的安全门会检查它们。layer 的 `inner` 是整机：
+有真实灵巧手时，它可以自己驱动手指，也可以把手指留空（`direct_joints`），由调用方通过 `Action.joint_names` 指挥；
+相机和音频设备也能像在下面的机器人上一样经它拿到。layer 与驱动一样通过
+`hirobot.drivers` entry point 注册。
+
+**层技能。** 层可以跑自己的技能（行为、宏动作），跨很多个控制周期，和厂商的 robot skills 分开：`list_layer_skills()`（本层和
+下面各层的）、`run_layer_skill(name, args=None) -> RobotSkillResult`（参数按 schema 检查，启动后返回）、`stop_layer_skill()`、
+`layer_skill_running`（本层或下面的层有技能在跑就为真）。这四个在每个 `Robot` 上都有，调用方不用先判断最外层是不是层。技能运行期间层以 `Priority.LAYER_SKILL` 持有栈的[命令租约](#命令仲裁)：调用方的租约被抢占，直接发命令抛
+`RobotBusyError`，直到技能结束或调 `stop_layer_skill()`。`TAKEOVER` 会抢占技能（技能被停下）。`estop()` 会结束技能，调用方才能
+`reset()`。
+
+### 注册表
+
+```python
+from hirobot import Robot, register_body, get_body, available_bodies
+
+@register_body("my_robot")
+class MyRobot(Robot):
+    ...
+```
+
+| 函数 | 说明 |
+|---|---|
+| `register_body(name)` | 类装饰器。名字已被占用或类不是 `Robot` 时抛出 `ValueError` |
+| `get_body(name) -> Type[Robot]` | 抛出的 `KeyError` 会列出可用的名字 |
+| `available_bodies() -> List[str]` | 排好序的已注册名字 |
+
+内置驱动在导入 `hirobot.drivers` 时注册（`make_robot` 会导入它）。已安装的包可以通过 `hirobot.drivers`
+entry-point 组添加驱动；它们与内置驱动一起加载。厂商 SDK 在 `connect()` 时才惰性导入，`connect()`
+会先调用 `require_sdk`（见下文）。
+
+| 名字 | 类 | 模块 | 目标 |
+|---|---|---|---|
+| `toy` | `ToyRobot` | `drivers/sim/toy/` | 玩具运动学积分器，无依赖 |
+| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo 物理仿真，本身就是一台机器人；渲染带 `mount` 的相机；为带 `frame` 的末端执行器提供 `ee_poses`；`set_state` 让它从测得的姿态起步 |
+| `unitree_sdk2` | `UnitreeRobot` | `drivers/body/unitree/sdk2/` | Unitree G1 / H1 / H1-2 / H2 |
+| `fourier_grx` | `FourierRobot` | `drivers/body/fourier/grx/` | Fourier GR1T1 / GR1T2 |
+| `agibot_gdk` | `AgibotG1Robot` | `drivers/body/agibot/gdk/` | AgiBot G1（精灵 G01）：手臂、腰、头和夹爪走 GDK 的 DDS topic；底盘走其控制盒 |
+| `agibot_aimrt` | `AgibotX1Robot` | `drivers/body/agibot/aimrt/` | AgiBot X1 |
+| `franka_droid` | `FrankaDroidRobot` | `drivers/body/franka/droid/` | 走 DROID 机器人服务（zerorpc）的 Franka FR3 和夹爪 |
+| `ur_rtde` | `URRobot` | `drivers/body/ur/rtde/` | Universal Robots UR5e |
+| `agilex_piper_sdk` | `PiperRobot` | `drivers/body/agilex/piper_sdk/` | AgileX PiPER 及其夹爪，走 SocketCAN（`piper_sdk`） |
+
+每个硬件驱动的构造参数见其[设置指南](setup/README.zh-CN.md)。
+
+### SDK 清单（`hirobot.loading.sdk`）
+
+每个硬件驱动目录都有一个 `manifest.yaml`，写明它需要的厂商 SDK、可用的最低版本、安装命令，以及
+哪个型号在哪个 SDK 版本上做过真机验证：
+
+```yaml
+sdk:
+  - distribution: unitree_sdk2py    # importlib.metadata name
+    module: unitree_sdk2py          # import name (default: distribution)
+    minimum: "1.0.1"
+    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
+verified:                           # append-only, one entry per model x SDK version
+  - model: Unitree G1 (29 DoF)
+    sdk: {unitree_sdk2py: "1.0.1 (a035ade)"}
+    date: 2026-11-04
+maintainers: []
+```
+
+`require_sdk(package, who=None)` 读取它：SDK 缺失时抛出带安装命令的 `ImportError`，版本低于 `minimum`
+时抛出异常，版本比 `verified` 中所有版本都新时记录一次警告并照常运行。它返回
+`{distribution: installed version}`。`load_manifest(package)` 返回解析后的 `Manifest`。
+
+## Robot
+
+`hirobot.core.robot.Robot`，每个机器人、仿真器和包装器都要实现的抽象驱动契约。
+
+**线程。** `get_observation`、`get_status`、`now`、`estop` 任何时候都能从任何线程调。其余方法（`send_action`、`hold`、`reset`、
+`run_skill`、`run_robot_skill`、`set_gains`、`connect`、`disconnect` 等）同一时刻只由一个持有者调：[命令租约](#命令仲裁)的持有者，没人持有时就是
+唯一的调用方。租约可以在线程之间传，但调用不能重叠。两个线程同时发命令时，驱动不保证任何顺序。
+
+| 成员 | 类别 | 说明 |
+|---|---|---|
+| `embodiment` | abstract property | 该驱动暴露的 `Embodiment` |
+| `connect()` | abstract | 打开连接。在控制前调用一次 |
+| `reset(seed=None)` | abstract | 让机器人进入安全的初始状态。仿真器用 `seed` 选择场景（例如环境 seed 或初始状态索引）；其他驱动忽略它 |
+| `get_observation() -> Observation` | abstract | 读取传感器 |
+| `get_status() -> RobotStatus` | optional | 健康状态和命令进度，见 [`RobotStatus`](#robotstatus)。默认只有 `timestamp` 和 `fault` |
+| `send_action(action)` | concrete | 先 `check_action`，再调驱动的 `_send_action`（[SPI](#编写驱动和层spi)）。被拒绝时抛出 `SafetyError` 且不发送任何内容，`action.joint_names` 列出了 `direct_joints` 之外的关节时也一样。处于故障状态时抛出 `RobotFaultError`；别人持有机器人的[命令租约](#命令仲裁)时（例如它是某个 assembly 的部件而调用不经过 assembly）抛出 `RobotBusyError`（`RuntimeError` 子类） |
+| `check_action(action) -> Action` | concrete | 执行 `send_action` 的全部检查但不发送；返回（可能被裁剪过的）动作。assembly 在发送给任何部件之前对每个部件那部分都运行它 |
+| `fault` | property | 机器人拒绝指令的原因，或 `None`。驱动或 layer 自己进入阻尼或停止时设置，`estop()` 也会设置。`reset()` 返回时清除，期间来过 `estop()` 则不清除。包装器（`RobotAssembly`）也会报告内层机器人的故障。也见 `get_status().fault` |
+| `estop()` | concrete | 立即停下；任何线程、任何时候都能调，不走安全闸，也不受[命令仲裁](#命令仲裁)限制。别的线程上的长调用（`reset` ramp、`connect` 里的等待）在下一步抛出 `RobotStoppedError`；机器人进入故障状态；正在下发的指令先发完（最多等 `ESTOP_LOCK_TIMEOUT_S`，0.2 s），之后不会再有指令发出；然后执行驱动自己的停止。Unitree 和 MuJoCo 进阻尼（Unitree 开着 `builtin_skills` 时改为停掉 skill），AgiBot G1 发 `MotionStop`，UR 减速停下（`servoStop` / `speedStop` / `stopJ`），Franka 停掉位置控制器；没有 `damp()` 的驱动（`toy`、`fourier_grx`、`agibot_aimrt`）只拒绝后续指令。`RobotAssembly` 对它的本体和每个末端执行器、或每个部件都调急停。在 layer 上调时，先直接急停栈最底下的机器人，再从外往里让每一层停下自己的工作（见[层的钩子](#层的钩子)、[Layer](#layer)） |
+| `claim(name, priority=Priority.CALLER, on_preempt=None, envelope=None, parts=None) -> CommandLease` | concrete | 拿机器人的命令流。见[命令仲裁](#命令仲裁) |
+| `command_events() -> List[CommandEvent]` | concrete | 仲裁器的审计事件，从旧到新；没有仲裁器时为空。见[审计](#审计) |
+| `command_timeout_s` | attribute | 多少秒没有新的 `VELOCITY` / `BASE_VELOCITY` 指令就停下运动并打 warning（`hirobot.control.watchdog.CommandWatchdog`）；不进故障态，下一条指令照常执行。`toy`、`mujoco`（仿真时间）、`unitree_sdk2`（零速、kp 0）、`ur_rtde`（`speedStop`）默认 0.2 s；`agibot_gdk` 的底盘有自己的 `command_timeout`（0.3 s）；其他驱动是 `None`。配置里写 `body.command_timeout_s: null` 关掉。位置目标不看 |
+| `action_modes` | class attribute | 机器人接受的模式。构建动作的调用方读取它 |
+| `motion_spaces` | class attribute | 机器人在 `MOTION_CLIP` 下能跟踪的 `MotionClip.space` 取值。默认为空 |
+| `direct_joints` | class attribute | 调用方可以在非关节模式旁按名字指挥的关节。默认为空 |
+| `cartesian_targets` | property | 接受 `CARTESIAN` 位姿目标的末端执行器：`CARTESIAN` 在 `action_modes` 中时为全部末端执行器，否则为空。只跟踪其中一部分的机器人会覆盖它 |
+| `cameras`、`microphones`、`speakers` | attributes | 挂载的设备，按名字：相机驱动、麦克风和扬声器。裸驱动上为空；`make_robot` 建的 assembly 会填上，每一层 layer 往上传，所以最外层也有。见[扩展点](#扩展点相机末端执行器与音频) |
+| `accepts_parts` | class attribute | `send_action` 是否接受 `Action.parts`：带子部件的 assembly 为 `True`，其余为 `False` |
+| `now()` | optional | 机器人时钟（秒），`Observation.stamps` 的时间在它上面：默认 `time.monotonic()`，`toy` / `mujoco` 是仿真时间。包装层返回内层机器人的 |
+| `hold()` | optional | 让机器人保持在原处，例如在 policy 停止之后。默认情况下，驱动接受 POSITION 时把当前 `joint_pos` 作为 POSITION 动作发送，否则什么都不做。只接受笛卡尔增量的仿真器什么都不做；带 `builtin_skills` 的 Unitree 什么都不做（运动服务会让机器人保持站立）。有自己平衡回路的驱动（全身控制的人形机器人）必须覆盖它，指挥机器人站定（基座速度 `[0, 0, 0]`）：发送 `joint_pos` 会把关节冻住，人形机器人会摔倒。经过安全门 |
+| `set_gains(kp, kd)` | optional | 每个关节的 PD 增益。默认什么都不做 |
+| `has_robot_skills` | property | 驱动是否提供机器人 skill。默认 `False` |
+| `list_robot_skills() -> List[RobotSkillSpec]` | optional | 机器人自身控制器运行的 skill。默认为空。见[机器人 skill](#机器人-skill) |
+| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | 按 skill 的 schema 检查 `args`，再执行。抛出 `RobotSkillError` |
+| `stop_robot_skill()` | optional | 停止正在运行的 skill。默认什么都不做 |
+| `list_layer_skills() -> List[RobotSkillSpec]` | concrete | 栈里各层跑的技能。每个机器人都有；没有层时为空。见[层技能](#layer) |
+| `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | 启动一个层技能。没有层时抛 `RobotSkillError` |
+| `stop_layer_skill()` | concrete | 停止正在运行的层技能。没有层时什么都不做 |
+| `layer_skill_running` | property | 是否有层技能（栈里任一层的）持有命令流。没有层时为 `False` |
+| `list_skills() -> List[RobotSkillSpec]` | concrete | 机器人能跑的所有技能，层技能和机器人 skill 合在一张表里。见[技能](#技能) |
+| `run_skill(name, args=None) -> RobotSkillResult` | concrete | 按名字启动 `list_skills()` 里的技能，不管是哪一种 |
+| `stop_skill()` | concrete | 停掉正在跑的技能，两种都停 |
+| `skill_running` | property | 是否有层技能在跑。机器人 skill 不跟踪 |
+| `disconnect()` | optional | 释放并停止。默认什么都不做 |
+| `safety` | attribute | 挂接的安全门，或 `None` |
+| `simulated` | class attribute | 仿真器驱动为 `True`。驱动是仿真驱动时，`make_robot` 不构建末端执行器驱动，只构建类同样为 `simulated` 的相机和音频设备（视频文件、WAV、主机的麦克风） |
+| `success`, `done`, `reward` | attributes | 回合结果。hiRobot 里的驱动（`toy`、`mujoco`、各真机）都不跑任务，始终为 `None`；任务环境才设置它们，例如 hiBench 的基准环境和裁判。控制循环可以据此停止 |
 
 ## Embodiment
 
@@ -267,45 +476,79 @@ observation 转给模型。机器人不报的字段保持为空。
   `base_target` 或 `latent`，然后是 `ee_targets`，然后是 `gripper`；全部为空时为 `0`。
 - `step(i) -> Action`：第 `i` 步作为单个 `Action`。超出 `[0, horizon)` 时抛出 `IndexError`。
 
-## Robot
+## 技能
 
-`hirobot.core.robot.Robot`，每个机器人、仿真器和包装器都要实现的抽象驱动契约。
+机器人能按名字做的事，给要把它们展示给模型的调用方（agent、语音前端）用。底下分两种：
+[机器人 skill](#机器人-skill)（厂商控制器跑）和[层技能](#layer)（某一层跑）；下面四个调用把两种一起列出、
+一起启动，调用方不用区分。
 
-**线程。** `get_observation`、`get_status`、`now`、`estop` 任何时候都能从任何线程调。其余方法（`send_action`、`hold`、`reset`、
-`run_robot_skill`、`set_gains`、`connect`、`disconnect` 等）同一时刻只由一个持有者调：[命令租约](#命令仲裁)的持有者，没人持有时就是
-唯一的调用方。租约可以在线程之间传，但调用不能重叠。两个线程同时发命令时，驱动不保证任何顺序。
+```python
+robot = make_robot("my_g1.yaml")
+robot.connect()
+for s in robot.list_skills():          # RobotSkillSpec：name、description、parameters（JSON Schema）……
+    print(s.name, s.description)
+robot.run_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_skill()
+```
 
-| 成员 | 类别 | 说明 |
+| 调用 | 说明 |
+|---|---|
+| `list_skills() -> List[RobotSkillSpec]` | 先列层技能，再列机器人 skill。层技能和机器人 skill 同名时，层技能盖住机器人 skill（外层优先）。组装出来的机器人，名字带部件路径（`left/grasp`） |
+| `run_skill(name, args=None) -> RobotSkillResult` | 转给 `run_layer_skill` 或 `run_robot_skill`，参数检查和租约规则照旧：层技能在结束前持有命令流。名字未知或参数错误抛 `RobotSkillError`，别人持有机器人时抛 `RobotBusyError` |
+| `stop_skill()` | 两种都停：先 `stop_layer_skill()`，再 `stop_robot_skill()` |
+| `skill_running` | 就是 `layer_skill_running`。机器人 skill 的 `run_skill` 在机器人接受命令时就返回，跑多久只有估计值（`duration_s`） |
+
+`CommandLease` 也有 `run_skill`。机器人 skill 经由租约执行；层技能会抢占这个租约，技能结束后要重新 claim。
+
+驱动和层不实现这四个。驱动通过 `list_robot_skills` / `_run_robot_skill` 提供机器人 skill，层通过
+`_layer_skills` / `_start_layer_skill` 提供层技能（[SPI](#编写驱动和层spi)）。
+
+## 机器人 skill
+
+`hirobot.core.robot_skills`。机器人 skill 是由机器人自身控制器完成的动作（行走、坐下、挥手），按名字启动，
+而不是靠流式发送关节目标。每个驱动声明 hiRobot 在其机器人上支持的 skill，所以调用方（agent、语音前端）
+可以列出它们并展示给模型，不必写死。
+
+```python
+robot = make_robot("my_g1.yaml")      # robot.builtin_skills: g1
+robot.connect()
+[s.name for s in robot.list_robot_skills()]   # ['start_locomotion', 'walk', ...]
+robot.run_robot_skill("start_locomotion")
+robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_robot_skill()
+```
+
+### `RobotSkillSpec`
+
+| 字段 | 类型 | 说明 |
 |---|---|---|
-| `embodiment` | abstract property | 该驱动暴露的 `Embodiment` |
-| `connect()` | abstract | 打开连接。在控制前调用一次 |
-| `reset(seed=None)` | abstract | 让机器人进入安全的初始状态。仿真器用 `seed` 选择场景（例如环境 seed 或初始状态索引）；其他驱动忽略它 |
-| `get_observation() -> Observation` | abstract | 读取传感器 |
-| `get_status() -> RobotStatus` | optional | 健康状态和命令进度，见 [`RobotStatus`](#robotstatus)。默认只有 `timestamp` 和 `fault` |
-| `send_action(action)` | concrete | 先 `check_action`，再调驱动的 `_send_action`（[SPI](#编写驱动和层spi)）。被拒绝时抛出 `SafetyError` 且不发送任何内容，`action.joint_names` 列出了 `direct_joints` 之外的关节时也一样。处于故障状态时抛出 `RobotFaultError`；别人持有机器人的[命令租约](#命令仲裁)时（例如它是某个 assembly 的部件而调用不经过 assembly）抛出 `RobotBusyError`（`RuntimeError` 子类） |
-| `check_action(action) -> Action` | concrete | 执行 `send_action` 的全部检查但不发送；返回（可能被裁剪过的）动作。assembly 在发送给任何部件之前对每个部件那部分都运行它 |
-| `fault` | property | 机器人拒绝指令的原因，或 `None`。驱动或 layer 自己进入阻尼或停止时设置，`estop()` 也会设置。`reset()` 返回时清除，期间来过 `estop()` 则不清除。包装器（`RobotAssembly`）也会报告内层机器人的故障。也见 `get_status().fault` |
-| `estop()` | concrete | 立即停下；任何线程、任何时候都能调，不走安全闸，也不受[命令仲裁](#命令仲裁)限制。别的线程上的长调用（`reset` ramp、`connect` 里的等待）在下一步抛出 `RobotStoppedError`；机器人进入故障状态；正在下发的指令先发完（最多等 `ESTOP_LOCK_TIMEOUT_S`，0.2 s），之后不会再有指令发出；然后执行驱动自己的停止。Unitree 和 MuJoCo 进阻尼（Unitree 开着 `builtin_skills` 时改为停掉 skill），AgiBot G1 发 `MotionStop`，UR 减速停下（`servoStop` / `speedStop` / `stopJ`），Franka 停掉位置控制器；没有 `damp()` 的驱动（`toy`、`fourier_grx`、`agibot_aimrt`）只拒绝后续指令。`RobotAssembly` 对它的本体和每个末端执行器、或每个部件都调急停。在 layer 上调时，先直接急停栈最底下的机器人，再从外往里让每一层停下自己的工作（见[层的钩子](#层的钩子)、[Layer](#layer)） |
-| `command_timeout_s` | attribute | 多少秒没有新的 `VELOCITY` / `BASE_VELOCITY` 指令就停下运动并打 warning（`hirobot.control.watchdog.CommandWatchdog`）；不进故障态，下一条指令照常执行。`toy`、`mujoco`（仿真时间）、`unitree_sdk2`（零速、kp 0）、`ur_rtde`（`speedStop`）默认 0.2 s；`agibot_gdk` 的底盘有自己的 `command_timeout`（0.3 s）；其他驱动是 `None`。配置里写 `body.command_timeout_s: null` 关掉。位置目标不看 |
-| `action_modes` | class attribute | 机器人接受的模式。构建动作的调用方读取它 |
-| `motion_spaces` | class attribute | 机器人在 `MOTION_CLIP` 下能跟踪的 `MotionClip.space` 取值。默认为空 |
-| `direct_joints` | class attribute | 调用方可以在非关节模式旁按名字指挥的关节。默认为空 |
-| `cartesian_targets` | property | 接受 `CARTESIAN` 位姿目标的末端执行器：`CARTESIAN` 在 `action_modes` 中时为全部末端执行器，否则为空。只跟踪其中一部分的机器人会覆盖它 |
-| `now()` | optional | 机器人时钟（秒），`Observation.stamps` 的时间在它上面：默认 `time.monotonic()`，`toy` / `mujoco` 是仿真时间。包装层返回内层机器人的 |
-| `hold()` | optional | 让机器人保持在原处，例如在 policy 停止之后。默认情况下，驱动接受 POSITION 时把当前 `joint_pos` 作为 POSITION 动作发送，否则什么都不做。只接受笛卡尔增量的仿真器什么都不做；带 `builtin_skills` 的 Unitree 什么都不做（运动服务会让机器人保持站立）。有自己平衡回路的驱动（全身控制的人形机器人）必须覆盖它，指挥机器人站定（基座速度 `[0, 0, 0]`）：发送 `joint_pos` 会把关节冻住，人形机器人会摔倒。经过安全门 |
-| `set_gains(kp, kd)` | optional | 每个关节的 PD 增益。默认什么都不做 |
-| `has_robot_skills` | property | 驱动是否提供机器人 skill。默认 `False` |
-| `list_robot_skills() -> List[RobotSkillSpec]` | optional | 机器人自身控制器运行的 skill。默认为空。见[机器人 skill](#机器人-skill) |
-| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | 按 skill 的 schema 检查 `args`，再执行。抛出 `RobotSkillError` |
-| `stop_robot_skill()` | optional | 停止正在运行的 skill。默认什么都不做 |
-| `list_layer_skills() -> List[RobotSkillSpec]` | concrete | 栈里各层跑的技能。每个机器人都有；没有层时为空。见[层技能](#layer) |
-| `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | 启动一个层技能。没有层时抛 `RobotSkillError` |
-| `stop_layer_skill()` | concrete | 停止正在运行的层技能。没有层时什么都不做 |
-| `layer_skill_running` | property | 是否有层技能（栈里任一层的）持有命令流。没有层时为 `False` |
-| `disconnect()` | optional | 释放并停止。默认什么都不做 |
-| `safety` | attribute | 挂接的安全门，或 `None` |
-| `simulated` | class attribute | 仿真器驱动为 `True`。驱动是仿真驱动时，`make_robot` 不构建末端执行器驱动，只构建类同样为 `simulated` 的相机和音频设备（视频文件、WAV、主机的麦克风） |
-| `success`, `done`, `reward` | attributes | 回合结果。hiRobot 里的驱动（`toy`、`mujoco`、各真机）都不跑任务，始终为 `None`；任务环境才设置它们，例如 hiBench 的基准环境和裁判。控制循环可以据此停止 |
+| `name` | `str` | 传给 `run_robot_skill` |
+| `description` | `str` | 写给模型看的一两句话 |
+| `parameters` | `dict` | 参数的 JSON Schema（一个 `object` schema）。为空表示没有参数 |
+| `requires` | `List[str]` | 用自然语言写的前提条件，例如 `"robot standing on the ground"`。仅供参考 |
+| `duration_s` | `float` or `None` | 典型运行时长（如果已知） |
+
+### `run_robot_skill(name, args=None) -> RobotSkillResult`
+
+在任何内容到达机器人之前按 `parameters` 检查 `args`，然后交给驱动执行。支持的 schema
+关键字：属性的 `type`（number / integer / boolean / string）、`minimum`、`maximum`、
+`exclusiveMinimum`、`enum`、`default` 和 `required`。缺少的参数取其 `default`；未知参数会被拒绝。
+它在机器人接受指令后就返回，而不是等动作结束。`RobotSkillResult` 包含 `name`、检查后的 `args`
+（已填入默认值）和 `duration_s`。
+
+skill 未知、参数错误或机器人拒绝时抛出 `RobotSkillError`。
+
+### 包装器
+
+`RobotAssembly` 把这四个调用转发给其本体驱动，并把每个子部件的 skill 列在该部件的前缀下（`<part>/<skill>`）。
+
+### 带 skill 的驱动
+
+| 驱动 | 配置 | Skill |
+|---|---|---|
+| `unitree_sdk2` | `builtin_skills: g1` | G1 行走和手臂手势，见 [Unitree 设置指南](setup/unitree.zh-CN.md#机器人-skillg1) |
+
+其他驱动都不提供 skill。
 
 ## 命令仲裁
 
@@ -316,7 +559,7 @@ observation 转给模型。机器人不报的字段保持为空。
 from hirobot import Priority, PreemptedError
 
 with robot.claim("runner", on_preempt=lambda lease: stop_runner()) as r:
-    r.send_action(action)       # 还有 r.hold()、r.reset()、r.run_robot_skill(...)
+    r.send_action(action)       # 还有 r.hold()、r.reset()、r.run_skill(...)
 ```
 
 | 项 | 含义 |
@@ -372,193 +615,6 @@ robot.get_status().safety["audit"]   # 计数、当前持有者、最后一次�
 每个事件有 `t`（机器人时钟 `now()`）、`wall`（`time.time()`）、`lease`（没人持有时的直接调用为 `None`）、`priority`、`call`、
 `detail`。放行的命令只计数不记事件：`safety["audit"]` 里有 `accepted`、`refused`、`by_lease`（没人持有时的调用记在
 `"(direct)"`；最多留最近 64 个名字）、`holder`、`last_refusal`。租约上也有 `accepted`、`refused`。
-
-## 机器人 skill
-
-`hirobot.core.robot_skills`。机器人 skill 是由机器人自身控制器完成的动作（行走、坐下、挥手），按名字启动，
-而不是靠流式发送关节目标。每个驱动声明 hiRobot 在其机器人上支持的 skill，所以调用方（agent、语音前端）
-可以列出它们并展示给模型，不必写死。
-
-```python
-robot = make_robot("my_g1.yaml")      # robot.builtin_skills: g1
-robot.connect()
-[s.name for s in robot.list_robot_skills()]   # ['start_locomotion', 'walk', ...]
-robot.run_robot_skill("start_locomotion")
-robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
-robot.stop_robot_skill()
-```
-
-### `RobotSkillSpec`
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `name` | `str` | 传给 `run_robot_skill` |
-| `description` | `str` | 写给模型看的一两句话 |
-| `parameters` | `dict` | 参数的 JSON Schema（一个 `object` schema）。为空表示没有参数 |
-| `requires` | `List[str]` | 用自然语言写的前提条件，例如 `"robot standing on the ground"`。仅供参考 |
-| `duration_s` | `float` or `None` | 典型运行时长（如果已知） |
-
-### `run_robot_skill(name, args=None) -> RobotSkillResult`
-
-在任何内容到达机器人之前按 `parameters` 检查 `args`，然后交给驱动执行。支持的 schema
-关键字：属性的 `type`（number / integer / boolean / string）、`minimum`、`maximum`、
-`exclusiveMinimum`、`enum`、`default` 和 `required`。缺少的参数取其 `default`；未知参数会被拒绝。
-它在机器人接受指令后就返回，而不是等动作结束。`RobotSkillResult` 包含 `name`、检查后的 `args`
-（已填入默认值）和 `duration_s`。
-
-skill 未知、参数错误或机器人拒绝时抛出 `RobotSkillError`。
-
-### 包装器
-
-`RobotAssembly` 把这四个调用转发给其本体驱动，并把每个子部件的 skill 列在该部件的前缀下（`<part>/<skill>`）。
-
-### 带 skill 的驱动
-
-| 驱动 | 配置 | Skill |
-|---|---|---|
-| `unitree_sdk2` | `builtin_skills: g1` | G1 行走和手臂手势，见 [Unitree 设置指南](setup/unitree.zh-CN.md#机器人-skillg1) |
-
-其他驱动都不提供 skill。
-
-## 构建机器人：make_robot 与驱动注册表
-
-### `load_embodiment(config) -> Embodiment`
-
-一份机器人配置（`assembly:`）或设备文件（`device:`）描述的 `Embodiment`：可以是内置名字
-（`"unitree_g1"`，等同于 `"robots/unitree_g1"`）、文件路径或已加载的 dict，在展开 `defaults:` 之后
-（见[配置文件参考](#配置文件参考)）。对带部件的 assembly，embodiment 是合并后的整棵树，每个部件的名字都在它的
-`<part>/` 前缀下。不连接、不构建任何东西。配置两者都不是时抛出 `ValueError`。
-
-### `make_robot(config, overrides=None, sim=None) -> Robot`
-
-构建配置描述的机器人。`config` 是内置名字、文件路径或 dict：一份机器人配置（`assembly:`）或单独一份设备
-文件（`device:`）。配置被加载并按树构建，每个节点一台机器人，驱动在注册表中查找（内置驱动和 `hirobot.drivers`
-entry-point 插件）。按顺序执行以下步骤：
-
-1. 展开 `defaults:` 并加载树。每个节点自己的设备（`body` 及其手、相机、音频）组成它自己的机器人；
-   每个设备的 `driver:` 在注册表中查找（`body` 默认 `toy`）。
-2. 本体为真机、且有末端执行器带 `driver:` 时，为每个这样的末端执行器构建一个末端执行器驱动，并只把躯体关节
-   （不含这些驱动自己管的夹爪）交给本体驱动。以 `driver_cls(embodiment, **driver_kwargs)` 实例化本体；
-   `driver:` 的其他键都作为构造参数传入。
-3. 为每个带 `driver:` 的相机构建相机驱动，为每个带 `driver:` 的麦克风 / 扬声器构建音频驱动。本体是仿真时，
-   只构建替身（`simulated = True`，例如 `array`、`video_file`、`wav_mic`），所以配置不需要机器人也能跑。
-4. 有设备可挂时，把一个节点的设备（本体、末端执行器、相机、音频）拼进一个 `RobotAssembly`。带子部件的节点
-   成为一个持有这些部件（以及该节点自己的本体，如果有）的 `RobotAssembly`；节点可以嵌套。
-5. 给根挂一个 `SafetyGate`，按关节的阈值从树中每个 `safety:` 合并而来（关节数和非有限值检查始终生效）；
-   `safety: false` 会把它摘掉。
-6. 如果设置了 `layers:`，按顺序用每个 layer 包装机器人（见 [Layer](#layer)）。带 `part: <path>` 的 layer
-   只包装 assembly 的那个部件（`hirobot.assembly.part_layers`；它们位于整机 layer 之下）。layer 下面的安全门检查它们发出的
-   关节指令；有 layer 时，最外层再加一个安全门检查调用方发送的内容。
-
-`overrides` 把部件路径映射到合并进配置的 overrides，所以与主机相关的值（网络接口、IP、`read_only`）可以来自命令行：
-单台机器人写 `{"body": {"driver": {"network_interface": "eth0"}}}`，assembly 的某个部件写
-`{"left/body": {"driver": {"ip": ...}}}`。
-
-`sim=True`（或配置带 `sim:` 段而 `sim` 留 `None`）改为在一个共享的 MuJoCo 世界里构建机器人
-（`hirobot.sim.sim_world`）：每个本体来自它设备文件的 `model:`，放在它的 placement 上，用世界的视图作为它的驱动，
-带挂载点的相机由世界渲染，不建任何真机驱动。`sim=False` 为带 `sim:` 段的配置构建真机。`sim` 也可以是一个
-合并进配置 `sim:` 的映射（`{"realtime": False, "viewer": True}`）。
-
-要在上真机之前先在仿真中预演一个动作，也可以用 `read_only: true` 打开真机，用它的 `*_mujoco` 配置另建一个机器人，
-再用 `MujocoRobot.set_state` 让它从真机姿态起步（见 `examples/rehearse_in_sim.py`）。
-
-以下情况抛出 `ValueError`：相机 / 末端执行器 / 音频 / layer 规格没有 `type`、末端执行器驱动不支持配置要求的接口、
-`layers:` 不是列表，或扬声器驱动被列为麦克风（或反过来）。驱动名或 layer 名未知时抛出 `KeyError`。
-
-### Layer
-
-layer 是一个包装另一台机器人、改变其指挥方式的 `Robot`：例如一个全身控制器，接受 `BASE_VELOCITY` /
-`MOTION_CLIP` / `CARTESIAN`，每个 tick 向下层机器人发送保持平衡的关节目标。hiRobot 本身不提供任何
-layer；由插件包（hiWBC）注册。
-
-```python
-from hirobot import Layer, Robot, register_layer
-
-@register_layer("my_wbc")
-class MyWbc(Layer):
-    def __init__(self, inner: Robot, **config):
-        super().__init__(inner)
-    def _send_action(self, action): ...   # compute, then self.inner.send_action(...)
-```
-
-`register_layer`、`Layer` 和它要实现的方法属于扩展接口，见[编写层](#编写层)；使用者只写 `layers:` 条目。
-
-```yaml
-layers:                     # first entry innermost
-  - type: my_wbc            # registered layer name
-    controller: sonic       # every other key -> the layer's constructor
-```
-
-`Layer` 默认把一切转给 `inner`：`embodiment`、能力声明（`action_modes`、`motion_spaces`、`cartesian_targets`、
-`direct_joints`）、设备（`cameras`、`microphones`、`speakers`）、生命周期、观测、`get_status`、`hold`、增益和 robot
-skills；`fault` 报告 layer 自己的故障或下面的故障。子类只覆盖自己改的部分。`estop()` 先到最底下的机器人，再让每一层停下自己的
-工作。怎么写一个层见[编写层](#编写层)。
-
-layer 通过 `inner.send_action` 发送关节指令，所以 `make_robot` 挂在下面的安全门会检查它们。layer 的 `inner` 是整机：
-有真实灵巧手时，它可以自己驱动手指，也可以把手指留空（`direct_joints`），由调用方通过 `Action.joint_names` 指挥；
-相机和音频设备也能像在下面的机器人上一样经它拿到。layer 与驱动一样通过
-`hirobot.drivers` entry point 注册。
-
-**层技能。** 层可以跑自己的技能（行为、宏动作），跨很多个控制周期，和厂商的 robot skills 分开：`list_layer_skills()`（本层和
-下面各层的）、`run_layer_skill(name, args=None) -> RobotSkillResult`（参数按 schema 检查，启动后返回）、`stop_layer_skill()`、
-`layer_skill_running`（本层或下面的层有技能在跑就为真）。这四个在每个 `Robot` 上都有，调用方不用先判断最外层是不是层。技能运行期间层以 `Priority.LAYER_SKILL` 持有栈的[命令租约](#命令仲裁)：调用方的租约被抢占，直接发命令抛
-`RobotBusyError`，直到技能结束或调 `stop_layer_skill()`。`TAKEOVER` 会抢占技能（技能被停下）。`estop()` 会结束技能，调用方才能
-`reset()`。
-
-### 注册表
-
-```python
-from hirobot import Robot, register_body, get_body, available_bodies
-
-@register_body("my_robot")
-class MyRobot(Robot):
-    ...
-```
-
-| 函数 | 说明 |
-|---|---|
-| `register_body(name)` | 类装饰器。名字已被占用或类不是 `Robot` 时抛出 `ValueError` |
-| `get_body(name) -> Type[Robot]` | 抛出的 `KeyError` 会列出可用的名字 |
-| `available_bodies() -> List[str]` | 排好序的已注册名字 |
-
-内置驱动在导入 `hirobot.drivers` 时注册（`make_robot` 会导入它）。已安装的包可以通过 `hirobot.drivers`
-entry-point 组添加驱动；它们与内置驱动一起加载。厂商 SDK 在 `connect()` 时才惰性导入，`connect()`
-会先调用 `require_sdk`（见下文）。
-
-| 名字 | 类 | 模块 | 目标 |
-|---|---|---|---|
-| `toy` | `ToyRobot` | `drivers/sim/toy/` | 玩具运动学积分器，无依赖 |
-| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo 物理仿真，本身就是一台机器人；渲染带 `mount` 的相机；为带 `frame` 的末端执行器提供 `ee_poses`；`set_state` 让它从测得的姿态起步 |
-| `unitree_sdk2` | `UnitreeRobot` | `drivers/body/unitree/sdk2/` | Unitree G1 / H1 / H1-2 / H2 |
-| `fourier_grx` | `FourierRobot` | `drivers/body/fourier/grx/` | Fourier GR1T1 / GR1T2 |
-| `agibot_gdk` | `AgibotG1Robot` | `drivers/body/agibot/gdk/` | AgiBot G1（精灵 G01）：手臂、腰、头和夹爪走 GDK 的 DDS topic；底盘走其控制盒 |
-| `agibot_aimrt` | `AgibotX1Robot` | `drivers/body/agibot/aimrt/` | AgiBot X1 |
-| `franka_libfranka` | `FrankaRobot` | `drivers/body/franka/libfranka/` | Franka FR3 |
-| `ur_rtde` | `URRobot` | `drivers/body/ur/rtde/` | Universal Robots UR5e |
-
-每个硬件驱动的构造参数见其[设置指南](setup/README.zh-CN.md)。
-
-### SDK 清单（`hirobot.loading.sdk`）
-
-每个硬件驱动目录都有一个 `manifest.yaml`，写明它需要的厂商 SDK、可用的最低版本、安装命令，以及
-哪个型号在哪个 SDK 版本上做过真机验证：
-
-```yaml
-sdk:
-  - distribution: unitree_sdk2py    # importlib.metadata name
-    module: unitree_sdk2py          # import name (default: distribution)
-    minimum: "1.0.1"
-    install: pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>
-verified:                           # append-only, one entry per model x SDK version
-  - model: Unitree G1 (29 DoF)
-    sdk: {unitree_sdk2py: "1.0.1 (a035ade)"}
-    date: 2026-11-04
-maintainers: []
-```
-
-`require_sdk(package, who=None)` 读取它：SDK 缺失时抛出带安装命令的 `ImportError`，版本低于 `minimum`
-时抛出异常，版本比 `verified` 中所有版本都新时记录一次警告并照常运行。它返回
-`{distribution: installed version}`。`load_manifest(package)` 返回解析后的 `Manifest`。
 
 ## SafetyGate
 
@@ -648,61 +704,6 @@ safety:
 `failures_in_row`、`p99_ms`、`last_reason`、`ee_mismatch`、`ee_error_m`（上次检查最大的末端误差，m）。
 G1 模型上推 5 个周期，台式机 CPU 约 1.5 ms；机器人 PC2 上还没量。`safety: false` 时它和 gate 其他部分一起关掉。
 
-## DofMap
-
-`hirobot.core.dof.DofMap(source_names, target_names)` 按名字在两种关节顺序之间映射。目标名字在源中不存在时
-抛出 `ValueError`。
-
-| 方法 | 说明 |
-|---|---|
-| `remap(values)` | 按源顺序排列的数组 → 目标顺序（第一个轴）。会检查长度 |
-| `scatter(values, default=None)` | 按目标顺序排列的数组 → 源顺序。不在目标中的源关节取 `default`（或 `0`）。policy 只指挥部分关节时使用 |
-
-```python
-m = DofMap(robot.embodiment.joint_names, policy_joint_names)
-policy_q = m.remap(obs.joint_pos)
-robot_target = m.scatter(policy_target, default=obs.joint_pos)
-```
-
-## Kinematics
-
-`hirobot.geometry.kinematics.Kinematics.from_mjcf(path, backend="numpy")` 加载一个 MJCF 模型，并由关节角和基座位姿
-算出每个 body 的世界位姿。位置单位为米，四元数为 `[x, y, z, w]` 且 `w >= 0`。
-
-| 后端 | 依赖 | 说明 |
-|---|---|---|
-| `"numpy"`（默认） | 仅 numpy | 从 MJCF 读取 body 树：带 `pos` / `quat` 的嵌套 `<body>`、hinge 关节（`axis`、`pos`）、顶层 body 上的一个 free 关节。遇到它不读取的 MJCF 特性（`euler` / `axisangle` / `xyaxes` / `zaxis`、slide / ball 关节、关节 `ref`、`<default>` 关节属性、`<include>`、`<frame>`）时抛出 `ValueError` |
-| `"mujoco"` | `pip install 'hirobot[sim]'` | 对同一文件调用 `mujoco.mj_kinematics`。没有 mujoco 时抛出 `ImportError`。用它交叉检查 numpy 的结果，或处理 numpy 解析器拒绝的模型 |
-
-后端总是显式选择，绝不按已安装的包自动决定。测试会把 numpy 后端与 `mj_kinematics` 对比（G1 29 DoF：
-最大差值低于 1e-12）。
-
-| 成员 | 说明 |
-|---|---|
-| `body_names`, `parents` | 按模型顺序排列的 body（不含 world body）及其父节点索引（`-1` = 顶层） |
-| `joint_names` | 按模型顺序排列的 hinge 关节，名字与 MJCF 中一致 |
-| `floating_base` | 顶层 body 有 free 关节时为 True |
-| `forward(joint_pos, base_pos=None, base_quat=None, joint_names=None) -> BodyPoses` | `joint_pos` 形状为 `(..., n)`。给了 `joint_names`（`name` 或 `name_joint`）时按名字匹配列，未列出的模型关节取 0；没给时列按 `Kinematics.joint_names` 排列。`base_pos` / `base_quat` 放置带 free 关节的 body（默认：其 MJCF 位姿；仅适用于浮动基座模型） |
-
-`BodyPoses` 包含 `names`、`pos` `(..., num_bodies, 3)` 和 `quat` `(..., num_bodies, 4)`；
-`poses["left_wrist_yaw_link"]` 返回该 body 的 `(pos, quat)`。
-
-```python
-from hirobot.geometry.kinematics import Kinematics
-
-kin = Kinematics.from_mjcf("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
-poses = kin.forward(obs.joint_pos, base_pos=[0, 0, 0.79], base_quat=[0, 0, 0, 1],
-                    joint_names=robot.embodiment.joint_names)
-pos, quat = poses["torso_link"]
-```
-
-## 控制循环
-
-hiRobot 没有 policy 类、控制循环或模型服务客户端；它只提供循环所驱动的 `Robot`。循环从驱动用到的内容有：
-`reset(seed=None)`、`get_observation()`、`send_action()`、停止后的 `hold()`、用于给真机限速的
-`embodiment.control_hz`、`simulated`（仿真器不限速地步进），以及仿真器上的 `success` / `done` /
-`reward`。`ActionChunk.step(i)` 把预测出的 chunk 中的一步转换成一个 `Action`。
-
 ## RobotAssembly
 
 `make_robot` 根据配置构建的 `Robot` 包装器，很少需要直接构造。它自己没有定义的属性
@@ -777,6 +778,142 @@ collision:
     right: {mjcf: ~/models/ur5e.xml, radius: 0.06, skip: [base_mount]}
 ```
 
+## 控制循环
+
+hiRobot 没有 policy 类、控制循环或模型服务客户端；它只提供循环所驱动的 `Robot`。循环从驱动用到的内容有：
+`reset(seed=None)`、`get_observation()`、`send_action()`、停止后的 `hold()`、用于给真机限速的
+`embodiment.control_hz`、`simulated`（仿真器不限速地步进），以及仿真器上的 `success` / `done` /
+`reward`。`ActionChunk.step(i)` 把预测出的 chunk 中的一步转换成一个 `Action`。
+
+## DofMap
+
+`hirobot.core.dof.DofMap(source_names, target_names)` 按名字在两种关节顺序之间映射。目标名字在源中不存在时
+抛出 `ValueError`。
+
+| 方法 | 说明 |
+|---|---|
+| `remap(values)` | 按源顺序排列的数组 → 目标顺序（第一个轴）。会检查长度 |
+| `scatter(values, default=None)` | 按目标顺序排列的数组 → 源顺序。不在目标中的源关节取 `default`（或 `0`）。policy 只指挥部分关节时使用 |
+
+```python
+m = DofMap(robot.embodiment.joint_names, policy_joint_names)
+policy_q = m.remap(obs.joint_pos)
+robot_target = m.scatter(policy_target, default=obs.joint_pos)
+```
+
+## Kinematics
+
+`hirobot.geometry.kinematics.Kinematics.from_mjcf(path, backend="numpy")` 加载一个 MJCF 模型，并由关节角和基座位姿
+算出每个 body 的世界位姿。位置单位为米，四元数为 `[x, y, z, w]` 且 `w >= 0`。
+
+| 后端 | 依赖 | 说明 |
+|---|---|---|
+| `"numpy"`（默认） | 仅 numpy | 从 MJCF 读取 body 树：带 `pos` / `quat` 的嵌套 `<body>`、hinge 关节（`axis`、`pos`）、顶层 body 上的一个 free 关节。遇到它不读取的 MJCF 特性（`euler` / `axisangle` / `xyaxes` / `zaxis`、slide / ball 关节、关节 `ref`、`<default>` 关节属性、`<include>`、`<frame>`）时抛出 `ValueError` |
+| `"mujoco"` | `pip install 'hirobot[sim]'` | 对同一文件调用 `mujoco.mj_kinematics`。没有 mujoco 时抛出 `ImportError`。用它交叉检查 numpy 的结果，或处理 numpy 解析器拒绝的模型 |
+
+后端总是显式选择，绝不按已安装的包自动决定。测试会把 numpy 后端与 `mj_kinematics` 对比（G1 29 DoF：
+最大差值低于 1e-12）。
+
+| 成员 | 说明 |
+|---|---|
+| `body_names`, `parents` | 按模型顺序排列的 body（不含 world body）及其父节点索引（`-1` = 顶层） |
+| `joint_names` | 按模型顺序排列的 hinge 关节，名字与 MJCF 中一致 |
+| `floating_base` | 顶层 body 有 free 关节时为 True |
+| `forward(joint_pos, base_pos=None, base_quat=None, joint_names=None) -> BodyPoses` | `joint_pos` 形状为 `(..., n)`。给了 `joint_names`（`name` 或 `name_joint`）时按名字匹配列，未列出的模型关节取 0；没给时列按 `Kinematics.joint_names` 排列。`base_pos` / `base_quat` 放置带 free 关节的 body（默认：其 MJCF 位姿；仅适用于浮动基座模型） |
+
+`BodyPoses` 包含 `names`、`pos` `(..., num_bodies, 3)` 和 `quat` `(..., num_bodies, 4)`；
+`poses["left_wrist_yaw_link"]` 返回该 body 的 `(pos, quat)`。
+
+```python
+from hirobot.geometry.kinematics import Kinematics
+
+kin = Kinematics.from_mjcf("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
+poses = kin.forward(obs.joint_pos, base_pos=[0, 0, 0.79], base_quat=[0, 0, 0, 1],
+                    joint_names=robot.embodiment.joint_names)
+pos, quat = poses["torso_link"]
+```
+
+## 配置文件参考
+
+由 `load_embodiment` / `make_robot` / CLI 读取的 YAML 文件，以内置名字（`"unitree_g1"`、
+`"body/unitree/h1"`；用 `hirobot configs` 列出）或文件路径给出。内置名字先在包里找 `configs/<name>.yaml`，
+再找 `configs/robots/<name>.yaml`，所以 `"unitree_g1"` 和 `"robots/unitree_g1"`（`hirobot configs` 列出的写法）
+指同一个文件。以 `.yaml` / `.yml` 结尾或以 `/`、`~`、`.` 开头的字符串是路径。一个配置可以在 `defaults:` 下列出其他配置；
+它们按顺序合并，文件本身最后合并。映射逐键合并；`joints`、`frames`、`mounts` 和各设备列表按 `name` 合并
+（同名：字段合并；新名字：追加）；其他值整体替换。设备的 `driver:` 在 `type` 不变时逐键合并，`type` 改变时
+整体替换。`hirobot info --config <name> --resolved` 打印合并结果。规则和示例见 `hirobot.loading.config`、`hirobot.loading.tree`。
+
+配置是两种形态之一。**设备文件**描述一个设备型号；它的顶层是 `device:` 类型（`body`、`end_effector`、
+`camera`、`microphone` 或 `speaker`）：
+
+```yaml
+device: body                # 类型；其余键取决于它
+control_hz: 125
+floating_base: false
+joints:                     # body / end_effector
+  - name: shoulder_pan
+  - {name: wrist_3, position_limit: [-6.28, 6.28], torque_limit: 28}
+frames:                     # 任务空间坐标系（末端执行器 site）
+  - {name: tcp}
+mounts:                     # 组件可以挂接的位置（link -> site）
+  wrist_camera: {link: wrist_3_link}
+model:                      # 可选的 MJCF，用于仿真 / 碰撞 / 运动学
+  mjcf: ~/models/ur5e.xml
+driver: {type: ur_rtde}     # 注册的驱动名 + 它的构造参数
+```
+
+相机文件带 `width` / `height` / `fps` / `depth` / `fovy`；末端执行器文件带 `interface`（`joints` 或
+`opening`）、`joints`、`tcp`；麦克风或扬声器只带 `driver`。
+
+**机器人配置**有一个 `assembly:` 节点列出它的部件。部件是一个设备或另一个节点，用 `from:`（内置名字或路径，
+相对于引用它的文件）引用，或内联写出（`device:` 或 `assembly:`）：
+
+```yaml
+assembly:
+  name: ur5e_dual
+  control_hz: 30            # 可选；默认取最慢部件的
+  parts:                    # name -> 部件；关节顺序按这个顺序
+    left:  {from: robots/ur_ur5e, overrides: {body: {driver: {ip: 192.168.1.101}}}}
+    right: {from: robots/ur_ur5e, safety: {max_joint_step: 0.1}}   # 只收紧这个部件
+    scene: {device: camera, width: 640, height: 480, driver: {type: array}}   # 内联设备
+  placement:               # 每个部件在节点中的位置
+    left:  {pose: [0, 0.4, 0, 0, 0, 0, 1]}         # 固定：[x, y, z, qx, qy, qz, qw]
+    right: {pose: [0, -0.4, 0, 0, 0, 0, 1]}
+    scene: {on: body.wrist_camera, pose: [0, -0.07, 0.03, 0, 0, 0, 1]}  # 挂在某部件的 mount 上
+    # 自己会移动的部件用 origin: 代替 pose:
+    # rover: {origin: [0, 0, 0, 0, 0, 0, 1]}
+  collision: {min_distance: 0.05}                  # 可选，见 RobotAssembly
+
+# 只有根配置能带的段（被引用的部件不能带）：
+safety:                    # 可选；`safety: false` 摘掉安全门
+  max_joint_step: 0.2      # SafetyGate 构造参数（joint_limit、clamp、gripper_range、...）
+layers:                    # 可选；注册的 layer，第一个在最内
+  - {type: my_wbc, part: left}    # part: 只包装那个部件（否则包整机）
+arbiter:
+  require_claim: false     # 可选；没有租约就拒绝命令（见“命令仲裁”）
+  audit_size: 256          # 可选；审计环形缓冲保留的事件数
+sim:                       # 可选；make_robot(..., sim=True) 构建一个共享的 MuJoCo 世界
+  realtime: true
+```
+
+单机器人配置就是只有一个 `body` 部件的 `assembly:`（见 `robots/ur_ur5e`）。设备引用上的 `overrides` 合并进
+设备文件；节点引用上的 `overrides` 把子部件名映射到该部件的 overrides，逐层下去。
+`make_robot(cfg, overrides={"left/body": {"driver": {"ip": ...}}})` 用同样的方式从命令行合并与主机相关的值。
+
+policy 设置（模型服务器、chunk 长度）不属于机器人配置。
+
+## CLI
+
+安装后的命令名为 `hirobot`。
+
+| 命令 | 说明 |
+|---|---|
+| `hirobot --version` | 打印版本 |
+| `hirobot info --config NAME_OR_PATH [--resolved]` | 打印 embodiment：类型、控制频率、浮动基座、关节、末端执行器、相机。`--resolved` 打印合并 `defaults:` 之后的完整配置 |
+| `hirobot configs [GROUP]` | 列出内置配置（`robots`、`body`、`end_effector`、`camera`、`microphone`、`speaker`）。`robots/` 下的名字也可以不带前缀（`unitree_g1`） |
+| `hirobot sim CONFIG [--seconds N] [--viewer] [--fast]` | 运行一台仿真机器人：连接，保持起始姿态 N 秒（默认 3），打印剩余的关节误差、基座高度、渲染出的图像和 `get_observation` 耗时。自由基座摔倒时会提示。对真机本体以退出码 2 退出；`--viewer` 需要 MuJoCo 本体 |
+| `hirobot check --sim CONFIG [--against-real] [--driver PART:KEY=VALUE ...] [--tolerance 0.02]` | 建仿真检查用的世界，不推进：每个本体要有 `model:`，每个关节要在它的 MJCF 里且有执行器，每个末端 frame 是 MJCF 里的 body；关节限位和 MJCF 的 range 差超过 0.1 rad 打印 warning。`--against-real` 再以 `read_only: true` 打开每个本体的真机驱动（没有这个模式就拒绝），读一次观测，打印同一组关节角下每个末端的实测和模型位置差。出错或误差超过 `--tolerance` m 时退出码 1。库：`hirobot.sim.check_sim` |
+| `hirobot view CONFIG [--model MUJOCO_CONFIG] [--body KEY=VALUE ...] [--hz 30] [--seconds N]` | 在 MuJoCo viewer 里显示真机姿态。以 `read_only: true` 打开 CONFIG（驱动没有 `read_only` 模式就拒绝），每帧把测得的关节（按名字对）和基座姿态拷进模型，从不发命令。`--model` 默认用内置的 `<config>_mujoco`。仿真机器人或找不到模型时退出码 2。库：`hirobot.sim.view` |
 
 ## 编写驱动和层（SPI）
 
@@ -891,6 +1028,8 @@ layer 是受信任代码，按内核模块的标准审。`self.inner` 是只给�
 | `Frame` | `Tuple[np.ndarray, Stamp]`：图像及其到达时间（`Stamp(t, seq)`，`t` 在 `time.monotonic()` 上） |
 | `RgbdFrame` | `Tuple[np.ndarray, Optional[np.ndarray], Stamp]`：彩色图像、与之配准的深度（HxW float32，米）或 `None`，以及两者共同的 `Stamp` |
 | `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Intel RealSense（D435i、D405、L515……），走 `pyrealsense2`。接了多个时用 `serial` 指定设备（否则取枚举到的第一个）。设置 `depth: true` 时它是 RGB-D 相机：深度传感器对齐到彩色，使 `Observation.depth` 与彩色共用同一像素网格，并按传感器的 `depth_scale` 把设备单位换算为米。深度流尺寸和彩色不同时用 `depth_width` / `depth_height` 设置（默认和彩色一样）；对齐后的深度图仍是彩色的尺寸。需要 `pyrealsense2`（`pip install pyrealsense2`）；L515 要老版本（2.54.2 已验证；2.59.1 列不出 L515） |
+| `orbbec_pyorbbecsdk` → `OrbbecCamera(name, serial=None, uid=None, width=640, height=480, fps=30, color_format="MJPG", depth=False, align="hw", timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Orbbec 相机（Dabai DC1……），走 1.x 版 `pyorbbecsdk`（OrbbecSDK 1.10；老型号在 2.x 下枚举不到）。用 `uid`（USB 端口路径）或 `serial` 指定设备。设置 `depth: true` 时它是 RGB-D 相机：深度对齐到彩色（`align`：`hw` 在相机上做，`sw` 在 SDK 里做），设备单位换算为米。MJPEG / YUYV 彩色用 OpenCV 解码。绑定需从源码编译，见 [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md#6-orbbec-相机) |
+| `stereolabs_zed` → `ZedCamera(name, serial=None, resolution="HD720", fps=30, depth=False, depth_mode="NEURAL", min_depth_m=0.1, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Stereolabs ZED（ZED 2i、ZED Mini……），走 `pyzed`。接了多台时用 `serial` 指定（否则取第一台）。图像是左目彩色（`resolution`：`HD2K`、`HD1080`、`HD1200`、`HD720`、`SVGA`、`VGA`）。设置 `depth: true` 时它是 RGB-D 相机：深度由 SDK 的 `depth_mode`（`NEURAL`、`ULTRA`、`QUALITY`、`PERFORMANCE`）算出，单位米，对齐到左目图像，没有读数处为 0。需要 ZED SDK、它的 `pyzed` wheel 和 NVIDIA GPU |
 | `agibot_cosine` → `AgibotCosineCamera(name, topic, depth_topic=None, depth_scale=0.001, max_pair_skew_s=0.005, pair_wait_s=0.02, queue=4, poll_hz=60.0)` | 走机器人 `cosine_bus` topic 的 AgiBot G1 相机（`/camera/head_color` + `/camera/head_depth`、`/camera/hand_left_color`……）。设置了 `depth_topic` 时它是 RGB-D 相机：每个彩色帧与同一次采集（`source_timestamp`）的深度帧配对，Z16 换算为米。在机器人的计算机上运行，需先 source 厂商环境（`LOCATOR_IP`、`AORTA_DISCOVERY_URI`） |
 | `unitree_videohub` → `UnitreeVideohubCamera(name, network_interface=None, domain_id=0, timeout_s=1.0, poll_hz=30.0)` | G1 头部相机 |
 | `unitree_image_server` → `UnitreeImageServerCamera(name, address, header=False, crop=None, timeout_s=1.0, poll_hz=60.0)` | H1 头部相机：通过 ZeroMQ SUB 接收 Unitree 遥操作 `image_server`（或 `scripts/camera_image_server.py`）发出的 JPEG 帧。`header` 去掉 `Unit_Test` 的时间戳 / 帧号（保存在 `remote_stamp` / `remote_frame_id` 中）；`crop: [x, y, w, h]` 从左右拼接的画面中取出一个相机。需要 `camera` extra |
@@ -955,85 +1094,3 @@ spec 没有设置 `network_interface` 时，`make_robot` 会填入本体的值�
 | `sounddevice_speaker` → `SoundDeviceSpeaker(name, device=None, block_ms=50)` | 计算机的输出设备，按 `block_ms` 分块写入，让 `stop()` 能及时生效。需要 `audio` extra。仿真类 |
 | `build_audio(microphones, speakers, network_interface=None, sim_only=False) -> (mics, speakers)` | 为带 `driver:` 的设备构建驱动，规则与 `build_cameras` 相同 |
 | `read_wav(path) -> (pcm, rate)`, `wav_bytes(pcm, rate)` | `hirobot.drivers.audio` 中的 16-bit WAV 辅助函数（单声道；多声道文件取第一个声道） |
-
-## 配置文件参考
-
-由 `load_embodiment` / `make_robot` / CLI 读取的 YAML 文件，以内置名字（`"unitree_g1"`、
-`"body/unitree/h1"`；用 `hirobot configs` 列出）或文件路径给出。内置名字先在包里找 `configs/<name>.yaml`，
-再找 `configs/robots/<name>.yaml`，所以 `"unitree_g1"` 和 `"robots/unitree_g1"`（`hirobot configs` 列出的写法）
-指同一个文件。以 `.yaml` / `.yml` 结尾或以 `/`、`~`、`.` 开头的字符串是路径。一个配置可以在 `defaults:` 下列出其他配置；
-它们按顺序合并，文件本身最后合并。映射逐键合并；`joints`、`frames`、`mounts` 和各设备列表按 `name` 合并
-（同名：字段合并；新名字：追加）；其他值整体替换。设备的 `driver:` 在 `type` 不变时逐键合并，`type` 改变时
-整体替换。`hirobot info --config <name> --resolved` 打印合并结果。规则和示例见 `hirobot.loading.config`、`hirobot.loading.tree`。
-
-配置是两种形态之一。**设备文件**描述一个设备型号；它的顶层是 `device:` 类型（`body`、`end_effector`、
-`camera`、`microphone` 或 `speaker`）：
-
-```yaml
-device: body                # 类型；其余键取决于它
-control_hz: 125
-floating_base: false
-joints:                     # body / end_effector
-  - name: shoulder_pan
-  - {name: wrist_3, position_limit: [-6.28, 6.28], torque_limit: 28}
-frames:                     # 任务空间坐标系（末端执行器 site）
-  - {name: tcp}
-mounts:                     # 组件可以挂接的位置（link -> site）
-  wrist_camera: {link: wrist_3_link}
-model:                      # 可选的 MJCF，用于仿真 / 碰撞 / 运动学
-  mjcf: ~/models/ur5e.xml
-driver: {type: ur_rtde}     # 注册的驱动名 + 它的构造参数
-```
-
-相机文件带 `width` / `height` / `fps` / `depth` / `fovy`；末端执行器文件带 `interface`（`joints` 或
-`opening`）、`joints`、`tcp`；麦克风或扬声器只带 `driver`。
-
-**机器人配置**有一个 `assembly:` 节点列出它的部件。部件是一个设备或另一个节点，用 `from:`（内置名字或路径，
-相对于引用它的文件）引用，或内联写出（`device:` 或 `assembly:`）：
-
-```yaml
-assembly:
-  name: ur5e_dual
-  control_hz: 30            # 可选；默认取最慢部件的
-  parts:                    # name -> 部件；关节顺序按这个顺序
-    left:  {from: robots/ur_ur5e, overrides: {body: {driver: {ip: 192.168.1.101}}}}
-    right: {from: robots/ur_ur5e, safety: {max_joint_step: 0.1}}   # 只收紧这个部件
-    scene: {device: camera, width: 640, height: 480, driver: {type: array}}   # 内联设备
-  placement:               # 每个部件在节点中的位置
-    left:  {pose: [0, 0.4, 0, 0, 0, 0, 1]}         # 固定：[x, y, z, qx, qy, qz, qw]
-    right: {pose: [0, -0.4, 0, 0, 0, 0, 1]}
-    scene: {on: body.wrist_camera, pose: [0, -0.07, 0.03, 0, 0, 0, 1]}  # 挂在某部件的 mount 上
-    # 自己会移动的部件用 origin: 代替 pose:
-    # rover: {origin: [0, 0, 0, 0, 0, 0, 1]}
-  collision: {min_distance: 0.05}                  # 可选，见 RobotAssembly
-
-# 只有根配置能带的段（被引用的部件不能带）：
-safety:                    # 可选；`safety: false` 摘掉安全门
-  max_joint_step: 0.2      # SafetyGate 构造参数（joint_limit、clamp、gripper_range、...）
-layers:                    # 可选；注册的 layer，第一个在最内
-  - {type: my_wbc, part: left}    # part: 只包装那个部件（否则包整机）
-arbiter:
-  require_claim: false     # 可选；没有租约就拒绝命令（见“命令仲裁”）
-  audit_size: 256          # 可选；审计环形缓冲保留的事件数
-sim:                       # 可选；make_robot(..., sim=True) 构建一个共享的 MuJoCo 世界
-  realtime: true
-```
-
-单机器人配置就是只有一个 `body` 部件的 `assembly:`（见 `robots/ur_ur5e`）。设备引用上的 `overrides` 合并进
-设备文件；节点引用上的 `overrides` 把子部件名映射到该部件的 overrides，逐层下去。
-`make_robot(cfg, overrides={"left/body": {"driver": {"ip": ...}}})` 用同样的方式从命令行合并与主机相关的值。
-
-policy 设置（模型服务器、chunk 长度）不属于机器人配置。
-
-## CLI
-
-安装后的命令名为 `hirobot`。
-
-| 命令 | 说明 |
-|---|---|
-| `hirobot --version` | 打印版本 |
-| `hirobot info --config NAME_OR_PATH [--resolved]` | 打印 embodiment：类型、控制频率、浮动基座、关节、末端执行器、相机。`--resolved` 打印合并 `defaults:` 之后的完整配置 |
-| `hirobot configs [GROUP]` | 列出内置配置（`robots`、`body`、`end_effector`、`camera`、`microphone`、`speaker`）。`robots/` 下的名字也可以不带前缀（`unitree_g1`） |
-| `hirobot sim CONFIG [--seconds N] [--viewer] [--fast]` | 运行一台仿真机器人：连接，保持起始姿态 N 秒（默认 3），打印剩余的关节误差、基座高度、渲染出的图像和 `get_observation` 耗时。自由基座摔倒时会提示。对真机本体以退出码 2 退出；`--viewer` 需要 MuJoCo 本体 |
-| `hirobot check --sim CONFIG [--against-real] [--driver PART:KEY=VALUE ...] [--tolerance 0.02]` | 建仿真检查用的世界，不推进：每个本体要有 `model:`，每个关节要在它的 MJCF 里且有执行器，每个末端 frame 是 MJCF 里的 body；关节限位和 MJCF 的 range 差超过 0.1 rad 打印 warning。`--against-real` 再以 `read_only: true` 打开每个本体的真机驱动（没有这个模式就拒绝），读一次观测，打印同一组关节角下每个末端的实测和模型位置差。出错或误差超过 `--tolerance` m 时退出码 1。库：`hirobot.sim.check_sim` |
-| `hirobot view CONFIG [--model MUJOCO_CONFIG] [--body KEY=VALUE ...] [--hz 30] [--seconds N]` | 在 MuJoCo viewer 里显示真机姿态。以 `read_only: true` 打开 CONFIG（驱动没有 `read_only` 模式就拒绝），每帧把测得的关节（按名字对）和基座姿态拷进模型，从不发命令。`--model` 默认用内置的 `<config>_mujoco`。仿真机器人或找不到模型时退出码 2。库：`hirobot.sim.view` |

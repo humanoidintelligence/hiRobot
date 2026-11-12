@@ -1,0 +1,24 @@
+# AgileX PiPER: 6-DoF arm with a parallel gripper, over SocketCAN (agilex_piper_sdk).
+#
+# Joint names and limits follow AgileX's piper_description URDF and piper_sdk's
+# joint limits (rad). The frame "ee" is the flange pose the arm controller
+# reports; the gripper is on it and follows Action.gripper["ee"] (0 closed,
+# 1 open = 70 mm). driver.can is the SocketCAN interface the arm is on; bring
+# it up at 1 Mbit/s first.
+
+device: body
+control_hz: 50
+floating_base: false
+joints:
+  - {name: joint1, position_limit: [-2.618, 2.618]}
+  - {name: joint2, position_limit: [0.0, 3.14]}
+  - {name: joint3, position_limit: [-2.967, 0.0]}
+  - {name: joint4, position_limit: [-1.745, 1.745]}
+  - {name: joint5, position_limit: [-1.22, 1.22]}
+  - {name: joint6, position_limit: [-2.094, 2.094]}
+
+frames:
+  - {name: ee}
+grippers: [ee]
+
+driver: {type: agilex_piper_sdk, can: can0}

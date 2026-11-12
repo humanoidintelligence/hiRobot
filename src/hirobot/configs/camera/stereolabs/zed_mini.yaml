@@ -1,0 +1,19 @@
+# Stereolabs ZED Mini over pyzed (stereolabs_zed), often a wrist camera: left
+# colour 1280x720 @ 30, with depth in metres registered to it.
+#
+# Needs the ZED SDK (with its pyzed) and an NVIDIA GPU. Set driver.serial when
+# more than one ZED is attached. fovy is the left camera's vertical field of view
+# at HD720 (52.5 deg, read from a ZED Mini's calibration). Only runs with a real
+# body; skipped offline with the toy.
+
+device: camera
+width: 1280
+height: 720
+fovy: 52.5
+depth: true
+driver:
+  type: stereolabs_zed
+  # serial: 10000000     # set when more than one ZED is attached
+  resolution: HD720
+  fps: 30
+  depth: true

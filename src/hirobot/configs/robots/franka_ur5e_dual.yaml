@@ -1,8 +1,9 @@
 # Example robot of two robots: a Franka FR3 and a UR5e facing the same table, plus a scene camera.
 #
-# Each arm is a whole robot config of its own (robots/franka_fr3, robots/ur_ur5e),
-# here a part of this one; the parts keep their names under a prefix
-# (left/joint1, right/tcp, scene). Both arms run on the toy driver, so this runs
+# The Franka is the arm of a DROID station (body/franka/fr3_droid, driven
+# through a DROID robot server; the station's ZED cameras are left out), the
+# UR5e a whole robot config of its own (robots/ur_ur5e). The parts keep their
+# names under a prefix (left/joint1, right/tcp, scene). Both arms run on the toy driver, so this runs
 # without hardware:
 #
 #   hirobot info --config franka_ur5e_dual
@@ -11,14 +12,18 @@
 # (examples/franka_ur5e_dual_real.yaml):
 #
 #   make_robot("franka_ur5e_dual", overrides={
-#       "left/body": {"driver": {"type": "franka_libfranka", "ip": "172.16.0.2"}},
+#       "left/body": {"driver": {"type": "franka_droid", "ip": "172.16.0.2"}},
 #       "right/body": {"driver": {"type": "ur_rtde", "ip": "192.168.1.102"}}})
 
 assembly:
   name: franka_ur5e_dual
   control_hz: 30                 # outer loop; each arm's SDK inner loop is unchanged
   parts:
-    left:  {from: robots/franka_fr3}
+    left:
+      assembly:
+        name: franka-fr3
+        parts:
+          body: {from: body/franka/fr3_droid, overrides: {driver: {type: toy}}}
     right: {from: robots/ur_ur5e}
     # Not part of either arm: a stand-in camera (frames in memory) here.
     scene:

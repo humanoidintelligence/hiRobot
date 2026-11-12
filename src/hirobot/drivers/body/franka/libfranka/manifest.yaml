@@ -1,6 +1,0 @@
-# Drivers registered here: franka_libfranka
-sdk:
-  - distribution: pylibfranka
-    install: pip install pylibfranka
-verified: []
-maintainers: []

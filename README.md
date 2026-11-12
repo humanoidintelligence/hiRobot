@@ -6,18 +6,16 @@
 
 [OpenMOSS Group](https://openmoss.ai) / [Shanghai Innovation Institute](https://www.sii.edu.cn/) / [Fudan University](https://www.fudan.edu.cn/en/)
 
-English | [简体中文](./README.zh-CN.md)
+**English** | [简体中文](./README.zh-CN.md) · **Docs:** [Supported robots](docs/supported_robots.md) · [Setup guides](docs/setup/README.md) · [API reference](docs/api.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 <!-- hardware-gallery:start -->
 
 <table>
 <tr><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/unitree_g1.png" width="100" alt="Unitree G1"></a><br><sub>Unitree G1</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/unitree_h1.png" width="100" alt="Unitree H1"></a><br><sub>Unitree H1</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/unitree_h1_2.png" width="100" alt="Unitree H1-2"></a><br><sub>Unitree H1-2</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/unitree_h2.png" width="100" alt="Unitree H2"></a><br><sub>Unitree H2</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/fourier_gr1.png" width="100" alt="Fourier GR1"></a><br><sub>Fourier GR1</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/fourier_gr2.png" width="100" alt="Fourier GR2"></a><br><sub>Fourier GR2</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agibot_x1.png" width="100" alt="AgiBot X1"></a><br><sub>AgiBot X1</sub></td></tr>
 <tr><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agibot_g1.png" width="100" alt="AgiBot G1"></a><br><sub>AgiBot G1</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agibot_g2.png" width="100" alt="AgiBot G2"></a><br><sub>AgiBot G2</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agilex_aloha.png" width="100" alt="AgileX ALOHA"></a><br><sub>AgileX ALOHA</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/franka_fr3.png" width="100" alt="Franka FR3"></a><br><sub>Franka FR3</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/ur_ur5e.png" width="100" alt="UR5e"></a><br><sub>UR5e</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agilex_piper.png" width="100" alt="AgileX PiPER"></a><br><sub>AgileX PiPER</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/widowx_250s.png" width="100" alt="WidowX 250S"></a><br><sub>WidowX 250S</sub></td></tr>
-<tr><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/unitree_dex3.png" width="100" alt="Unitree Dex3-1"></a><br><sub>Unitree Dex3-1</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/inspire_rh56dfx.png" width="100" alt="Inspire RH56DFX"></a><br><sub>Inspire RH56DFX</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agibot_omnipicker.png" width="100" alt="AgiBot OmniPicker"></a><br><sub>AgiBot OmniPicker</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/robotiq_2f85.png" width="100" alt="Robotiq 2F-85"></a><br><sub>Robotiq 2F-85</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_d435i.png" width="100" alt="RealSense D435i"></a><br><sub>RealSense D435i</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_d457.png" width="100" alt="RealSense D457"></a><br><sub>RealSense D457</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_d405.png" width="100" alt="RealSense D405"></a><br><sub>RealSense D405</sub></td></tr>
-<tr><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_l515.png" width="100" alt="RealSense L515"></a><br><sub>RealSense L515</sub></td></tr>
+<tr><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/unitree_dex3.png" width="100" alt="Unitree Dex3-1"></a><br><sub>Unitree Dex3-1</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/inspire_rh56dfx.png" width="100" alt="Inspire RH56DFX"></a><br><sub>Inspire RH56DFX</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agibot_omnipicker.png" width="100" alt="AgiBot OmniPicker"></a><br><sub>AgiBot OmniPicker</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/robotiq_2f85.png" width="100" alt="Robotiq 2F-85"></a><br><sub>Robotiq 2F-85</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/agilex_piper_gripper.png" width="100" alt="AgileX PiPER gripper"></a><br><sub>AgileX PiPER gripper</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_d435i.png" width="100" alt="RealSense D435i"></a><br><sub>RealSense D435i</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_d457.png" width="100" alt="RealSense D457"></a><br><sub>RealSense D457</sub></td></tr>
+<tr><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_d405.png" width="100" alt="RealSense D405"></a><br><sub>RealSense D405</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/realsense_l515.png" width="100" alt="RealSense L515"></a><br><sub>RealSense L515</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/stereolabs_zed.png" width="100" alt="ZED 2i / ZED Mini"></a><br><sub>ZED 2i / ZED Mini</sub></td><td align="center"><a href="docs/supported_robots.md"><img src="assets/hardware/orbbec_dabai_dc1.png" width="100" alt="Orbbec Dabai DC1"></a><br><sub>Orbbec Dabai DC1</sub></td></tr>
 </table>
-
-Details, configs and setup guides: [docs/supported_robots.md](docs/supported_robots.md).
 
 <!-- hardware-gallery:end -->
 
@@ -79,8 +77,9 @@ SDK. hiRobot standardizes that glue:
   robot code.
 - **Agent friendly** — the interface is easy for an agent to call as tools:
   `Robot.action_modes` lists the control modes a driver accepts, `get_status`
-  reports battery, temperatures and joint faults, robot skills (walk, gestures)
-  come with a description and a JSON Schema for their arguments, and
+  reports battery, temperatures and joint faults, `list_skills()` lists what
+  the robot does by name (walk, gestures), each with a description and a JSON
+  Schema for its arguments, and
   `SafetyGate` checks every command, so a refused action raises `SafetyError`
   instead of reaching the motors. [docs/api.md](docs/api.md) documents every
   call with its arguments and failure modes.
@@ -228,7 +227,7 @@ Other robots follow their own
 guides: [overview](docs/setup/README.md) ·
 [Fourier GR1](docs/setup/fourier.md) ·
 [AgiBot G1](docs/setup/agibot_g1.md) · [AgiBot X1](docs/setup/agibot_x1.md) · [Franka FR3](docs/setup/franka.md) ·
-[Universal Robots UR5e](docs/setup/ur.md).
+[Universal Robots UR5e](docs/setup/ur.md) · [AgileX PiPER](docs/setup/agilex_piper.md).
 
 ### Several robots as one
 
@@ -301,7 +300,7 @@ Core concepts:
 | --- | --- |
 | `Embodiment` | What a robot looks like to a policy: joints (by name, in the SDK's order), `floating_base`, end-effectors, cameras, microphones / speakers, `control_hz`. Built from a config (a device file or an `assembly:` tree). |
 | `Observation` / `Action` / `ActionChunk` | Typed I/O. Joint space (universal) + optional base (humanoids) + optional task space (arms) + images. `ControlMode` selects joint, Cartesian, base velocity or motion targets; an `ActionChunk` is several predicted steps. |
-| `Robot` | The contract every driver, simulator and wrapper implements: `connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`, plus `action_modes` (the modes it accepts) and robot skills (motions the robot's own controller runs). Drivers implement `_send_action`; `send_action` runs the gate first. [Details](docs/api.md#robot). |
+| `Robot` | The contract every driver, simulator and wrapper implements: `connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`, plus `action_modes` (the modes it accepts) and skills, `list_skills` / `run_skill` / `stop_skill` (motions the robot's controller or a layer runs, started by name). Drivers implement `_send_action`; `send_action` runs the gate first. [Details](docs/api.md#robot). |
 | `SafetyGate` / `SafetyError` | Checks every action inside `send_action`: shape, DoF count and finiteness always; joint limits, step and tracking-error limits, battery and temperature, and a MuJoCo simulation check when configured. A refusal raises `SafetyError` (or clamps, with `clamp: true`). Set by the config's `safety:` section. [Details](docs/api.md#safetygate). |
 | `CommandArbiter` / `CommandLease` | `robot.claim(name, priority)` gives one program the command stream; others get `RobotBusyError`, a higher priority (`TAKEOVER` > `LAYER_SKILL` > `CALLER`) preempts. A lease can carry a stricter `envelope`; claims, preemptions and refusals are kept in an audit (`robot.command_events()`). With nobody holding a lease, every caller may command. [Details](docs/api.md#command-arbiter). |
 | `Layer` | Base class of a layer: a `Robot` wrapping the stack below (`inner`, public API only). It may offer layer skills (`run_layer_skill`). [Writing a layer](docs/api.md#writing-a-layer). |
@@ -328,7 +327,7 @@ hiRobot/
 │   │   ├── body/ end_effector/ camera/ microphone/ speaker/   # one device file per model, by vendor
 │   │   └── robots/          # whole robots and multi-robot assemblies (franka_ur5e_dual); *_mujoco add sim:
 │   └── drivers/             # <part>/<SDK vendor>/<SDK or protocol>/{driver.py, manifest.yaml}
-│       ├── body/            # unitree/sdk2, fourier/grx, agibot/aimrt, franka/libfranka, ur/rtde
+│       ├── body/            # unitree/sdk2, fourier/grx, agibot/aimrt, franka/droid, ur/rtde, agilex/piper_sdk
 │       ├── end_effector/    # hands: unitree/sdk2_handcmd (Dex3-1), unitree/sdk2_motorcmds, inspire/sdkpy
 │       ├── camera/          # unitree/sdk2_videohub, unitree/image_server; generic/{video_file,array}
 │       ├── audio/           # unitree/sdk2_voice; generic/{wav,sounddevice}
@@ -349,8 +348,11 @@ hiRobot/
 ├── tests/                   # pytest suite; simulators and SDKs are faked, no GPU needed
 │   ├── drivers/             # mirrors src/hirobot/drivers/: fake_sdk.py + test_contract.py per SDK
 │   └── data/                # expanded_configs.json: snapshot of every built-in robot config
-└── assets/                  # README and docs images; hardware/: robot photos
+├── assets/                  # README and docs images; hardware/: robot photos
+└── CHANGELOG.md             # changes in each release (CHANGELOG.zh-CN.md: Chinese)
 ```
+
+What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
 
 ## Add a new robot
 

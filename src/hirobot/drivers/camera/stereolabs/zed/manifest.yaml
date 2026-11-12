@@ -1,0 +1,10 @@
+# Drivers registered here: stereolabs_zed
+sdk:
+  - distribution: pyzed
+    module: pyzed
+    install: comes with the ZED SDK (https://www.stereolabs.com/developers/release); run the SDK's get_python_api.py
+verified:
+  - model: Stereolabs ZED 2i x2 + ZED Mini at once, HD720 @ 30, left colour + depth (ZED SDK 5.1.2, RTX 2060)
+    sdk: {pyzed: "5.1"}
+    date: 2026-11-12
+maintainers: []

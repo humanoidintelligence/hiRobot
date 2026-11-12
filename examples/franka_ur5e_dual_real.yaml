@@ -1,12 +1,15 @@
 # The built-in Franka FR3 + UR5e (robots/franka_ur5e_dual) on hardware.
 #
 # defaults: takes the built-in file; the overrides below go down to each arm's
-# body. The placement stays the built-in one, so ee_poses and ee_targets are in
-# that robot's frame.
+# body: the Franka's DROID robot server (franka_droid) and the UR5e's ur_rtde.
+# The Franka part is written out in the built-in file (an assembly around
+# body/franka/fr3_droid), so its override goes inside that assembly. The
+# placement stays the built-in one, so ee_poses and ee_targets are in that
+# robot's frame.
 
 defaults: [robots/franka_ur5e_dual]
 
 assembly:
   parts:
-    left:  {overrides: {body: {driver: {type: franka_libfranka, ip: <franka ip>}}}}
+    left:  {assembly: {parts: {body: {overrides: {driver: {type: franka_droid, ip: <DROID server ip>}}}}}}
     right: {overrides: {body: {driver: {type: ur_rtde, ip: <ur ip>}}}}
