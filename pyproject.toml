@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hirobot"
-version = "0.0.2"
+version = "0.0.3"
 description = "A unified interface layer for controlling diverse robots from VLA models and agents."
 readme = "README.md"
 requires-python = ">=3.9"

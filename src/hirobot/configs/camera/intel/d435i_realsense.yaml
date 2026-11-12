@@ -1,0 +1,20 @@
+# Intel RealSense D435i over pyrealsense2 (intel_realsense), plugged straight into
+# the computer that runs hiRobot, colour + aligned depth at 640x480.
+#
+# The driver opens the first RealSense it finds; with more than one attached, set
+# driver.serial to the device serial so this camera keeps its role. depth: true
+# streams the depth sensor aligned to colour, so Observation.depth lines up with
+# Observation.images. Only runs with a real body; skipped offline with the toy.
+
+device: camera
+width: 640
+height: 480
+fovy: 42
+depth: true
+driver:
+  type: intel_realsense
+  # serial: "0123456789"   # set when more than one RealSense is attached
+  width: 640
+  height: 480
+  fps: 30
+  depth: true

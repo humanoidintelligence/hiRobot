@@ -1,0 +1,21 @@
+# UR5e with a Robotiq 2F-85 gripper on the tool flange.
+#
+# The arm is robots/ur_ur5e's body; the gripper is an 'opening' end-effector
+# (Observation.gripper["gripper"] / Action.gripper["gripper"], 0 closed, 1 open)
+# mounted on the tool flange. On hardware the gripper is reached through the UR
+# controller, so point both at the same controller IP:
+#
+#   make_robot("ur_ur5e_robotiq", overrides={
+#       "body":    {"driver": {"type": "ur_rtde",      "ip": "192.168.1.102"}},
+#       "gripper": {"driver": {"type": "robotiq_urcap", "host": "192.168.1.102"}}})
+#
+# The arm runs on the toy body by default; the gripper's driver only connects on
+# hardware. See docs/setup/ur.md, "Gripper (Robotiq 2F)".
+
+assembly:
+  name: ur5e_robotiq
+  parts:
+    body: {from: body/ur/ur5e, overrides: {driver: {type: toy}}}
+    gripper: {from: end_effector/robotiq/2f85_urcap}
+  placement:
+    gripper: {on: body.flange}

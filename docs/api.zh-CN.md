@@ -39,6 +39,7 @@
 |---|---|---|---|
 | `Embodiment`, `Joint`, `EndEffector`, `EndEffectorFrame`, `Camera`, `CameraMount`, `AudioDevice`, `EmbodimentKind` | pydantic 模型 / 枚举 | `hirobot.core.embodiment` | 声明式的机器人 I/O 契约 |
 | `Observation`, `Action`, `ActionChunk`, `ControlMode`, `MotionClip`, `JOINT_MODES`, `MOTION_SPACES` | pydantic 模型 / 枚举 / 元组 | `hirobot.core.types` | 机器人与 policy 之间的类型化 I/O |
+| `RobotStatus`, `BatteryState`, `CommandProgress` | pydantic 模型 | `hirobot.core.types` | `get_status()` 的返回值（见 [`RobotStatus`](#robotstatus)） |
 | `Robot` | 抽象类 | `hirobot.core.robot` | 驱动契约 |
 | `RobotAssembly` | `Robot` | `hirobot.assembly` | 本体驱动加上挂接的相机、末端执行器（灵巧手、夹爪）、麦克风和扬声器；带子部件时，把几台完整的机器人当作一台驱动（见 [RobotAssembly](#robotassembly)） |
 | `Layer` | `Robot` | `hirobot.control.layer` | layer 的基类：包装 `inner` 并默认转发给它（见 [Layer](#layer)） |
@@ -217,6 +218,33 @@ finally:
 形状错误、帧数不一致或缺少 `space` 所需字段时，构造会抛出 `ValueError`。片段本身已经是一个序列，
 所以它作为一个 `Action(mode=MOTION_CLIP)` 传递，而不放进 `ActionChunk`。
 
+### `RobotStatus`
+
+`robot.get_status()` 的返回值：给上层（agent、界面）看的健康和运行状态。不放进 `Observation`，因为远程 policy 每拍都会把
+observation 转给模型。机器人不报的字段保持为空。
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `timestamp` | `float` or `None` | 组装时的 `time.time()` |
+| `battery` | `BatteryState` or `None` | `soc`（%）、`voltage`、`current`、`temperature`、`health`（%）、`cycles` |
+| `joint_temperature` | `(N,)` or `None` | 每个关节电机的温度（degC） |
+| `joint_faults` | `Dict[str, int]` | 关节名 -> 非零的厂商故障码 |
+| `board_temperature` | `Dict[str, float]` | 板子名 -> degC |
+| `fault` | `str` or `None` | 同 `robot.fault` |
+| `command` | `CommandProgress` or `None` | 最近一条高层命令的进度；机器人不报时为 `None` |
+| `extra` | `Dict[str, Any]` | 驱动或层自己的读数（例如 `extra["wbc"]`） |
+| `safety` | `Dict[str, Any]` | 安全闸计数：`audit`、`sim_check` |
+
+`CommandProgress` 用于控制器要跟很多拍的命令，让调用方不用懂驱动就能知道机器人走到没有、片段放完没有。由控制器填
+（全身控制层；hiRobot 自带的驱动都不填，为 `None`）；命令结束后保留最后一条（`done=True`），直到下一条命令替换它。层原样往上传。
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `mode` | `ControlMode` | 这条命令的模式 |
+| `done` | `bool` or `None` | `BASE_POSE` 到达目标、`MOTION_CLIP` 放完时为 `True`；没有终点的模式（`BASE_VELOCITY`）为 `None` |
+| `goal` | `[x, y, yaw]` or `None` | `BASE_POSE` 的目标，在 `Observation.base_position` 的坐标系里 |
+| `clip_time`, `clip_duration` | `float` or `None` | `MOTION_CLIP`：已播放的秒数和总长 |
+
 ### `ActionChunk`
 
 一次推理调用预测出的 `T` 个动作组成的时间窗口（horizon）。
@@ -253,6 +281,7 @@ finally:
 | `connect()` | abstract | 打开连接。在控制前调用一次 |
 | `reset(seed=None)` | abstract | 让机器人进入安全的初始状态。仿真器用 `seed` 选择场景（例如环境 seed 或初始状态索引）；其他驱动忽略它 |
 | `get_observation() -> Observation` | abstract | 读取传感器 |
+| `get_status() -> RobotStatus` | optional | 健康状态和命令进度，见 [`RobotStatus`](#robotstatus)。默认只有 `timestamp` 和 `fault` |
 | `send_action(action)` | concrete | 先 `check_action`，再调驱动的 `_send_action`（[SPI](#编写驱动和层spi)）。被拒绝时抛出 `SafetyError` 且不发送任何内容，`action.joint_names` 列出了 `direct_joints` 之外的关节时也一样。处于故障状态时抛出 `RobotFaultError`；别人持有机器人的[命令租约](#命令仲裁)时（例如它是某个 assembly 的部件而调用不经过 assembly）抛出 `RobotBusyError`（`RuntimeError` 子类） |
 | `check_action(action) -> Action` | concrete | 执行 `send_action` 的全部检查但不发送；返回（可能被裁剪过的）动作。assembly 在发送给任何部件之前对每个部件那部分都运行它 |
 | `fault` | property | 机器人拒绝指令的原因，或 `None`。驱动或 layer 自己进入阻尼或停止时设置，`estop()` 也会设置。`reset()` 返回时清除，期间来过 `estop()` 则不清除。包装器（`RobotAssembly`）也会报告内层机器人的故障。也见 `get_status().fault` |
@@ -269,6 +298,10 @@ finally:
 | `list_robot_skills() -> List[RobotSkillSpec]` | optional | 机器人自身控制器运行的 skill。默认为空。见[机器人 skill](#机器人-skill) |
 | `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | 按 skill 的 schema 检查 `args`，再执行。抛出 `RobotSkillError` |
 | `stop_robot_skill()` | optional | 停止正在运行的 skill。默认什么都不做 |
+| `list_layer_skills() -> List[RobotSkillSpec]` | concrete | 栈里各层跑的技能。每个机器人都有；没有层时为空。见[层技能](#layer) |
+| `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | 启动一个层技能。没有层时抛 `RobotSkillError` |
+| `stop_layer_skill()` | concrete | 停止正在运行的层技能。没有层时什么都不做 |
+| `layer_skill_running` | property | 是否有层技能（栈里任一层的）持有命令流。没有层时为 `False` |
 | `disconnect()` | optional | 释放并停止。默认什么都不做 |
 | `safety` | attribute | 挂接的安全门，或 `None` |
 | `simulated` | class attribute | 仿真器驱动为 `True`。驱动是仿真驱动时，`make_robot` 不构建末端执行器驱动，只构建类同样为 `simulated` 的相机和音频设备（视频文件、WAV、主机的麦克风） |
@@ -468,7 +501,7 @@ layer 通过 `inner.send_action` 发送关节指令，所以 `make_robot` 挂在
 
 **层技能。** 层可以跑自己的技能（行为、宏动作），跨很多个控制周期，和厂商的 robot skills 分开：`list_layer_skills()`（本层和
 下面各层的）、`run_layer_skill(name, args=None) -> RobotSkillResult`（参数按 schema 检查，启动后返回）、`stop_layer_skill()`、
-`layer_skill_running`。技能运行期间层以 `Priority.LAYER_SKILL` 持有栈的[命令租约](#命令仲裁)：调用方的租约被抢占，直接发命令抛
+`layer_skill_running`（本层或下面的层有技能在跑就为真）。这四个在每个 `Robot` 上都有，调用方不用先判断最外层是不是层。技能运行期间层以 `Priority.LAYER_SKILL` 持有栈的[命令租约](#命令仲裁)：调用方的租约被抢占，直接发命令抛
 `RobotBusyError`，直到技能结束或调 `stop_layer_skill()`。`TAKEOVER` 会抢占技能（技能被停下）。`estop()` 会结束技能，调用方才能
 `reset()`。
 
@@ -725,7 +758,7 @@ robot = make_robot("examples/lab_two_cells.yaml")   # 两个 cell，每个各两
 | 错误 | 某个部件读取或发送失败，或报告了 `fault`，assembly 就让其他所有部件保持，并进入自己的故障状态。此后 `send_action` 抛出 `RobotFaultError`，直到 `reset()` |
 | 租约 | 部件是带自己[命令租约](#命令仲裁)的 `Robot`，所以 `robot.claim(name, parts=["left"])` 只持有那个部件（嵌套的用 `parts=["cell_a/left"]`）；不相交的部件各自独立 claim，路径重叠抛 `RobotBusyError`。直接对已被持有的部件调用抛 `RobotBusyError`。部件自己的线程（全身控制器）仍能指挥它的内层机器人 |
 | `part(path)` | 只读视图：`embodiment`、`simulated`、`fault`、`get_observation()`、`get_status()` |
-| `get_status()` | `joint_temperature` 拼接；`joint_faults`、`board_temperature`、`extra` 的键加前缀；只有一个部件报告 `battery` 时放在顶层，否则放进 `extra["<part>/battery"]`；`fault` 取 assembly 自己的或第一个部件的 |
+| `get_status()` | `joint_temperature` 拼接；`joint_faults`、`board_temperature`、`extra` 的键加前缀；`battery` 和 `command` 只有一个部件报告时放在顶层，否则放进 `extra["<part>/battery"]` / `extra["<part>/command"]`；`fault` 取 assembly 自己的或第一个部件的 |
 | Skill | 部件的 skill 列为 `<part>/<skill>`；`run_robot_skill("g1/wave")` 在该部件上运行它 |
 | 生命周期 | `connect` 先连接各部件，再连接节点自己的相机，失败时撤销。`reset`、`hold`、`damp`、`estop`、`disconnect`、`stop_robot_skill` 即使某个部件失败也会作用到每个部件，然后抛出第一个错误。`reset` 也会清除故障状态 |
 | 碰撞 | 可选的 `collision=CollisionCheck(...)`（配置：`collision:`）。每个建了模的部件表示为一组胶囊体，其 MJCF（`hirobot.geometry.kinematics`）中每段 body 到父 body 的连线一个，半径都是 `radius`；只计算不同部件之间的间隙。发送前，assembly 预测每个部件的下一个姿态（`POSITION` / `PD` 的关节目标作为下一时刻的角度，其他模式用当前角度；`CARTESIAN` 的目标点作为球体比较），当最小间隙会低于 `min_distance` 时以 `SafetyError` 拒绝，除非间隙没有在缩小（已经靠得太近的部件可以分开）。每次发送读取每个建模部件的观测一次。浮动基座部件需要 base pose。两台 G1 约 1 ms。沿运动链的胶囊体比较粗糙：选一个能覆盖连杆的 `radius`；`skip:` 排除安装板之类的 body |
@@ -857,6 +890,7 @@ layer 是受信任代码，按内核模块的标准审。`self.inner` 是只给�
 | `PollingCameraDriver(name, poll_hz=30.0, retry_s=0.2)` | 在后台线程上运行阻塞的 `_grab() -> HxWx3 uint8 RGB`，只保留最新一帧。子类实现 `_grab`，可选实现 `_open` / `_close`。提供 `wait_for_frame(timeout)`、`error`、`frames`、`errors` |
 | `Frame` | `Tuple[np.ndarray, Stamp]`：图像及其到达时间（`Stamp(t, seq)`，`t` 在 `time.monotonic()` 上） |
 | `RgbdFrame` | `Tuple[np.ndarray, Optional[np.ndarray], Stamp]`：彩色图像、与之配准的深度（HxW float32，米）或 `None`，以及两者共同的 `Stamp` |
+| `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Intel RealSense（D435i、D405、L515……），走 `pyrealsense2`。接了多个时用 `serial` 指定设备（否则取枚举到的第一个）。设置 `depth: true` 时它是 RGB-D 相机：深度传感器对齐到彩色，使 `Observation.depth` 与彩色共用同一像素网格，并按传感器的 `depth_scale` 把设备单位换算为米。深度流尺寸和彩色不同时用 `depth_width` / `depth_height` 设置（默认和彩色一样）；对齐后的深度图仍是彩色的尺寸。需要 `pyrealsense2`（`pip install pyrealsense2`）；L515 要老版本（2.54.2 已验证；2.59.1 列不出 L515） |
 | `agibot_cosine` → `AgibotCosineCamera(name, topic, depth_topic=None, depth_scale=0.001, max_pair_skew_s=0.005, pair_wait_s=0.02, queue=4, poll_hz=60.0)` | 走机器人 `cosine_bus` topic 的 AgiBot G1 相机（`/camera/head_color` + `/camera/head_depth`、`/camera/hand_left_color`……）。设置了 `depth_topic` 时它是 RGB-D 相机：每个彩色帧与同一次采集（`source_timestamp`）的深度帧配对，Z16 换算为米。在机器人的计算机上运行，需先 source 厂商环境（`LOCATOR_IP`、`AORTA_DISCOVERY_URI`） |
 | `unitree_videohub` → `UnitreeVideohubCamera(name, network_interface=None, domain_id=0, timeout_s=1.0, poll_hz=30.0)` | G1 头部相机 |
 | `unitree_image_server` → `UnitreeImageServerCamera(name, address, header=False, crop=None, timeout_s=1.0, poll_hz=60.0)` | H1 头部相机：通过 ZeroMQ SUB 接收 Unitree 遥操作 `image_server`（或 `scripts/camera_image_server.py`）发出的 JPEG 帧。`header` 去掉 `Unit_Test` 的时间戳 / 帧号（保存在 `remote_stamp` / `remote_frame_id` 中）；`crop: [x, y, w, h]` 从左右拼接的画面中取出一个相机。需要 `camera` extra |
@@ -892,6 +926,7 @@ layer 是受信任代码，按内核模块的标准审。`self.inner` 是只给�
 | `unitree_handcmd` → `UnitreeDex3Hand(name, joints, side, network_interface=None, domain_id=0, default_kp=1.5, default_kd=0.2, ramp_seconds=1.0, ramp_hz=100.0, stale_s=0.5, read_only=False)` | Unitree Dex3-1 灵巧手（`unitree_hg` `HandCmd_`）；`side` 为 `"left"` 或 `"right"` |
 | `unitree_motorcmds` → `UnitreeMotorCmdsHand(name, joints, cmd_topic, state_topic, motor_offset=0, num_motors=None, service=..., network_interface=None, domain_id=0, connect_timeout_s=2.0, stale_s=0.5, read_only=False)` | 任何接在 Unitree 串口转 DDS 服务（`unitree_go` `MotorCmds_` / `MotorStates_`）后面的手：H1 上通过 `h1_inspire_service` 接的 Inspire，以及布局相同的 Dex1-1、BrainCo、Linker。共用一对 topic 的手（Inspire 1.0.1：12 个电机，`motor_offset` 为 0 / 6）共用一条总线；还没有手指挥过的槽位保持其测得的姿态 |
 | `inspire_sdkpy` → `InspireSdkpyHand(name, joints, side, network_interface=None, domain_id=0, cmd_topic=None, state_topic=None, connect_timeout_s=2.0, stale_s=0.5, read_only=False)` | 通过 inspire_sdkpy DDS 桥接的 Inspire RH56DFX（`rt/inspire_hand/{ctrl,state}/{l,r}`，角度 0-1000 换算为 0-1） |
+| `robotiq_urcap` → `RobotiqUrcapGripper(name, joints, host, port=63352, speed=255, force=255, activate=False, connect_timeout_s=3.0, stale_s=0.5, poll_hz=20.0, read_only=False)` | Robotiq 2F 夹爪（`opening` 接口），通过 UR 控制器上的 Robotiq URCap socket（控制器 IP 的 TCP `port`）访问。寄存器 0 为全开、255 为全闭，驱动换算成 `opening` 1 张开 / 0 闭合。`speed` / `force` 为 0-255；`activate` 在 `connect()` 时按需激活（会完整闭合再张开一次）。`OpeningState.extra` 含 `object`（Robotiq 物体检测）和 `fault`。`damp()` 发 `GTO 0`（停住并保持）。只用 Python 标准库 |
 
 末端执行器驱动以 `cls(ee.name, joints, **spec)` 构造，其中 `opening` 接口的 `joints` 为空，`spec` 是末端执行器的 `driver:` dict 去掉 `type`。
 spec 没有设置 `network_interface` 时，`make_robot` 会填入本体的值。

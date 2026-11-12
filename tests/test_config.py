@@ -138,6 +138,7 @@ def test_cli_lists_and_resolves(capsys):
     main(["configs", "end_effector"])
     assert capsys.readouterr().out.split() == [
         "end_effector/inspire/rh56dfx_left", "end_effector/inspire/rh56dfx_right",
+        "end_effector/robotiq/2f85_urcap",
         "end_effector/unitree/dex3_1_left", "end_effector/unitree/dex3_1_right"]
     main(["info", "--config", "unitree_g1", "--resolved"])
     out = capsys.readouterr().out

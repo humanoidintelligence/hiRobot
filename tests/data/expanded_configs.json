@@ -101,8 +101,8 @@
  },
  "robots/franka_ur5e_dual": {
   "assembly": {
-   "control_hz": 30,
    "name": "franka_ur5e_dual",
+   "control_hz": 30,
    "parts": {
     "left": {
      "from": "robots/franka_fr3"
@@ -112,11 +112,11 @@
     },
     "scene": {
      "device": "camera",
+     "width": 640,
+     "height": 480,
      "driver": {
       "type": "array"
-     },
-     "height": 480,
-     "width": 640
+     }
     }
    },
    "placement": {
@@ -186,6 +186,12 @@
       }
      }
     },
+    "left_hand": {
+     "from": "end_effector/unitree/dex3_1_left"
+    },
+    "right_hand": {
+     "from": "end_effector/unitree/dex3_1_right"
+    },
     "head": {
      "from": "camera/intel/d435i"
     },
@@ -194,23 +200,17 @@
     },
     "head_speaker": {
      "from": "speaker/unitree/g1"
-    },
-    "left_hand": {
-     "from": "end_effector/unitree/dex3_1_left"
-    },
-    "right_hand": {
-     "from": "end_effector/unitree/dex3_1_right"
     }
    },
    "placement": {
-    "head": {
-     "true": "body.head_camera"
-    },
     "left_hand": {
      "true": "body.left_wrist"
     },
     "right_hand": {
      "true": "body.right_wrist"
+    },
+    "head": {
+     "true": "body.head_camera"
     }
    }
   }
@@ -226,6 +226,7 @@
        "type": "toy"
       },
       "model": {
+       "mjcf": "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml",
        "armature": [
         0.0103,
         0.0251,
@@ -270,51 +271,6 @@
         0.001,
         0.001,
         0.001
-       ],
-       "kd": [
-        5,
-        5,
-        5,
-        5,
-        2,
-        2,
-        5,
-        5,
-        5,
-        5,
-        2,
-        2,
-        6,
-        6,
-        6,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2,
-        0.2
        ],
        "kp": [
         100,
@@ -361,9 +317,59 @@
         1.5,
         1.5
        ],
-       "mjcf": "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml"
+       "kd": [
+        5,
+        5,
+        5,
+        5,
+        2,
+        2,
+        5,
+        5,
+        5,
+        5,
+        2,
+        2,
+        6,
+        6,
+        6,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2
+       ]
       }
      }
+    },
+    "left_hand": {
+     "from": "end_effector/unitree/dex3_1_left"
+    },
+    "right_hand": {
+     "from": "end_effector/unitree/dex3_1_right"
     },
     "head": {
      "from": "camera/intel/d435i"
@@ -373,39 +379,33 @@
     },
     "head_speaker": {
      "from": "speaker/unitree/g1"
-    },
-    "left_hand": {
-     "from": "end_effector/unitree/dex3_1_left"
-    },
-    "right_hand": {
-     "from": "end_effector/unitree/dex3_1_right"
     }
    },
    "placement": {
-    "head": {
-     "true": "body.head_camera"
-    },
     "left_hand": {
      "true": "body.left_wrist"
     },
     "right_hand": {
      "true": "body.right_wrist"
+    },
+    "head": {
+     "true": "body.head_camera"
     }
    }
   },
-  "safety": {
-   "joint_limit": 3.0
-  },
   "sim": {
-   "base_height": {
-    "body": 1.0
-   },
-   "damping_kd": 8.0,
    "fixed_base": [
     "body"
    ],
+   "base_height": {
+    "body": 1.0
+   },
+   "viewer": false,
    "ramp_seconds": 2.0,
-   "viewer": false
+   "damping_kd": 8.0
+  },
+  "safety": {
+   "joint_limit": 3.0
   }
  },
  "robots/unitree_g1_mujoco": {
@@ -436,19 +436,19 @@
     }
    }
   },
-  "safety": {
-   "joint_limit": 3.0
-  },
   "sim": {
-   "base_height": {
-    "body": 1.0
-   },
-   "damping_kd": 8.0,
    "fixed_base": [
     "body"
    ],
+   "base_height": {
+    "body": 1.0
+   },
+   "viewer": false,
    "ramp_seconds": 2.0,
-   "viewer": false
+   "damping_kd": 8.0
+  },
+  "safety": {
+   "joint_limit": 3.0
   }
  },
  "robots/unitree_g1_mujoco_standing": {
@@ -479,17 +479,17 @@
     }
    }
   },
-  "safety": {
-   "joint_limit": 3.0
-  },
   "sim": {
+   "fixed_base": [],
    "base_height": {
     "body": 0.793
    },
-   "damping_kd": 8.0,
-   "fixed_base": [],
+   "viewer": false,
    "ramp_seconds": 2.0,
-   "viewer": false
+   "damping_kd": 8.0
+  },
+  "safety": {
+   "joint_limit": 3.0
   }
  },
  "robots/unitree_h1": {
@@ -542,25 +542,25 @@
       }
      }
     },
-    "head": {
-     "from": "camera/intel/d435i_image_server"
-    },
     "left_hand": {
      "from": "end_effector/inspire/rh56dfx_left"
     },
     "right_hand": {
      "from": "end_effector/inspire/rh56dfx_right"
+    },
+    "head": {
+     "from": "camera/intel/d435i_image_server"
     }
    },
    "placement": {
-    "head": {
-     "true": "body.head_camera"
-    },
     "left_hand": {
      "true": "body.left_wrist"
     },
     "right_hand": {
      "true": "body.right_wrist"
+    },
+    "head": {
+     "true": "body.head_camera"
     }
    }
   }
@@ -582,8 +582,8 @@
  },
  "robots/ur5e_dual": {
   "assembly": {
-   "control_hz": 30,
    "name": "ur5e_dual",
+   "control_hz": 30,
    "parts": {
     "left": {
      "from": "robots/ur_ur5e"
@@ -629,6 +629,29 @@
        "type": "toy"
       }
      }
+    }
+   }
+  }
+ },
+ "robots/ur_ur5e_robotiq": {
+  "assembly": {
+   "name": "ur5e_robotiq",
+   "parts": {
+    "body": {
+     "from": "body/ur/ur5e",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "gripper": {
+     "from": "end_effector/robotiq/2f85_urcap"
+    }
+   },
+   "placement": {
+    "gripper": {
+     "true": "body.flange"
     }
    }
   }

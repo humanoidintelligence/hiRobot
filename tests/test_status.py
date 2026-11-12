@@ -5,7 +5,15 @@ from types import SimpleNamespace
 import numpy as np
 
 import hirobot.drivers  # noqa: F401 (registers built-in drivers)
-from hirobot import RobotAssembly, RobotStatus, get_body, load_embodiment
+from hirobot import (
+    CommandProgress,
+    ControlMode,
+    Layer,
+    RobotAssembly,
+    RobotStatus,
+    get_body,
+    load_embodiment,
+)
 
 G1 = "unitree_g1"
 H1 = "unitree_h1"
@@ -32,6 +40,15 @@ def test_default_status_is_empty():
     assert status.timestamp is not None
     assert status.battery is None and status.joint_temperature is None
     assert status.joint_faults == {} and status.board_temperature == {}
+    assert status.command is None
+
+
+def test_a_layer_passes_the_command_progress_up():
+    toy = get_body("toy")(load_embodiment(G1))
+    clip = CommandProgress(mode=ControlMode.MOTION_CLIP, done=False, clip_time=0.5,
+                           clip_duration=2.0)
+    toy.get_status = lambda: RobotStatus(command=clip)
+    assert Layer(toy).get_status().command == clip
 
 
 def test_assembly_pads_hand_joints():

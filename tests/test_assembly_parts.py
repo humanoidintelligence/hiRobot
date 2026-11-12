@@ -13,6 +13,7 @@ import pytest
 
 from hirobot import (
     Action,
+    CommandProgress,
     ControlMode,
     Robot,
     RobotAssembly,
@@ -365,6 +366,21 @@ def test_status_is_merged():
     status = robot.get_status()
     assert np.allclose(status.joint_temperature[:2], [30, 31]) and np.isnan(status.joint_temperature[2])
     assert status.joint_faults == {"left/j1": 7} and status.battery.soc == 80.0
+    assert status.command is None
+
+
+def test_command_progress_is_top_level_for_one_part_else_in_extra():
+    left, right = Recorder(_arm("a", 2)), Recorder(_arm("b", 1))
+    walk = CommandProgress(mode=ControlMode.BASE_POSE, done=False, goal=[1.0, 0.0, 0.0])
+    left.get_status = lambda: RobotStatus(command=walk)
+    robot = RobotAssembly(None, parts={"left": left, "right": right})
+    assert robot.get_status().command == walk
+    clip = CommandProgress(mode=ControlMode.MOTION_CLIP, done=True, clip_time=2.0,
+                           clip_duration=2.0)
+    right.get_status = lambda: RobotStatus(command=clip)
+    status = robot.get_status()
+    assert status.command is None
+    assert status.extra["left/command"] == walk and status.extra["right/command"] == clip
 
 
 # ------------------------------------------------------------------ config

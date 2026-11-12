@@ -34,6 +34,18 @@ def _dual(**sim):
     return make_robot(cfg)
 
 
+def _mj_joint(m, name):
+    """The MJCF joint the driver maps ``name`` to: ``name`` or ``name_joint``.
+
+    Menagerie renamed the UR5e joints (``shoulder_pan`` -> ``shoulder_pan_joint``);
+    the driver accepts both (MujocoView._map_joints), so the test does too.
+    """
+    try:
+        return m.joint(name)
+    except KeyError:
+        return m.joint(f"{name}_joint")
+
+
 def _views(robot):
     from hirobot.drivers.sim.mujoco.driver import MujocoView
 
@@ -64,7 +76,7 @@ def test_two_arms_in_one_world_share_one_clock_and_keep_their_own_joints():
         assert left.world is right.world and left.model is right.model
         m = left.model
         # One model, names prefixed with the part path; each view owns its six joints.
-        assert m.joint("left/shoulder_pan").id != m.joint("right/shoulder_pan").id
+        assert _mj_joint(m, "left/shoulder_pan").id != _mj_joint(m, "right/shoulder_pan").id
         assert set(left._qadr).isdisjoint(right._qadr)
         # Placement: left base at y = +0.4, right at -0.4.
         np.testing.assert_allclose(left.data.body("left/base").xpos, [0, 0.4, 0], atol=1e-9)

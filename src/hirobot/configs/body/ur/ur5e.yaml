@@ -18,4 +18,11 @@ joints:
 frames:
   - {name: tcp}
 
+# Tool flange, for mounting an end-effector (e.g. a Robotiq gripper, see
+# robots/ur_ur5e_robotiq). wrist_3_link is the last arm link in UR's URDF; the
+# flange frame sits on it. Nominal link name only (this body ships no MJCF);
+# put any measured gripper offset in the robot config's placement pose.
+mounts:
+  flange: {link: wrist_3_link}
+
 driver: {type: ur_rtde}

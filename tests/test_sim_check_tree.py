@@ -67,6 +67,23 @@ def _toys(robot):
     return found
 
 
+def _pan_toward(deg):
+    """Shoulder-pan angle that, with lift and elbow at 0, stretches the arm along
+    world direction ``deg`` (0 = +x, 90 = +y).
+
+    Pan 0 points the arm along the base's own +x, so the answer depends on the
+    MJCF's base yaw: Menagerie turned the UR5e base from 90 deg to 180 deg. The
+    angle is in (-360, 0] deg, turning clockwise from pan 0: on the way the left
+    arm swings through +y, away from the right arm.
+    """
+    m = mujoco.MjModel.from_xml_path(str(UR5E))
+    d = mujoco.MjData(m)
+    mujoco.mj_forward(m, d)
+    w, z = d.body("base").xquat[[0, 3]]
+    yaw = 2 * np.arctan2(z, w)
+    return float(-np.mod(yaw - np.radians(deg), 2 * np.pi))
+
+
 def _pose(left=None, right=None):
     q = np.array(HOME * 2)
     for k, v in (left or {}).items():
@@ -89,13 +106,12 @@ def test_the_check_world_has_both_arms_where_the_config_puts_them():
 
 
 def test_an_arm_swung_into_the_other_is_refused_and_nothing_is_sent():
-    # In the MJCF's frame (base turned 90 deg about z) pan, lift and elbow at 0
-    # stretch an arm out along +y, about 0.82 m: the right arm, 0.8 m from the
-    # left, reaches into the left arm's shoulder.
+    # Lift and elbow at 0 stretch an arm out level, about 0.82 m; panned toward
+    # +y, the right arm, 0.8 m from the left, reaches into the left arm's shoulder.
     robot = _dual()
     sent = robot.get_observation().joint_pos.copy()
     with pytest.raises(SafetyError, match="collision between parts left/body and right/body"):
-        robot.send_action(_pose(right={0: 0.0, 1: 0.0, 2: 0.0}))
+        robot.send_action(_pose(right={0: _pan_toward(90), 1: 0.0, 2: 0.0}))
     np.testing.assert_allclose(robot.get_observation().joint_pos, sent)
     stats = robot.get_status().safety["sim_check"]
     assert stats["rejected"] == 1 and "collision between parts" in stats["last_reason"]
@@ -111,9 +127,9 @@ def test_a_table_in_the_scene_stops_an_arm_reaching_down(tmp_path):
     robot = _dual(scene=str(table))
     robot.send_action(_pose(left={0: 0.1}))  # at home the table is not in the way
     with pytest.raises(SafetyError, match="hits table in the scene"):
-        # Pan -90 deg turns the stretched-out direction from +y to +x, over the table;
-        # lift and elbow 0 lay the arm out level at the shoulder's height (0.163 m).
-        robot.send_action(_pose(left={0: -1.5708, 1: 0.0, 2: 0.0}))
+        # Panned toward +x, over the table; lift and elbow 0 lay the arm out level
+        # at the shoulder's height (0.163 m).
+        robot.send_action(_pose(left={0: _pan_toward(0), 1: 0.0, 2: 0.0}))
 
 
 def _extra_joint():

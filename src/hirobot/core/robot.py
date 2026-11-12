@@ -642,6 +642,32 @@ class Robot(Stoppable, ABC):
         The default does nothing (there are no skills to stop).
         """
 
+    # Layer skills: run by a layer over many control cycles (hirobot.control.layer).
+    # Every robot has these four so callers need not know whether the outermost
+    # robot is a layer; without layers there are none.
+
+    def list_layer_skills(self) -> List[RobotSkillSpec]:
+        """Skills the layers of this stack run (not the vendor's robot skills). Default: none."""
+        return []
+
+    def run_layer_skill(
+        self, name: str, args: Optional[Mapping[str, Any]] = None
+    ) -> RobotSkillResult:
+        """Start layer skill ``name``; a robot without layers has none.
+
+        Raises:
+            RobotSkillError: Unknown skill (always, without layers).
+        """
+        raise RobotSkillError(f"{type(self).__name__}: no layer skill {name!r}; available: none")
+
+    def stop_layer_skill(self) -> None:
+        """Stop the running layer skill. The default does nothing (there are none)."""
+
+    @property
+    def layer_skill_running(self) -> bool:
+        """Whether a layer skill holds the command stream. Default: ``False``."""
+        return False
+
     def disconnect(self) -> None:
         """Release the connection and stop the robot. Override if needed."""
 

@@ -1,0 +1,19 @@
+# Robotiq 2F-85 parallel gripper, driven through a UR controller's URCap socket.
+#
+# The 'opening' interface: no joints, one value in [0, 1] (0 closed, 1 open) in
+# Observation.gripper / Action.gripper. The driver reaches the gripper at the UR
+# controller's IP (the same address as the arm's body driver), default port
+# 63352; set host to that IP on hardware. activate: false assumes the gripper is
+# already activated (its URCap or a prior session did it); set it true to have
+# the driver activate on connect — that runs a full close/open, so only with a
+# clear workspace. See docs/setup/ur.md, "Gripper (Robotiq 2F)".
+
+device: end_effector
+interface: opening
+driver:
+  type: robotiq_urcap
+  # host: 192.168.1.102    # UR controller IP (same as the arm's body driver.ip)
+  # port: 63352
+  # speed: 255             # 0-255 move speed
+  # force: 255             # 0-255 grip force
+  # activate: false        # true: activate on connect (runs a full close/open)

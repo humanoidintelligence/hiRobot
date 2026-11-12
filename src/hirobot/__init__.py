@@ -49,13 +49,14 @@ from hirobot.core.types import (
     Action,
     ActionChunk,
     BatteryState,
+    CommandProgress,
     ControlMode,
     MotionClip,
     Observation,
     RobotStatus,
 )
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 __all__ = [
     "Observation",
@@ -67,6 +68,7 @@ __all__ = [
     "MotionClip",
     "RobotStatus",
     "BatteryState",
+    "CommandProgress",
     "Embodiment",
     "EmbodimentKind",
     "Joint",

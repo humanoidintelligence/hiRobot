@@ -154,6 +154,32 @@ def test_estop_ends_the_skill_so_the_caller_can_reset():
     assert outer.fault is None
 
 
+def test_a_robot_without_layers_has_the_four_methods_with_defaults():
+    toy = ToyRobot(Embodiment(name="toy", joints=[{"name": f"j{i}"} for i in range(3)],
+                              control_hz=50))
+    assert toy.list_layer_skills() == []
+    assert toy.layer_skill_running is False
+    toy.stop_layer_skill()  # nothing to stop
+    with pytest.raises(RobotSkillError, match="no layer skill 'wave'; available: none"):
+        toy.run_layer_skill("wave")
+
+
+def test_a_skill_below_shows_as_running_on_the_outermost_layer():
+    outer, waver, _ = _stack()
+    assert not outer.layer_skill_running
+    outer.run_layer_skill("wave")
+    assert outer.layer_skill_running and waver.layer_skill_running
+    outer.stop_layer_skill()
+    assert not outer.layer_skill_running
+
+
+def test_make_robot_without_layers_offers_layer_skills_too():
+    from hirobot import make_robot
+
+    robot = make_robot("unitree_g1")
+    assert robot.list_layer_skills() == [] and robot.layer_skill_running is False
+
+
 def test_a_hand_built_layer_without_make_robot_uses_its_own_arbiter():
     toy = ToyRobot(Embodiment(name="toy", joints=[{"name": f"j{i}"} for i in range(3)],
                               control_hz=50))

@@ -463,6 +463,34 @@ class BatteryState(BaseModel):
     cycles: Optional[int] = None
 
 
+class CommandProgress(BaseModel):
+    """How far the robot is with the last high-level command it was given.
+
+    For commands a controller follows over many ticks (``BASE_POSE``,
+    ``MOTION_CLIP``, ``BASE_VELOCITY``), so a caller (an agent's tool) can tell
+    whether the robot arrived or the clip ended without knowing the driver.
+    The controller keeps the last one after it ends (``done=True``) until the
+    next command replaces it. Fields a mode does not use stay ``None``.
+
+    Attributes:
+        mode: The command's mode.
+        done: ``True`` once a ``BASE_POSE`` goal is reached or a ``MOTION_CLIP``
+            has played to its end; ``None`` for a mode with no end
+            (``BASE_VELOCITY``).
+        goal: ``BASE_POSE`` target ``[x, y, yaw]``, in the frame of
+            :attr:`Observation.base_position`.
+        clip_time: Seconds of the ``MOTION_CLIP`` played so far.
+        clip_duration: Length of the ``MOTION_CLIP`` (seconds); ``None`` if
+            unknown.
+    """
+
+    mode: ControlMode
+    done: Optional[bool] = None
+    goal: Optional[List[float]] = None
+    clip_time: Optional[float] = None
+    clip_duration: Optional[float] = None
+
+
 class RobotStatus(BaseModel):
     """Robot health and housekeeping: battery, temperatures, motor faults.
 
@@ -487,6 +515,9 @@ class RobotStatus(BaseModel):
         safety: Counters of the safety gate's optional checks, e.g.
             ``safety["sim_check"]`` (``checked``, ``rejected``, ``errors``,
             ``skipped``, ``failures_in_row``, ``p99_ms``, ``last_reason``).
+        command: Progress of the last high-level command (:class:`CommandProgress`),
+            or ``None`` when the robot reports none (no command yet, or a
+            driver that does not track one).
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -499,3 +530,4 @@ class RobotStatus(BaseModel):
     fault: Optional[str] = None
     extra: Dict[str, Any] = Field(default_factory=dict)
     safety: Dict[str, Any] = Field(default_factory=dict)
+    command: Optional[CommandProgress] = None

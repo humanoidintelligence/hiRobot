@@ -26,6 +26,7 @@
 /src/hirobot/drivers/end_effector/unitree/sdk2_motorcmds/   @artpli
 /src/hirobot/drivers/camera/agibot/cosine/          @artpli
 /src/hirobot/drivers/camera/generic/video_file/     @artpli
+/src/hirobot/drivers/camera/intel/realsense/        @artpli
 /src/hirobot/drivers/camera/unitree/image_server/   @artpli
 /src/hirobot/drivers/camera/unitree/sdk2_videohub/  @artpli
 /src/hirobot/drivers/audio/generic/sounddevice/     @artpli
@@ -44,6 +45,7 @@
 /tests/drivers/end_effector/unitree/sdk2_motorcmds/         @artpli
 /tests/drivers/camera/agibot/cosine/                @artpli
 /tests/drivers/camera/generic/video_file/           @artpli
+/tests/drivers/camera/intel/realsense/              @artpli
 /tests/drivers/camera/unitree/image_server/         @artpli
 /tests/drivers/camera/unitree/sdk2_videohub/        @artpli
 /tests/drivers/audio/generic/sounddevice/           @artpli

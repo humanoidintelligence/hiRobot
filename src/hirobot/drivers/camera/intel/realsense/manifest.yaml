@@ -1,0 +1,13 @@
+# Drivers registered here: intel_realsense
+sdk:
+  - distribution: pyrealsense2
+    module: pyrealsense2
+    install: pip install pyrealsense2
+verified:
+  - model: Intel RealSense D435i, colour + aligned depth 640x480, through make_robot("ur_ur5e")
+    sdk: {pyrealsense2: "2.59.1.11053"}
+    date: 2026-11-12
+  - model: Intel RealSense L515 (USB 2), colour 640x480 + depth 320x240 aligned to colour, alongside a D435i
+    sdk: {pyrealsense2: "2.54.2.5684"}
+    date: 2026-11-12
+maintainers: []

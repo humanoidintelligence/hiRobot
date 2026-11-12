@@ -6,7 +6,8 @@ are imported lazily on ``connect()``. Layout: ``hands/<SDK vendor>/<SDK or proto
 """
 
 from hirobot.drivers.end_effector.inspire.sdkpy import InspireSdkpyHand
+from hirobot.drivers.end_effector.robotiq.urcap import RobotiqUrcapGripper
 from hirobot.drivers.end_effector.unitree.sdk2_handcmd import UnitreeDex3Hand
 from hirobot.drivers.end_effector.unitree.sdk2_motorcmds import UnitreeMotorCmdsHand
 
-__all__ = ["UnitreeDex3Hand", "UnitreeMotorCmdsHand", "InspireSdkpyHand"]
+__all__ = ["UnitreeDex3Hand", "UnitreeMotorCmdsHand", "InspireSdkpyHand", "RobotiqUrcapGripper"]

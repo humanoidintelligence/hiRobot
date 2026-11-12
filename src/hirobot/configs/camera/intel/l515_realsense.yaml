@@ -1,0 +1,25 @@
+# Intel RealSense L515 (lidar depth) over pyrealsense2 (intel_realsense), plugged
+# straight into the computer that runs hiRobot: colour 640x480, depth 320x240
+# aligned to colour, so Observation.depth comes out at 640x480 too.
+#
+# Needs an older pyrealsense2: 2.54.2 lists the L515, 2.59.1 does not (versions
+# in between not tried). 320x240 is the depth size the L515 offers on USB 2; on USB 3 it also
+# offers larger ones. Set driver.serial when more than one RealSense is attached.
+# The first depth frame takes about 1.1 s after start, so timeout_ms is 2000.
+# Only runs with a real body; skipped offline with the toy.
+
+device: camera
+width: 640
+height: 480
+fovy: 43
+depth: true
+driver:
+  type: intel_realsense
+  # serial: "f0000000"     # set when more than one RealSense is attached
+  width: 640
+  height: 480
+  depth_width: 320
+  depth_height: 240
+  fps: 30
+  depth: true
+  timeout_ms: 2000

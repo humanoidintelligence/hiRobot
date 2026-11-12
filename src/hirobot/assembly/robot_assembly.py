@@ -683,8 +683,9 @@ class RobotAssembly(Robot):
     def _node_status(self) -> RobotStatus:
         """Parts' status merged: joint temperatures concatenated, keys prefixed.
 
-        ``battery`` stays top-level when exactly one part reports one, else it
-        goes to ``extra["<part>/battery"]``. ``fault`` is the assembly's own, or
+        ``battery`` and ``command`` stay top-level when exactly one part reports
+        one, else they go to ``extra["<part>/battery"]`` / ``extra["<part>/command"]``.
+        ``fault`` is the assembly's own, or
         the first part fault.
         """
         node = self._node
@@ -697,6 +698,7 @@ class RobotAssembly(Robot):
                     temps[node.ranges[m]] = s.joint_temperature
             out.joint_temperature = temps
         with_battery = [m for m, s in statuses.items() if s.battery is not None]
+        with_command = [m for m, s in statuses.items() if s.command is not None]
         for m, s in statuses.items():
             name = lambda k, m=m: node.out_name(m, k)  # noqa: E731
             out.joint_faults.update({name(k): v for k, v in s.joint_faults.items()})
@@ -709,6 +711,11 @@ class RobotAssembly(Robot):
                     out.battery = s.battery
                 else:
                     out.extra[name("battery")] = s.battery
+            if s.command is not None:
+                if len(with_command) == 1:
+                    out.command = s.command
+                else:
+                    out.extra[name("command")] = s.command
         out.fault = self._fault or next(
             (f"part {m!r} fault: {s.fault}" for m, s in statuses.items() if s.fault), None)
         return out

@@ -3,5 +3,8 @@ sdk:
   - distribution: ur_rtde
     module: rtde_control
     install: pip install ur_rtde
-verified: []
+verified:
+  - model: UR5 (CB3, 6 DoF) single arm and ur5e_dual, read + CARTESIAN servoL only; reset/estop and POSITION/PD/VELOCITY not yet on hardware
+    sdk: {ur_rtde: "1.6.5"}
+    date: 2026-11-12
 maintainers: []

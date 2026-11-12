@@ -171,7 +171,8 @@ def test_observation_quaternion_is_scalar_last():
 
 
 #: Driver directories that need nothing beyond the core install, so have no manifest.
-NO_SDK = {"sim/toy", "camera/generic/array", "audio/generic/wav"}
+NO_SDK = {"sim/toy", "camera/generic/array", "audio/generic/wav",
+          "end_effector/robotiq/urcap"}
 
 
 def _driver_dirs():

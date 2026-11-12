@@ -38,6 +38,8 @@ weights/
 
 # Logs & runtime artifacts
 *.log
+# MuJoCo writes its warnings here, in the current directory
+MUJOCO_LOG.TXT
 logs/
 outputs/
 runs/

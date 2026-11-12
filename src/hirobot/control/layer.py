@@ -359,9 +359,7 @@ class Layer(Robot):
 
     def list_layer_skills(self) -> List[RobotSkillSpec]:
         """Skills this layer and the layers below it run (not the vendor's robot skills)."""
-        own = list(self._layer_skills())
-        below = getattr(self.inner, "list_layer_skills", None)
-        return own + (list(below()) if below is not None else [])
+        return list(self._layer_skills()) + list(self.inner.list_layer_skills())
 
     def run_layer_skill(
         self, name: str, args: Optional[Mapping[str, Any]] = None
@@ -380,11 +378,10 @@ class Layer(Robot):
         """
         specs = {s.name: s for s in self._layer_skills()}
         if name not in specs:
-            below = getattr(self.inner, "run_layer_skill", None)
-            if below is None:
-                raise RobotSkillError(f"{type(self).__name__}: no layer skill {name!r}; "
-                                      f"available: {[s.name for s in self.list_layer_skills()]}")
-            return below(name, args)
+            if any(s.name == name for s in self.inner.list_layer_skills()):
+                return self.inner.run_layer_skill(name, args)
+            raise RobotSkillError(f"{type(self).__name__}: no layer skill {name!r}; "
+                                  f"available: {[s.name for s in self.list_layer_skills()]}")
         spec = specs[name]
         checked = validate_args(spec, args)
         if self.fault is not None:
@@ -412,14 +409,12 @@ class Layer(Robot):
                     self._stop_layer_skill()
             finally:
                 self._end_layer_skill()
-        below = getattr(self.inner, "stop_layer_skill", None)
-        if below is not None:
-            below()
+        self.inner.stop_layer_skill()
 
     @property
     def layer_skill_running(self) -> bool:
-        """Whether one of this layer's skills holds the command stream."""
-        return self._layer_skill_lease is not None
+        """Whether a skill of this layer or of a layer below holds the command stream."""
+        return self._layer_skill_lease is not None or self.inner.layer_skill_running
 
     def _layer_skills(self) -> List[RobotSkillSpec]:
         """This layer's own skills. Default: none."""

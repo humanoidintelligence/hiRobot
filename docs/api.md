@@ -40,6 +40,7 @@ Conventions used throughout:
 |---|---|---|---|
 | `Embodiment`, `Joint`, `EndEffector`, `EndEffectorFrame`, `Camera`, `CameraMount`, `AudioDevice`, `EmbodimentKind` | pydantic models / enum | `hirobot.core.embodiment` | Declarative robot I/O contract |
 | `Observation`, `Action`, `ActionChunk`, `ControlMode`, `MotionClip`, `JOINT_MODES`, `MOTION_SPACES` | pydantic models / enum / tuples | `hirobot.core.types` | Typed I/O between robot and policy |
+| `RobotStatus`, `BatteryState`, `CommandProgress` | pydantic models | `hirobot.core.types` | What `get_status()` returns (see [`RobotStatus`](#robotstatus)) |
 | `Robot` | abstract class | `hirobot.core.robot` | Driver contract |
 | `RobotAssembly` | `Robot` | `hirobot.assembly` | A robot assembled from a body driver plus attached cameras, end-effectors (hands, grippers), microphones and speakers; or, with child parts, several complete robots driven as one (see [RobotAssembly](#robotassembly)) |
 | `Layer` | `Robot` | `hirobot.control.layer` | Base class for layers: wraps `inner` and forwards to it (see [Layers](#layers)) |
@@ -230,6 +231,37 @@ are evenly spaced at `fps`; every array set has the same number of frames `T`.
 `space`. A clip is already a sequence, so it travels as one
 `Action(mode=MOTION_CLIP)`, not in an `ActionChunk`.
 
+### `RobotStatus`
+
+What `robot.get_status()` returns: health and housekeeping for the operating
+layer (an agent, a UI). Kept out of `Observation`, which a remote policy
+forwards to the model every tick. Fields a robot does not report stay empty.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `timestamp` | `float` or `None` | `time.time()` when assembled |
+| `battery` | `BatteryState` or `None` | `soc` (%), `voltage`, `current`, `temperature`, `health` (%), `cycles` |
+| `joint_temperature` | `(N,)` or `None` | Per-joint motor temperature (degC) |
+| `joint_faults` | `Dict[str, int]` | Joint name -> nonzero vendor fault code |
+| `board_temperature` | `Dict[str, float]` | Board name -> degC |
+| `fault` | `str` or `None` | As `robot.fault` |
+| `command` | `CommandProgress` or `None` | Progress of the last high-level command; `None` when the robot reports none |
+| `extra` | `Dict[str, Any]` | Driver- or layer-specific readings (e.g. `extra["wbc"]`) |
+| `safety` | `Dict[str, Any]` | Gate counters: `audit`, `sim_check` |
+
+`CommandProgress` is for commands a controller follows over many ticks, so a
+caller can tell whether the robot arrived or the clip ended without knowing the
+driver. The controller fills it (a whole-body-control layer; hiRobot's own
+drivers leave it `None`) and keeps the last one after it ends, `done=True`,
+until the next command replaces it. Layers pass it up unchanged.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `mode` | `ControlMode` | The command's mode |
+| `done` | `bool` or `None` | `True` once a `BASE_POSE` goal is reached or a `MOTION_CLIP` has played out; `None` for a mode with no end (`BASE_VELOCITY`) |
+| `goal` | `[x, y, yaw]` or `None` | `BASE_POSE` target, in the frame of `Observation.base_position` |
+| `clip_time`, `clip_duration` | `float` or `None` | `MOTION_CLIP`: seconds played, and its length |
+
 ### `ActionChunk`
 
 A horizon of `T` actions predicted in one inference call.
@@ -273,6 +305,7 @@ promise that two threads sending at once get any particular order.
 | `connect()` | abstract | Open the connection. Called once before control |
 | `reset(seed=None)` | abstract | Bring the robot to a safe initial state. Simulators use `seed` to pick the scene (e.g. an env seed or init-state index); other drivers ignore it |
 | `get_observation() -> Observation` | abstract | Read sensors |
+| `get_status() -> RobotStatus` | optional | Health and command progress, see [`RobotStatus`](#robotstatus). By default only `timestamp` and `fault` |
 | `send_action(action)` | concrete | `check_action`, then the driver's `_send_action` ([SPI](#writing-a-driver-or-a-layer-spi)). Raises `SafetyError` on refusal and nothing is sent, including when `action.joint_names` lists a joint outside `direct_joints`. Raises `RobotFaultError` in the fault state, and `RobotBusyError` (a `RuntimeError`) when someone else holds the robot's [command lease](#command-arbiter), e.g. it is a part of an assembly and the call does not come through the assembly |
 | `check_action(action) -> Action` | concrete | Every check `send_action` runs, without sending; returns the (possibly clamped) action. An assembly checks every part's piece before sending to any |
 | `fault` | property | Why the robot refuses commands, or `None`. Set when a driver or layer damped or stopped itself, and by `estop()`. Cleared when `reset()` returns, unless `estop()` ran meanwhile. A wrapper (`RobotAssembly`) reports its inner robot's too. Also `get_status().fault` |
@@ -289,6 +322,10 @@ promise that two threads sending at once get any particular order.
 | `list_robot_skills() -> List[RobotSkillSpec]` | optional | The skills the robot's own controller runs. Empty by default. See [Robot skills](#robot-skills) |
 | `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | Check `args` against the skill's schema, then run it. Raises `RobotSkillError` |
 | `stop_robot_skill()` | optional | Stop the running skill. No-op by default |
+| `list_layer_skills() -> List[RobotSkillSpec]` | concrete | The skills the stack's layers run. Every robot has it; without layers it is empty. See [Layer skills](#layers) |
+| `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | Start a layer skill. Without layers it raises `RobotSkillError` |
+| `stop_layer_skill()` | concrete | Stop the running layer skill. No-op without layers |
+| `layer_skill_running` | property | Whether a layer skill (of any layer in the stack) holds the command stream. `False` without layers |
 | `disconnect()` | optional | Release and stop. No-op by default |
 | `safety` | attribute | The attached gate, or `None` |
 | `simulated` | class attribute | `True` for simulator drivers. With a simulated driver `make_robot` builds no end-effector drivers and only the cameras and audio devices whose class is also `simulated` (video file, WAV, the host's microphone) |
@@ -532,7 +569,9 @@ layers from the same `hirobot.drivers` entry point as drivers.
 behavior, a macro), apart from the vendor's robot skills:
 `list_layer_skills()` (this layer's and the layers' below), `run_layer_skill(name, args=None) -> RobotSkillResult`
 (arguments checked against the schema, returns once started),
-`stop_layer_skill()` and `layer_skill_running`. While a skill runs, the layer
+`stop_layer_skill()` and `layer_skill_running` (true while a skill of this layer
+or one below runs). The four are on every `Robot`, so callers need not check
+whether the outermost robot is a layer. While a skill runs, the layer
 holds the stack's [command lease](#command-arbiter) with `Priority.LAYER_SKILL`:
 a caller's lease is preempted, and direct commands raise `RobotBusyError` until
 the skill ends or `stop_layer_skill()` is called. A `TAKEOVER` preempts the
@@ -850,7 +889,7 @@ robot = make_robot("examples/lab_two_cells.yaml")   # two cells of two arms each
 | Errors | A part that fails to read or send, or reports a `fault`, makes the assembly hold every other part and enter its own fault state. Then `send_action` raises `RobotFaultError` until `reset()` |
 | Leases | A part is a `Robot` with its own [command lease](#command-arbiter), so `robot.claim(name, parts=["left"])` holds just that part (`parts=["cell_a/left"]` for a nested one); disjoint parts are claimed independently, overlapping paths raise `RobotBusyError`. A direct call on a held part raises `RobotBusyError`. A part's own thread (a whole-body controller) still commands its inner robot |
 | `part(path)` | Read-only view: `embodiment`, `simulated`, `fault`, `get_observation()`, `get_status()` |
-| `get_status()` | `joint_temperature` concatenated; `joint_faults`, `board_temperature`, `extra` keys prefixed; `battery` top-level when one part reports one, else `extra["<part>/battery"]`; `fault` the assembly's or the first part's |
+| `get_status()` | `joint_temperature` concatenated; `joint_faults`, `board_temperature`, `extra` keys prefixed; `battery` and `command` top-level when one part reports one, else `extra["<part>/battery"]` / `extra["<part>/command"]`; `fault` the assembly's or the first part's |
 | Skills | Part skills listed as `<part>/<skill>`; `run_robot_skill("g1/wave")` runs it on that part |
 | Lifecycle | `connect` connects parts then the node's own cameras, undoing on failure. `reset`, `hold`, `damp`, `estop`, `disconnect`, `stop_robot_skill` reach every part even when one fails, then raise the first error. `reset` also clears the fault state |
 | Collision | Optional `collision=CollisionCheck(...)` (config: `collision:`). Each modelled part is capsules, one per body-to-parent segment of its MJCF (`hirobot.geometry.kinematics`), all of `radius`; only gaps between different parts count. Before sending, the assembly predicts each part's next pose (`POSITION` / `PD` joint targets as the next angles, otherwise the current ones; `CARTESIAN` target points as spheres) and refuses with `SafetyError` when the smallest gap would be under `min_distance`, unless it is not shrinking (parts already too close may move apart). Reads each modelled part's observation once per send. A floating-base part needs a base pose. About 1 ms for two G1s. Capsules along the chain are coarse: pick `radius` to cover the links; `skip:` leaves out bodies such as a mounting plate |
@@ -1007,6 +1046,7 @@ from the body driver. Like body drivers, they import vendor SDKs lazily.
 | `PollingCameraDriver(name, poll_hz=30.0, retry_s=0.2)` | Runs a blocking `_grab() -> HxWx3 uint8 RGB` on a background thread and keeps only the newest frame. Subclasses implement `_grab` and optionally `_open` / `_close`. Exposes `wait_for_frame(timeout)`, `error`, `frames`, `errors` |
 | `Frame` | `Tuple[np.ndarray, Stamp]`: the image and when it arrived (`Stamp(t, seq)`, `t` on `time.monotonic()`) |
 | `RgbdFrame` | `Tuple[np.ndarray, Optional[np.ndarray], Stamp]`: colour image, depth registered to it (HxW float32, metres) or `None`, and their common `Stamp` |
+| `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | One Intel RealSense (D435i, D405, L515, ...) on the local USB of the computer running hiRobot, over `pyrealsense2`. `serial` picks a device when several are attached (else the first enumerated). With `depth: true` it is an RGB-D camera: the depth sensor is aligned to colour so `Observation.depth` shares the colour pixel grid, device units scaled to metres by the sensor's `depth_scale`. `depth_width` / `depth_height` set the depth stream size when it differs from colour (default: the colour size); the aligned depth image still comes out at the colour size. Needs `pyrealsense2` (`pip install pyrealsense2`); the L515 needs an older release (2.54.2 verified; 2.59.1 does not list it) |
 | `agibot_cosine` → `AgibotCosineCamera(name, topic, depth_topic=None, depth_scale=0.001, max_pair_skew_s=0.005, pair_wait_s=0.02, queue=4, poll_hz=60.0)` | AgiBot G1 cameras on the robot's `cosine_bus` topics (`/camera/head_color` + `/camera/head_depth`, `/camera/hand_left_color`, ...). With `depth_topic` it is an RGB-D camera: each colour frame is paired with the depth frame of the same capture (`source_timestamp`), Z16 scaled to metres. Runs on the robot's computer with the vendor environment sourced (`LOCATOR_IP`, `AORTA_DISCOVERY_URI`) |
 | `unitree_videohub` → `UnitreeVideohubCamera(name, network_interface=None, domain_id=0, timeout_s=1.0, poll_hz=30.0)` | G1 head camera |
 | `unitree_image_server` → `UnitreeImageServerCamera(name, address, header=False, crop=None, timeout_s=1.0, poll_hz=60.0)` | H1 head camera: JPEG frames over ZeroMQ SUB from Unitree's teleoperation `image_server` (or `scripts/camera_image_server.py`). `header` strips the `Unit_Test` timestamp / frame id (kept in `remote_stamp` / `remote_frame_id`); `crop: [x, y, w, h]` takes one camera out of a side-by-side frame. Needs the `camera` extra |
@@ -1046,6 +1086,7 @@ loop itself) is `opening`. A driver class lists the interfaces it supports in
 | `unitree_handcmd` → `UnitreeDex3Hand(name, joints, side, network_interface=None, domain_id=0, default_kp=1.5, default_kd=0.2, ramp_seconds=1.0, ramp_hz=100.0, stale_s=0.5, read_only=False)` | Unitree Dex3-1 hand (`unitree_hg` `HandCmd_`); `side` is `"left"` or `"right"` |
 | `unitree_motorcmds` → `UnitreeMotorCmdsHand(name, joints, cmd_topic, state_topic, motor_offset=0, num_motors=None, service=..., network_interface=None, domain_id=0, connect_timeout_s=2.0, stale_s=0.5, read_only=False)` | Any hand behind a Unitree serial-to-DDS service (`unitree_go` `MotorCmds_` / `MotorStates_`): Inspire on the H1 via `h1_inspire_service`, and the same layout for Dex1-1, BrainCo, Linker. Hands sharing one topic pair (Inspire 1.0.1: 12 motors, `motor_offset` 0 / 6) share one bus; slots no hand has commanded hold their measured pose |
 | `inspire_sdkpy` → `InspireSdkpyHand(name, joints, side, network_interface=None, domain_id=0, cmd_topic=None, state_topic=None, connect_timeout_s=2.0, stale_s=0.5, read_only=False)` | Inspire RH56DFX through the inspire_sdkpy DDS bridge (`rt/inspire_hand/{ctrl,state}/{l,r}`, angles 0-1000 scaled to 0-1) |
+| `robotiq_urcap` → `RobotiqUrcapGripper(name, joints, host, port=63352, speed=255, force=255, activate=False, connect_timeout_s=3.0, stale_s=0.5, poll_hz=20.0, read_only=False)` | Robotiq 2F gripper (`opening` interface) through the Robotiq URCap socket on a UR controller (TCP `port` at the controller IP). Registers are 0 open / 255 closed; the driver maps them to `opening` 1 open / 0 closed. `speed` / `force` are 0-255; `activate` activates on `connect()` if needed (a full close/open). `OpeningState.extra` has `object` (Robotiq object detection) and `fault`. `damp()` sends `GTO 0` (halt and hold). Python standard library only |
 
 An end-effector driver is constructed as `cls(ee.name, joints, **spec)`, where
 `joints` is empty for the `opening` interface and `spec` is the end-effector's
