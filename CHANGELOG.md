@@ -5,8 +5,6 @@ User-facing changes in each hiRobot release, newest first. The format follows
 release may change the API incompatibly; such changes are listed under
 "Removed" or "Changed" and marked **breaking**.
 
-## [Unreleased]
-
 ## [0.0.4] - 2026-11-13
 
 Franka FR3 and AgileX PiPER support, with ZED and Orbbec cameras. The Franka
@@ -230,7 +228,6 @@ once against `Observation` / `Action` and run on any robot with a driver.
   GRx, AgiBot X1, Franka FR3 and UR5e are included but not yet checked on
   hardware.
 
-[Unreleased]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.1...v0.0.2

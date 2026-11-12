@@ -4,8 +4,6 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。0.1.0 之前任何版本都可能有不兼容的接口改动，
 这类改动列在"移除"或"变更"下，并标 **不兼容**。
 
-## [Unreleased]
-
 ## [0.0.4] - 2026-11-13
 
 支持 Franka FR3 和 AgileX PiPER，以及 ZED 和 Orbbec 相机。Franka FR3 改为通过 DROID 机器人服务控制，libfranka 驱动已移除。
@@ -146,7 +144,6 @@
   和底盘，以及它的头部（RealSense D457）和腕部（RealSense D405）相机；Unitree G1 和 H1 上的 RealSense D435i 头部相机。
   Fourier GRx、AgiBot X1、Franka FR3 和 UR5e 的驱动已包含，还没在真机上验证。
 
-[Unreleased]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...HEAD
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.1...v0.0.2
