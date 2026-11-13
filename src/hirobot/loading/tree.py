@@ -488,9 +488,9 @@ def _joints(value: Any, where: str) -> List[Dict[str, Any]]:
     out = []
     for j in value:
         if not isinstance(j, Mapping) or "name" not in j:
-            raise ValueError(f"{where}: every joint is {{name, position_limit, torque_limit}}, "
-                             f"got {j!r}")
-        unknown = sorted(set(j) - {"name", "position_limit", "torque_limit"})
+            raise ValueError(f"{where}: every joint is {{name, position_limit, torque_limit, "
+                             f"axis, parent_link}}, got {j!r}")
+        unknown = sorted(set(j) - {"name", "position_limit", "torque_limit", "axis", "parent_link"})
         if unknown:
             raise ValueError(f"{where}: joint {j['name']!r}: unknown key(s) {unknown}")
         out.append(dict(j))

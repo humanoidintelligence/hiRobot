@@ -24,7 +24,7 @@ Conventions used throughout:
 - [Embodiment](#embodiment)
 - [Observation, Action, ActionChunk, ControlMode](#observation-action-actionchunk-controlmode)
 - [Skills](#skills)
-- [Robot skills](#robot-skills)
+- [Onboard skills](#onboard-skills)
 - [Command arbiter](#command-arbiter)
 - [SafetyGate](#safetygate)
 - [RobotAssembly](#robotassembly)
@@ -51,8 +51,8 @@ and layers all have every member below; signatures and behaviour are in
 | Command | `send_action(action)`, `check_action(action) -> Action`, `hold()`, `set_gains(kp, kd)`, `command_timeout_s` | [Action](#action) |
 | Stop | `estop()` | [Robot](#robot) |
 | Share the command stream | `claim(name, ...) -> CommandLease`, `command_events()` | [Command arbiter](#command-arbiter) |
-| Skills | `list_skills()`, `run_skill(name, args=None)`, `stop_skill()`, `skill_running` | [Skills](#skills) |
-| Skills by kind | Robot skills: `has_robot_skills`, `list_robot_skills()`, `run_robot_skill(name, args=None)`, `stop_robot_skill()`. Layer skills: `list_layer_skills()`, `run_layer_skill(name, args=None)`, `stop_layer_skill()`, `layer_skill_running` | [Robot skills](#robot-skills), [Layers](#layers) |
+| Skills | `list_robot_skills()`, `run_robot_skill(name, args=None)`, `stop_robot_skill()`, `robot_skill_running` | [Skills](#skills) |
+| Skills by kind | Onboard skills: `has_onboard_skills`, `list_onboard_skills()`, `run_onboard_skill(name, args=None)`, `stop_onboard_skill()`. Layer skills: `list_layer_skills()`, `run_layer_skill(name, args=None)`, `stop_layer_skill()`, `layer_skill_running` | [Onboard skills](#onboard-skills), [Layers](#layers) |
 | Safety and episode outcome | `safety` (the attached `SafetyGate`), `success`, `done`, `reward` | [SafetyGate](#safetygate), [Control loops](#control-loops) |
 
 ## Quick example
@@ -89,7 +89,7 @@ finally:
 | `register_layer`, `get_layer`, `available_layers` | functions | `hirobot.loading.registry` | Registry of layers stacked by `layers:` (see [Layers](#layers)) |
 | `load_embodiment`, `make_robot` | functions | `hirobot` | Build an embodiment / robot from a config name, file or dict |
 | `require_sdk` | function | `hirobot.loading.sdk` | Check a driver's vendor SDK against its `manifest.yaml` |
-| `RobotSkillSpec`, `RobotSkillResult`, `RobotSkillError` | pydantic models / exception | `hirobot.core.robot_skills` | Describe, start and refuse robot skills (walk, gestures) |
+| `RobotSkillSpec`, `RobotSkillResult`, `RobotSkillError` | pydantic models / exception | `hirobot.core.robot_skills` | Describe, start and refuse onboard skills (walk, gestures) |
 | `SafetyGate`, `SafetyVerdict`, `SafetyError` | class / dataclass / exception | `hirobot.control.safety` | Check every action before it reaches hardware |
 | `DofMap` | class | `hirobot.core.dof` | Reorder joint vectors by name |
 | `pose_compose`, `pose_inverse`, `pose_from_matrix`, `pose_from_axis_angle`, ... | functions | `hirobot.geometry.transforms` | Pose math on 7-vector poses `[x, y, z, qx, qy, qz, qw]` (not re-exported from `hirobot`) |
@@ -195,7 +195,7 @@ layers:                     # first entry innermost
 `Layer` forwards everything to `inner` by default: `embodiment`, the
 capability declarations (`action_modes`, `motion_spaces`, `cartesian_targets`,
 `direct_joints`), the devices (`cameras`, `microphones`, `speakers`), the
-lifecycle, observations, `get_status`, `hold`, gains and robot skills; `fault`
+lifecycle, observations, `get_status`, `hold`, gains and onboard skills; `fault`
 reports the layer's own fault or the one below. A subclass overrides what it
 changes. `estop()` reaches the robot at the bottom first, then each layer stops
 its own work. How to write one: [Writing a layer](#writing-a-layer).
@@ -208,7 +208,7 @@ cameras and audio devices are reachable through it as on the robot below. Regist
 layers from the same `hirobot.drivers` entry point as drivers.
 
 **Layer skills.** A layer can run its own skills over many control cycles (a
-behavior, a macro), apart from the vendor's robot skills:
+behavior, a macro), apart from the vendor's onboard skills:
 `list_layer_skills()` (this layer's and the layers' below), `run_layer_skill(name, args=None) -> RobotSkillResult`
 (arguments checked against the schema, returns once started),
 `stop_layer_skill()` and `layer_skill_running` (true while a skill of this layer
@@ -286,7 +286,7 @@ wrapper implements.
 
 **Threads.** `get_observation`, `get_status`, `now` and `estop` may be called
 from any thread at any time. Every other method (`send_action`, `hold`,
-`reset`, `run_skill`, `run_robot_skill`, `set_gains`, `connect`, `disconnect`, ...) is
+`reset`, `run_robot_skill`, `run_onboard_skill`, `set_gains`, `connect`, `disconnect`, ...) is
 called by one holder at a time: the holder of the [command
 lease](#command-arbiter), or the single caller when nobody holds one. A lease
 may be passed between threads, but its calls must not overlap. Drivers do not
@@ -315,18 +315,18 @@ promise that two threads sending at once get any particular order.
 | `now()` | optional | The robot's clock in seconds, what `Observation.stamps` times are on: `time.monotonic()` by default, simulated time in `toy` / `mujoco`. Wrappers return the inner robot's |
 | `hold()` | optional | Keep the robot where it is, e.g. after a policy is stopped. By default sends the current `joint_pos` as a POSITION action when the driver accepts POSITION, otherwise does nothing. A simulator that takes only Cartesian deltas does nothing; Unitree with `builtin_skills` does nothing (the motion service keeps the robot standing). A driver with its own balance loop (a whole-body-controlled humanoid) must override it to command standing still (base velocity `[0, 0, 0]`): sending `joint_pos` freezes the joints and the humanoid falls. Goes through the safety gate |
 | `set_gains(kp, kd)` | optional | Per-joint PD gains. No-op by default |
-| `has_robot_skills` | property | Whether the driver offers robot skills at all. `False` by default |
-| `list_robot_skills() -> List[RobotSkillSpec]` | optional | The skills the robot's own controller runs. Empty by default. See [Robot skills](#robot-skills) |
-| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | Check `args` against the skill's schema, then run it. Raises `RobotSkillError` |
-| `stop_robot_skill()` | optional | Stop the running skill. No-op by default |
+| `has_onboard_skills` | property | Whether the driver offers onboard skills at all. `False` by default |
+| `list_onboard_skills() -> List[RobotSkillSpec]` | optional | The skills the robot's own controller runs. Empty by default. See [Onboard skills](#onboard-skills) |
+| `run_onboard_skill(name, args=None) -> RobotSkillResult` | concrete | Check `args` against the skill's schema, then run it. Raises `RobotSkillError` |
+| `stop_onboard_skill()` | optional | Stop the running skill. No-op by default |
 | `list_layer_skills() -> List[RobotSkillSpec]` | concrete | The skills the stack's layers run. Every robot has it; without layers it is empty. See [Layer skills](#layers) |
 | `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | Start a layer skill. Without layers it raises `RobotSkillError` |
 | `stop_layer_skill()` | concrete | Stop the running layer skill. No-op without layers |
 | `layer_skill_running` | property | Whether a layer skill (of any layer in the stack) holds the command stream. `False` without layers |
-| `list_skills() -> List[RobotSkillSpec]` | concrete | Every skill the robot can run, layer skills and robot skills in one list. See [Skills](#skills) |
-| `run_skill(name, args=None) -> RobotSkillResult` | concrete | Start a skill from `list_skills()`, whichever kind it is |
-| `stop_skill()` | concrete | Stop the running skill, of either kind |
-| `skill_running` | property | Whether a layer skill is running. Robot skills are not tracked |
+| `list_robot_skills() -> List[RobotSkillSpec]` | concrete | Every skill the robot can run, layer skills and onboard skills in one list. See [Skills](#skills) |
+| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | Start a skill from `list_robot_skills()`, whichever kind it is |
+| `stop_robot_skill()` | concrete | Stop the running skill, of either kind |
+| `robot_skill_running` | property | Whether a layer skill is running. Onboard skills are not tracked |
 | `disconnect()` | optional | Release and stop. No-op by default |
 | `safety` | attribute | The attached gate, or `None` |
 | `simulated` | class attribute | `True` for simulator drivers. With a simulated driver `make_robot` builds no end-effector drivers and only the cameras and audio devices whose class is also `simulated` (video file, WAV, the host's microphone) |
@@ -367,6 +367,8 @@ an unknown joint, a joint claimed by two end-effectors, or an end-effector with 
 | `Joint` | `name` | `str` | Unique name; the key for DoF mapping |
 | | `position_limit` | `(lower, upper)` or `None` | Position bounds (rad). End-effector drivers clip to it |
 | | `torque_limit` | `float` or `None` | Max absolute torque (Nm) |
+| | `axis` | `(x, y, z)` or `None` | Unit vector the joint turns about, in the frame of the link the joint moves (as URDF `<axis>` and MJCF `axis`), not the world frame |
+| | `parent_link` | `str` or `None` | Link the joint hangs from (URDF `<parent>`) |
 | `EndEffector` | `name` | `str` | Key in `ee_poses` / `ee_targets` / `gripper` |
 | | `has_gripper` | `bool` | Has a gripper commanded through `Action.gripper`. Required for an end-effector driver without `joints` (`opening` interface) and not allowed with `joints` |
 | | `joints` | `List[str]` | Embodiment joints this end-effector actuates (finger joints), in its driver's motor order |
@@ -541,36 +543,36 @@ A horizon of `T` actions predicted in one inference call.
 ## Skills
 
 What a robot can do by name, for a caller (an agent, a voice front end) that
-shows it to a model. Two kinds sit underneath, [robot skills](#robot-skills)
+shows it to a model. Two kinds sit underneath, [onboard skills](#onboard-skills)
 (the vendor's controller runs them) and [layer skills](#layers) (a layer runs
 them); these four calls list and run both without the caller telling them apart.
 
 ```python
 robot = make_robot("my_g1.yaml")
 robot.connect()
-for s in robot.list_skills():          # RobotSkillSpec: name, description, parameters (JSON Schema), ...
+for s in robot.list_robot_skills():          # RobotSkillSpec: name, description, parameters (JSON Schema), ...
     print(s.name, s.description)
-robot.run_skill("walk", {"vx": 0.3, "seconds": 2.0})
-robot.stop_skill()
+robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_robot_skill()
 ```
 
 | Call | Description |
 |---|---|
-| `list_skills() -> List[RobotSkillSpec]` | Layer skills first, then robot skills. A layer skill with the same name as a robot skill hides it (the outer one wins). In an assembly names carry the part path (`left/grasp`) |
-| `run_skill(name, args=None) -> RobotSkillResult` | Goes to `run_layer_skill` or `run_robot_skill`, with their argument checks and lease rules: a layer skill holds the command stream until it ends. Raises `RobotSkillError` for an unknown name or bad arguments, `RobotBusyError` when someone else holds the robot |
-| `stop_skill()` | Stops both kinds: `stop_layer_skill()`, then `stop_robot_skill()` |
-| `skill_running` | `layer_skill_running`. A robot skill's `run_skill` returns once the robot accepts it, and how long it runs is only estimated (`duration_s`) |
+| `list_robot_skills() -> List[RobotSkillSpec]` | Layer skills first, then onboard skills. A layer skill with the same name as an onboard skill hides it (the outer one wins). In an assembly names carry the part path (`left/grasp`) |
+| `run_robot_skill(name, args=None) -> RobotSkillResult` | Goes to `run_layer_skill` or `run_onboard_skill`, with their argument checks and lease rules: a layer skill holds the command stream until it ends. Raises `RobotSkillError` for an unknown name or bad arguments, `RobotBusyError` when someone else holds the robot |
+| `stop_robot_skill()` | Stops both kinds: `stop_layer_skill()`, then `stop_onboard_skill()` |
+| `robot_skill_running` | `layer_skill_running`. An onboard skill's `run_robot_skill` returns once the robot accepts it, and how long it runs is only estimated (`duration_s`) |
 
-A `CommandLease` has `run_skill` too. A robot skill runs through the lease; a
+A `CommandLease` has `run_robot_skill` too. An onboard skill runs through the lease; a
 layer skill preempts it, so claim again after the skill.
 
-Drivers and layers do not implement these four. A driver offers robot skills
-through `list_robot_skills` / `_run_robot_skill`, a layer offers layer skills
+Drivers and layers do not implement these four. A driver offers onboard skills
+through `list_onboard_skills` / `_run_onboard_skill`, a layer offers layer skills
 through `_layer_skills` / `_start_layer_skill` ([SPI](#writing-a-driver-or-a-layer-spi)).
 
-## Robot skills
+## Onboard skills
 
-`hirobot.core.robot_skills`. A robot skill is a motion the robot's own controller
+`hirobot.core.robot_skills`. An onboard skill is a motion the robot's own controller
 carries out (walk, sit, wave), started by name instead of by streaming joint
 targets. Each driver declares the skills hiRobot supports on its robot, so
 callers (an agent, a voice front end) list them and show them to a model
@@ -579,23 +581,23 @@ instead of hard-coding any.
 ```python
 robot = make_robot("my_g1.yaml")      # robot.builtin_skills: g1
 robot.connect()
-[s.name for s in robot.list_robot_skills()]   # ['start_locomotion', 'walk', ...]
-robot.run_robot_skill("start_locomotion")
-robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
-robot.stop_robot_skill()
+[s.name for s in robot.list_onboard_skills()]   # ['start_locomotion', 'walk', ...]
+robot.run_onboard_skill("start_locomotion")
+robot.run_onboard_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_onboard_skill()
 ```
 
 ### `RobotSkillSpec`
 
 | Field | Type | Description |
 |---|---|---|
-| `name` | `str` | Passed to `run_robot_skill` |
+| `name` | `str` | Passed to `run_onboard_skill` |
 | `description` | `str` | One or two sentences for a model |
 | `parameters` | `dict` | JSON Schema of the arguments (an `object` schema). Empty means none |
 | `requires` | `List[str]` | Preconditions in plain words, e.g. `"robot standing on the ground"`. Informational |
 | `duration_s` | `float` or `None` | Typical run time, if known |
 
-### `run_robot_skill(name, args=None) -> RobotSkillResult`
+### `run_onboard_skill(name, args=None) -> RobotSkillResult`
 
 Checks `args` against `parameters` before anything reaches the robot, then
 runs it on the driver. Supported schema keywords: property
@@ -617,7 +619,7 @@ child part's skills under the part's prefix (`<part>/<skill>`).
 
 | Driver | Config | Skills |
 |---|---|---|
-| `unitree_sdk2` | `builtin_skills: g1` | G1 locomotion and arm gestures, see the [Unitree setup guide](setup/unitree.md#robot-skills-g1) |
+| `unitree_sdk2` | `builtin_skills: g1` | G1 locomotion and arm gestures, see the [Unitree setup guide](setup/unitree.md#onboard-skills-g1) |
 
 Every other driver offers none.
 
@@ -630,14 +632,14 @@ the stack; a caller takes the command stream with `claim` and sends through the 
 from hirobot import Priority, PreemptedError
 
 with robot.claim("runner", on_preempt=lambda lease: stop_runner()) as r:
-    r.send_action(action)       # also r.hold(), r.reset(), r.run_skill(...)
+    r.send_action(action)       # also r.hold(), r.reset(), r.run_robot_skill(...)
 ```
 
 | Item | Meaning |
 |---|---|
 | `robot.claim(name, priority=Priority.CALLER, on_preempt=None, envelope=None) -> CommandLease` | Take the stream. A higher priority preempts a lower one at once; an equal or lower one raises `RobotBusyError` |
 | `Priority` | `TAKEOVER` (a person: teleoperation, a joystick) > `LAYER_SKILL` (a layer while its skill runs) > `CALLER` (an application) |
-| Direct calls while held | `send_action`, `hold`, `reset`, `run_robot_skill` on the robot raise `RobotBusyError` (a `RuntimeError`). `estop`, `get_observation`, `get_status`, `now` are never checked |
+| Direct calls while held | `send_action`, `hold`, `reset`, `run_onboard_skill` on the robot raise `RobotBusyError` (a `RuntimeError`). `estop`, `get_observation`, `get_status`, `now` are never checked |
 | Nobody holding | Everyone may command, so single-caller scripts need no change. Config `arbiter: {require_claim: true}` refuses commands without a lease |
 | Preemption | The old lease's `on_preempt(lease)` runs (errors are logged), then the robot `hold()`s, so it does not keep going toward the old target (a failing hold is logged). The old lease's next call raises `PreemptedError` (a `RobotBusyError`) |
 | Release | `lease.release()` or leaving `with`. The stream is not given back to a preempted lease; it has to claim again |
@@ -892,8 +894,8 @@ robot = make_robot("examples/lab_two_cells.yaml")   # two cells of two arms each
 | Leases | A part is a `Robot` with its own [command lease](#command-arbiter), so `robot.claim(name, parts=["left"])` holds just that part (`parts=["cell_a/left"]` for a nested one); disjoint parts are claimed independently, overlapping paths raise `RobotBusyError`. A direct call on a held part raises `RobotBusyError`. A part's own thread (a whole-body controller) still commands its inner robot |
 | `part(path)` | Read-only view: `embodiment`, `simulated`, `fault`, `get_observation()`, `get_status()` |
 | `get_status()` | `joint_temperature` concatenated; `joint_faults`, `board_temperature`, `extra` keys prefixed; `battery` and `command` top-level when one part reports one, else `extra["<part>/battery"]` / `extra["<part>/command"]`; `fault` the assembly's or the first part's |
-| Skills | Part skills listed as `<part>/<skill>`; `run_robot_skill("g1/wave")` runs it on that part |
-| Lifecycle | `connect` connects parts then the node's own cameras, undoing on failure. `reset`, `hold`, `damp`, `estop`, `disconnect`, `stop_robot_skill` reach every part even when one fails, then raise the first error. `reset` also clears the fault state |
+| Skills | Part skills listed as `<part>/<skill>`; `run_onboard_skill("g1/wave")` runs it on that part |
+| Lifecycle | `connect` connects parts then the node's own cameras, undoing on failure. `reset`, `hold`, `damp`, `estop`, `disconnect`, `stop_onboard_skill` reach every part even when one fails, then raise the first error. `reset` also clears the fault state |
 | Collision | Optional `collision=CollisionCheck(...)` (config: `collision:`). Each modelled part is capsules, one per body-to-parent segment of its MJCF (`hirobot.geometry.kinematics`), all of `radius`; only gaps between different parts count. Before sending, the assembly predicts each part's next pose (`POSITION` / `PD` joint targets as the next angles, otherwise the current ones; `CARTESIAN` target points as spheres) and refuses with `SafetyError` when the smallest gap would be under `min_distance`, unless it is not shrinking (parts already too close may move apart). Reads each modelled part's observation once per send. A floating-base part needs a base pose. About 1 ms for two G1s. Capsules along the chain are coarse: pick `radius` to cover the links; `skip:` leaves out bodies such as a mounting plate |
 | Whole-body control part | A part wrapped in hiWBC's `wbc` layer (`layers: [{type: wbc, profile: ...}]` in its config) takes only `BASE_VELOCITY` / `MOTION_LATENT` / `MOTION_CLIP`, so the assembly's `action_modes` is usually empty: command it with `Action.parts`, joint modes for the arms and a walk command for it. Its free joints (`direct_joints`, e.g. the upper body) may ride along by name in the same sub-action. When it is not named, `idle_step` runs one controller tick, so a simulated humanoid keeps standing. A controller error faults the part and holds the assembly. hiWBC's own tests cover this with the `echo` profile |
 | Example | `ur5e_dual`: two UR5e arms (`left`, `right`) ±0.4 m apart; `franka_ur5e_dual` adds a Franka FR3 and a `scene` camera; `examples/lab_two_cells.yaml` nests two `ur5e_dual` cells under one lab. All parts default to the toy driver, so they run without hardware (override each arm's body driver by its path, `overrides={"left/body": {"driver": ...}}`) |
@@ -1072,7 +1074,7 @@ calls them, and a layer's `inner` does not expose them.
 | `_estop()` | optional | Driver primitive behind `estop()`. Default: `damp()` if the driver has one |
 | `_idle_step()` | optional, SPI | Let simulated time pass one control period under the last command. An assembly calls it on simulated parts the action did not mention. No-op by default; the toy sim and MuJoCo step |
 | `_set_safety(gate)` | concrete, SPI | Attach or clear (`None`) the `SafetyGate`. For `make_robot` and tests; an application sets limits in the config's `safety:` section |
-| `_run_robot_skill(spec, args)` | optional | Driver primitive behind `run_robot_skill`; `args` are already checked |
+| `_run_onboard_skill(spec, args)` | optional | Driver primitive behind `run_onboard_skill`; `args` are already checked |
 | `_set_fault(reason)` / `_clear_fault()` | concrete, SPI | Put the robot in its fault state (a driver or layer that damped or stopped itself), so commands raise `RobotFaultError` until `reset()`; clear it |
 | `_stop_token()`, `_commanding(token)`, `_wait(seconds, token)` | concrete, SPI | Let a long driver loop end at once when `estop()` is called from another thread (see [Writing a driver](#writing-a-driver)) |
 
@@ -1084,8 +1086,8 @@ contract tests a new driver needs are in the README's
 [Add a new robot](../README.md#add-a-new-robot). The first constructor
 argument must be the `Embodiment`; the remaining keyword arguments are what users
 put under `body:`. Set `simulated = True` on simulators. To offer robot
-skills, override `has_robot_skills`, `list_robot_skills`, `_run_robot_skill` and
-`stop_robot_skill`. A driver whose robot has a safe state overrides
+skills, override `has_onboard_skills`, `list_onboard_skills`, `_run_onboard_skill` and
+`stop_onboard_skill`. A driver whose robot has a safe state overrides
 `_estop()` (or provides `damp()`). A loop that runs for a while (a ramp, a wait
 for the first state) takes `token = self._stop_token()` first, sends each step
 inside `with self._commanding(token):` and sleeps with `self._wait(seconds, token)`,

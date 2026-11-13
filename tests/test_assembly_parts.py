@@ -138,14 +138,14 @@ class FakeWbc(Robot):
     def hold(self):
         self.held += 1
 
-    def list_robot_skills(self):
+    def list_onboard_skills(self):
         return [RobotSkillSpec(name="wave", description="wave a hand")]
 
     @property
-    def has_robot_skills(self):
+    def has_onboard_skills(self):
         return True
 
-    def _run_robot_skill(self, spec, args):
+    def _run_onboard_skill(self, spec, args):
         self.received.append(("skill", spec.name))
 
 
@@ -333,8 +333,8 @@ def test_wbc_part_thread_still_commands_its_inner_robot():
 def test_skills_are_prefixed_and_routed():
     wbc = FakeWbc(ToyRobot(_humanoid()))
     robot = RobotAssembly(None, parts={"g1": wbc, "arm": Recorder(_arm("a", 2))})
-    assert [s.name for s in robot.list_robot_skills()] == ["g1/wave"]
-    robot.run_robot_skill("g1/wave")
+    assert [s.name for s in robot.list_onboard_skills()] == ["g1/wave"]
+    robot.run_onboard_skill("g1/wave")
     assert wbc.received[-1] == ("skill", "wave")
 
 

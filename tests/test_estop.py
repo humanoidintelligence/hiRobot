@@ -87,7 +87,7 @@ def test_estop_with_builtin_skills_stops_the_skill(monkeypatch):
     robot = get_body("unitree_sdk2")(load_embodiment("unitree_g1"), builtin_skills="g1")
     robot.connect()
     stopped = []
-    monkeypatch.setattr(robot, "stop_robot_skill", lambda: stopped.append(True))
+    monkeypatch.setattr(robot, "stop_onboard_skill", lambda: stopped.append(True))
     robot.estop()
     assert stopped == [True] and bus.commands() == []
 

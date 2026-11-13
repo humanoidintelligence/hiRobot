@@ -52,7 +52,7 @@ def test_nobody_holding_lets_everyone_command(robot):
 def test_held_robot_refuses_direct_calls_and_the_lease_commands(robot):
     with robot.claim("runner") as r:
         for call in (lambda: robot.send_action(_pos()), robot.hold, robot.reset,
-                     lambda: robot.run_robot_skill("x")):
+                     lambda: robot.run_onboard_skill("x")):
             with pytest.raises(RobotBusyError, match="runner"):
                 call()
         r.send_action(_pos(v=0.3))

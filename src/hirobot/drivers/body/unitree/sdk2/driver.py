@@ -60,7 +60,7 @@ _H1_WEAK_MOTORS = tuple(range(10, 20))
 _H1_MOTOR_INDEX = tuple(i for i in range(20) if i != 9)
 _BUILTIN_OWNS_LOWCMD = (
     "UnitreeRobot was built with builtin_skills: the built-in motion service owns "
-    "rt/lowcmd, so joint commands are refused; use robot skills, or rebuild with "
+    "rt/lowcmd, so joint commands are refused; use onboard skills, or rebuild with "
     "release_motion_mode to drive the joints")
 
 
@@ -100,7 +100,7 @@ class UnitreeRobot(Robot):
         go_weak_motors: ``go`` family only: motor slots sent with mode 0x01
             instead of 0x0A. Defaults to the H1's ankles and arms.
         builtin_skills: Expose the robot's built-in skills (walk, sit, arm
-            gestures) as robot skills: ``"g1"`` for the G1's fixed skill list,
+            gestures) as onboard skills: ``"g1"`` for the G1's fixed skill list,
             run over its ``sport`` / ``arm`` services (see
             :mod:`~hirobot.drivers.body.unitree.sdk2.g1_skills`), ``None`` for none.
             The built-in service then owns ``rt/lowcmd``: the driver creates no lowcmd publisher, so ``send_action`` / ``reset`` raise and
@@ -398,7 +398,7 @@ class UnitreeRobot(Robot):
             status.extra["mainboard_fan_state"] = [int(v) for v in b.fan_state]
         return status
 
-    # ------------------------------------------------------------ robot skills
+    # ------------------------------------------------------------ onboard skills
 
     def _skill_backend(self):
         """The built-in skill client, or ``None`` before connect / without skills."""
@@ -411,10 +411,10 @@ class UnitreeRobot(Robot):
         return self._skills
 
     @property
-    def has_robot_skills(self) -> bool:
+    def has_onboard_skills(self) -> bool:
         return self._builtin_skills is not None
 
-    def list_robot_skills(self) -> List[RobotSkillSpec]:
+    def list_onboard_skills(self) -> List[RobotSkillSpec]:
         """The G1 skills hiRobot supports: a fixed list, known without a robot."""
         if self._builtin_skills is None:
             return []
@@ -422,13 +422,13 @@ class UnitreeRobot(Robot):
 
         return [s.model_copy(deep=True) for s in SKILLS]
 
-    def _run_robot_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
+    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
         backend = self._skill_backend()
         if backend is None:
-            raise RobotSkillError("connect() the robot before running a robot skill")
+            raise RobotSkillError("connect() the robot before running an onboard skill")
         backend.run(spec, args)
 
-    def stop_robot_skill(self) -> None:
+    def stop_onboard_skill(self) -> None:
         backend = self._skill_backend()
         if backend is not None:
             backend.stop()
@@ -515,7 +515,7 @@ class UnitreeRobot(Robot):
     def _estop(self) -> None:
         """Damp; with ``builtin_skills``, stop walking and release the arms instead."""
         if self._builtin_skills is not None:
-            self.stop_robot_skill()
+            self.stop_onboard_skill()
         else:
             self.damp()
 

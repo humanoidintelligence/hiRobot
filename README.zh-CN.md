@@ -65,7 +65,7 @@ hiRobot 把这层胶水统一起来：
 - **与 VLA 无关**：无论是哪个模型，VLA 读取和产出的都是 hiRobot 的 `Observation` / `ActionChunk` 类型。
   把一个 VLA 换成另一个（GR00T、π0.5、StarVLA），改变的是 hiAgent 指向的 hiVLA 服务，而不是机器人代码。
 - **对 agent 友好**：接口便于 agent 作为工具调用：`Robot.action_modes` 列出驱动接受的控制模式，
-  `get_status` 报告电量、温度和关节故障，`list_skills()` 列出机器人能按名字做的事（行走、手势），每个都附带说明和参数的 JSON Schema，
+  `get_status` 报告电量、温度和关节故障，`list_robot_skills()` 列出机器人能按名字做的事（行走、手势），每个都附带说明和参数的 JSON Schema，
   `SafetyGate` 检查每一条命令，所以被拒绝的动作会抛出 `SafetyError`，而不会到达电机。
   [docs/api.zh-CN.md](docs/api.zh-CN.md) 记录了每个调用的参数和失败方式。
 - **分步部署文档**：真机部署涉及许多新手猜不到的细节，所以每台支持的机器人都有一份设置指南，
@@ -247,7 +247,7 @@ hiRobot 负责机器人的输入输出。`make_robot` 读取一份配置（一�
 | --- | --- |
 | `Embodiment` | 机器人在 policy 眼中的样子：关节（按名称，按 SDK 的顺序）、`floating_base`、末端执行器、摄像头、麦克风 / 扬声器、`control_hz`。由配置构建（一份设备文件或一棵 `assembly:` 树）。 |
 | `Observation` / `Action` / `ActionChunk` | 类型化的输入输出。关节空间（通用）+ 可选的基座（人形机器人）+ 可选的任务空间（机械臂）+ 图像。`ControlMode` 选择关节、笛卡尔、基座速度或运动目标；一个 `ActionChunk` 包含多个预测步。 |
-| `Robot` | 每个驱动、仿真器和包装器都实现的接口约定：`connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`，加上 `action_modes`（它接受的模式）和技能 `list_skills` / `run_skill` / `stop_skill`（由机器人控制器或某一层执行、按名字启动的动作）。驱动实现 `_send_action`；`send_action` 先运行安全门。[详情](docs/api.zh-CN.md#robot)。 |
+| `Robot` | 每个驱动、仿真器和包装器都实现的接口约定：`connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`，加上 `action_modes`（它接受的模式）和技能 `list_robot_skills` / `run_robot_skill` / `stop_robot_skill`（由机器人控制器或某一层执行、按名字启动的动作）。驱动实现 `_send_action`；`send_action` 先运行安全门。[详情](docs/api.zh-CN.md#robot)。 |
 | `SafetyGate` / `SafetyError` | 在 `send_action` 内检查每个动作：形状、DoF 数量和数值是否有限总会检查；配置了时还检查关节限位、步长和跟踪误差上限、电量和温度，以及 MuJoCo 仿真检查。拒绝时抛出 `SafetyError`（`clamp: true` 时改为截断）。由配置的 `safety:` 部分设置。[详情](docs/api.zh-CN.md#safetygate)。 |
 | `CommandArbiter` / `CommandLease` | 命令仲裁器和租约。`robot.claim(name, priority)` 让一个程序持有命令流；其他调用方得到 `RobotBusyError`，更高的优先级（`TAKEOVER` > `LAYER_SKILL` > `CALLER`）会抢占。租约可以带一套更严的 `envelope`；claim、抢占和被拒的命令记在审计里（`robot.command_events()`）。没人持有租约时谁都能发命令。[详情](docs/api.zh-CN.md#命令仲裁)。 |
 | `Layer` | layer 的基类：包住下面栈的一个 `Robot`（`inner`，只有公开 API）。可以提供层技能（`run_layer_skill`）。[写一个 layer](docs/api.zh-CN.md#编写层)。 |

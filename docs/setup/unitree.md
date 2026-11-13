@@ -7,9 +7,9 @@ interface: publishes `rt/lowcmd` and subscribes to `rt/lowstate`.
 
 - **G1 / H1-2 / H2** use the `unitree_hg` message family (`msg_family: hg`, the default).
 - **Legacy H1 (19 DoF)** uses the `unitree_go` message family (`msg_family: go`).
-- **G1 robot skills** (walk, sit, arm gestures run by the built-in controller)
+- **G1 onboard skills** (walk, sit, arm gestures run by the built-in controller)
   are an alternative to joint control: `builtin_skills: g1`, see
-  [Robot skills (G1)](#robot-skills-g1).
+  [Onboard skills (G1)](#onboard-skills-g1).
 
 ## 1. Prerequisites
 
@@ -385,11 +385,11 @@ The legacy H1 leaves motor slot 9 unused. With `msg_family: go` and 19 joints,
 the body driver maps joints to slots `0-8, 10-19`. Set `motor_index` under
 `body:` to override this.
 
-### Robot skills (G1)
+### Onboard skills (G1)
 
 Instead of streaming joint targets, hiRobot can start the G1's built-in
-motions by name (`list_robot_skills` / `run_robot_skill` / `stop_robot_skill`,
-see the [API reference](../api.md#robot-skills)). Enable them on the body:
+motions by name (`list_onboard_skills` / `run_onboard_skill` / `stop_onboard_skill`,
+see the [API reference](../api.md#onboard-skills)). Enable them on the body:
 
 ```yaml
 body:
@@ -407,7 +407,7 @@ a `--release-motion-mode` run, bring it back with `unitree_setup.py restore`
 that says so.
 
 The list is fixed in `src/hirobot/drivers/body/unitree/sdk2/g1_skills.py`, taken
-from unitree_sdk2_python (a035ade, 2025-11-28). `list_robot_skills()` returns it
+from unitree_sdk2_python (a035ade, 2025-11-28). `list_onboard_skills()` returns it
 without a robot connected; hiRobot does not ask the robot.
 
 | Skill | Arguments | SDK call |
@@ -421,9 +421,20 @@ without a robot connected; hiRobot does not ask the robot.
 | `damp` | | `SetFsmId(1)`: limp with damping; the robot falls unless supported |
 | `shake_hand`, `high_five`, `hug`, `high_wave`, `face_wave`, `clap`, `hands_up`, `right_hand_up`, `heart`, `right_heart`, `two_hand_kiss`, `left_kiss`, `right_kiss`, `reject`, `x_ray` | | `G1ArmActionClient.ExecuteAction(id)`, ids from the SDK's `action_map` |
 
-`stop_robot_skill()` sends `StopMove` and then `release arm` (action 99), and
+`stop_onboard_skill()` sends `StopMove` and then `release arm` (action 99), and
 tries both even if one fails. The walking limits are deliberately below what
 the controller accepts.
+
+The skills only work when the controller is in the right FSM state. Gestures
+are accepted only in FSM 500, 501 or 801 (in 801 only with FSM mode 0 or 3);
+otherwise `ExecuteAction` returns 7404. Read the current state with
+`LocoClient` API 7001 (`GetFsmId`) and 7002 (`GetFsmMode`). `SetFsmId` returns 0
+even when the controller ignores the request, so read the state back after
+each step. On one G1 (firmware version not known) the sequence that worked,
+with the robot on the ground, was `0` (zero torque) → `1` (damp) → `4` (locked
+stand, the robot stands up) → `500`. From 4, both 200 (`start_locomotion`) and
+501 were ignored. Every step after 0 moves the robot, so do this only with
+the robot hung or with space around it, and the remote at hand.
 
 Left out on purpose: `ZeroTorque` (FSM 0, the robot drops with no damping),
 `SetBalanceMode`, the `LocoClient` wave and shake-hand task ids (the gestures
@@ -754,9 +765,13 @@ action's mode, computes the CRC, and publishes.
   locomotion / `ai`) is active it owns `rt/lowcmd` and your commands have no
   effect. `unitree_setup.py status` shows it; `--release-motion-mode`
   releases it and `restore` brings it back. To use the built-in motions
-  instead of joint commands, see [Robot skills (G1)](#robot-skills-g1).
-- **Robot skill fails with RPC code 3102:** no built-in service answered,
+  instead of joint commands, see [Onboard skills (G1)](#onboard-skills-g1).
+- **Onboard skill fails with RPC code 3102:** no built-in service answered,
   usually because it was released. Run `unitree_setup.py restore`.
+- **Gesture fails with RPC code 7404:** the controller is not in FSM 500, 501
+  or 801 (see [Onboard skills (G1)](#onboard-skills-g1)). Other arm codes: 7400
+  `rt/armsdk` is in use, 7401 the arm is holding (send 99 or the same id), 7402
+  unknown action id.
 - **No LowState:** `connect()` times out after about 5 s. Check the NIC name,
   the subnet, and that the robot is powered on.
 - **Joint count / order:** G1 = 29, H1-2 = 27, H2 = 31, H1 = 19. Using the wrong
@@ -770,4 +785,8 @@ action's mode, computes the CRC, and publishes.
   request, so the `videohub_pc4` service on PC2 (192.168.123.164) is not
   running; the network and the camera itself may be fine. The D435i can be
   opened by one process at a time, so check whether another camera service on
-  PC2 holds it (`ps -ef | grep -i camera`, `lsusb`).
+  PC2 holds it (`ps -ef | grep -i camera`, `lsusb`). `master_service` starts
+  `videohub_pc4` and restarts it every 5 s; after 30 failed starts it stops,
+  and `/unitree/var/log/master_service/master_service.LOG` repeats
+  `monitor start child service error. name:video_hub_pc4, ret:30008`.
+  Rebooting PC2 resets that count.

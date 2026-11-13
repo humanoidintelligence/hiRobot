@@ -622,37 +622,37 @@ class RobotAssembly(Robot):
             ee.command(target[idx], self._split(action.kp, idx), self._split(action.kd, idx))
 
     @property
-    def has_robot_skills(self) -> bool:
+    def has_onboard_skills(self) -> bool:
         if self._node is not None:
-            return any(r.has_robot_skills for r in self._node.robots.values())
-        return self.body.has_robot_skills
+            return any(r.has_onboard_skills for r in self._node.robots.values())
+        return self.body.has_onboard_skills
 
-    def list_robot_skills(self) -> List[RobotSkillSpec]:
+    def list_onboard_skills(self) -> List[RobotSkillSpec]:
         if self._node is not None:
             return [s.model_copy(update={"name": self._node.out_name(m, s.name)})
-                    for m, r in self._node.robots.items() for s in r.list_robot_skills()]
-        return self.body.list_robot_skills()
+                    for m, r in self._node.robots.items() for s in r.list_onboard_skills()]
+        return self.body.list_onboard_skills()
 
-    def run_robot_skill(
+    def run_onboard_skill(
         self, name: str, args: Optional[Mapping[str, Any]] = None
     ) -> RobotSkillResult:
         if self._node is not None:
-            return Robot.run_robot_skill(self, name, args)
-        return self.body.run_robot_skill(name, args)
+            return Robot.run_onboard_skill(self, name, args)
+        return self.body.run_onboard_skill(name, args)
 
-    def _run_robot_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
+    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
         from hirobot.core.robot_skills import RobotSkillError
 
         if self.fault is not None:
             raise RobotSkillError(f"assembly is in a fault state ({self.fault}); reset() first")
-        m, local = self._node.owner_of(spec.name, "robot skill")  # type: ignore[union-attr]
-        self._node.robots[m].run_robot_skill(local, args)  # type: ignore[union-attr]
+        m, local = self._node.owner_of(spec.name, "onboard skill")  # type: ignore[union-attr]
+        self._node.robots[m].run_onboard_skill(local, args)  # type: ignore[union-attr]
 
-    def stop_robot_skill(self) -> None:
+    def stop_onboard_skill(self) -> None:
         if self._node is not None:
-            self._each_part("stop_robot_skill", lambda r: r.stop_robot_skill())
+            self._each_part("stop_onboard_skill", lambda r: r.stop_onboard_skill())
             return
-        self.body.stop_robot_skill()
+        self.body.stop_onboard_skill()
 
     def set_gains(self, kp: Optional[np.ndarray], kd: Optional[np.ndarray]) -> None:
         if self._node is not None:

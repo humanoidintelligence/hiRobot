@@ -1,4 +1,4 @@
-"""The Unitree G1's built-in skills, exposed as hiRobot robot skills.
+"""The Unitree G1's built-in skills, exposed as hiRobot onboard skills.
 
 The list is fixed here, taken from unitree_sdk2_python (a035ade, 2025-11-28);
 hiRobot does not ask the robot for it. Two RPC services of the G1's built-in
@@ -183,7 +183,7 @@ def _check(name: str, code: Any) -> None:
     if code not in (0, None):
         why = ("built-in motion service not running (select 'ai' first)"
                if code == _RPC_ERR_CLIENT_SEND else "refused")
-        raise RobotSkillError(f"robot skill {name}: {why} (RPC code {code})")
+        raise RobotSkillError(f"onboard skill {name}: {why} (RPC code {code})")
 
 
 def _sdk_loco_client():

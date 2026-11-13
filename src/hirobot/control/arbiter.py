@@ -9,7 +9,7 @@ returned :class:`CommandLease`::
         r.send_action(action)
 
 While a lease is held, calling ``send_action``, ``hold``, ``reset`` or
-``run_robot_skill`` on the robot directly raises :class:`RobotBusyError`.
+``run_onboard_skill`` on the robot directly raises :class:`RobotBusyError`.
 ``estop``, ``get_observation``, ``get_status`` and ``now`` are never checked.
 With nobody holding, everyone may command (single-caller scripts keep working)
 unless the arbiter was built with ``require_claim=True``.
@@ -229,27 +229,27 @@ class CommandLease:
             else:
                 self.arbiter._reset_parts(self.parts, seed)
 
+    def run_onboard_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> Any:
+        """Run an onboard skill; a lease on some parts only those parts' skills (``<part>/<skill>``)."""
+        with self.arbiter._admit(self, "run_onboard_skill", touched=lambda: _touched(
+                self.robot, "run_onboard_skill", (name,))):
+            return self.robot.run_onboard_skill(name, args)
+
     def run_robot_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> Any:
-        """Run a robot skill; a lease on some parts only those parts' skills (``<part>/<skill>``)."""
-        with self.arbiter._admit(self, "run_robot_skill", touched=lambda: _touched(
-                self.robot, "run_robot_skill", (name,))):
-            return self.robot.run_robot_skill(name, args)
+        """Run a skill from ``robot.list_robot_skills()``.
 
-    def run_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> Any:
-        """Run a skill from ``robot.list_skills()``.
-
-        A robot skill runs through this lease. A layer skill claims the stream
+        An onboard skill runs through this lease. A layer skill claims the stream
         with ``Priority.LAYER_SKILL``, so this lease is preempted (its
         ``on_preempt`` runs); claim again after the skill ends.
         """
         if any(s.name == name for s in self.robot.list_layer_skills()):
             return self.robot.run_layer_skill(name, args)
-        if any(s.name == name for s in self.robot.list_robot_skills()):
-            return self.run_robot_skill(name, args)
+        if any(s.name == name for s in self.robot.list_onboard_skills()):
+            return self.run_onboard_skill(name, args)
         from hirobot.core.robot_skills import RobotSkillError
 
         raise RobotSkillError(f"unknown skill {name!r}; available: "
-                              f"{[s.name for s in self.robot.list_skills()] or 'none'}")
+                              f"{[s.name for s in self.robot.list_robot_skills()] or 'none'}")
 
     def _own_nodes(self) -> Optional[set]:
         """The lease's own parts as touched nodes (its hold / reset stay inside them)."""
@@ -628,7 +628,7 @@ def _touched(robot: "Robot", what: str, args: Sequence[Any]) -> Optional[set]:
     """The nodes a call commands (``embodiment.parts`` keys), ``None`` for the whole robot.
 
     ``send_action``: what the action names (:func:`hirobot.assembly.parts.action_owners`).
-    ``run_robot_skill``: the node of the skill's ``<part>/`` prefix. ``hold``
+    ``run_onboard_skill``: the node of the skill's ``<part>/`` prefix. ``hold``
     and ``reset`` on the robot are the whole robot.
     """
     from hirobot.assembly.parts import action_owners, owner_part
@@ -636,7 +636,7 @@ def _touched(robot: "Robot", what: str, args: Sequence[Any]) -> Optional[set]:
     emb = robot.embodiment
     if what == "send_action" and args:
         return action_owners(emb, args[0])
-    if what == "run_robot_skill" and args:
+    if what == "run_onboard_skill" and args:
         return {owner_part(emb, str(args[0]))}
     return None
 

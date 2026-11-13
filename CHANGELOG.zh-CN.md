@@ -4,6 +4,45 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。0.1.0 之前任何版本都可能有不兼容的接口改动，
 这类改动列在"移除"或"变更"下，并标 **不兼容**。
 
+## [0.0.5] - 2026-11-14
+
+技能方法改名。关节可以写转轴和挂接的 link，Unitree G1 的关节带上了限位、力矩上限和转轴。
+
+### 新增
+
+- `Joint.axis` 和 `Joint.parent_link`，都可选，本体配置里可以写。`axis` 是关节转轴的单位向量，在该关节带动的 link 的坐标系里
+  （同 URDF `<axis>` 和 MJCF `axis`），不是世界坐标系。`parent_link` 是关节挂在哪个 link 上（URDF `<parent>`）。
+- Unitree G1 本体（`body/unitree/g1`）的 29 个关节都写上了 `position_limit`、`torque_limit`、`axis` 和 `parent_link`，取自 Unitree
+  `unitree_ros` 里的 `g1_29dof_rev_1_0.urdf`。hiRobot 不按这些单关节限位裁剪命令，它们只用来描述机器人。
+
+### 变更
+
+- **不兼容**：技能方法改名。包含全部技能（层技能和机器人控制器自带的）的那个合集现在叫「robot skill」；
+  机器人控制器自己运行的技能现在叫「onboard skill」（机载 skill）。层技能和 `RobotSkillSpec` / `RobotSkillResult` /
+  `RobotSkillError` 类型名不变。
+
+  | 0.0.4 | 0.0.5 |
+  |---|---|
+  | `list_skills()` | `list_robot_skills()` |
+  | `run_skill(name, args)` | `run_robot_skill(name, args)` |
+  | `stop_skill()` | `stop_robot_skill()` |
+  | `skill_running` | `robot_skill_running` |
+  | `has_robot_skills` | `has_onboard_skills` |
+  | `list_robot_skills()` | `list_onboard_skills()` |
+  | `run_robot_skill(name, args)` | `run_onboard_skill(name, args)` |
+  | `stop_robot_skill()` | `stop_onboard_skill()` |
+  | `_run_robot_skill`（驱动 SPI） | `_run_onboard_skill` |
+
+  `CommandLease.run_skill` 改为 `run_robot_skill`，`CommandLease.run_robot_skill` 改为 `run_onboard_skill`。
+
+  **注意：**`list_robot_skills`、`run_robot_skill` 和 `stop_robot_skill` 这三个名字还在，但现在指合集。按 0.0.4 写的代码调用它们
+  会连层技能一起拿到，不会报错。覆写了 `list_robot_skills` 或 `_run_robot_skill` 的驱动要改成 `list_onboard_skills` /
+  `_run_onboard_skill`，否则它的技能不会再出现。
+- `Joint` 现在拒绝下限大于上限的 `position_limit`、不大于 0 的 `torque_limit` 和不是单位向量的 `axis`，带这类值的本体配置会加载失败。
+  内置配置都能通过。
+- `docs/setup/unitree.md`：G1 机载 skill 要在哪个 FSM 状态下用（手势只在 500、501 或 801）、在一台 G1 上验证过的起身顺序、
+  `SetFsmId` 被忽略时也返回 0、机械臂错误码 7400–7404，以及 `videohub_pc4` 启动失败 30 次后头部相机为什么一直不恢复。
+
 ## [0.0.4] - 2026-11-13
 
 支持 Franka FR3 和 AgileX PiPER，以及 ZED 和 Orbbec 相机。Franka FR3 改为通过 DROID 机器人服务控制，libfranka 驱动已移除。
@@ -144,6 +183,7 @@
   和底盘，以及它的头部（RealSense D457）和腕部（RealSense D405）相机；Unitree G1 和 H1 上的 RealSense D435i 头部相机。
   Fourier GRx、AgiBot X1、Franka FR3 和 UR5e 的驱动已包含，还没在真机上验证。
 
+[0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.1...v0.0.2

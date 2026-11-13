@@ -111,34 +111,34 @@ def _unitree(**kw):
 
 def test_unitree_driver_lists_skills_without_a_robot():
     robot = get_body("unitree_sdk2")(load_embodiment(G1), builtin_skills="g1")  # not connected
-    assert robot.has_robot_skills
-    assert [s.name for s in robot.list_robot_skills()] == [s.name for s in SKILLS]
+    assert robot.has_onboard_skills
+    assert [s.name for s in robot.list_onboard_skills()] == [s.name for s in SKILLS]
     with pytest.raises(RobotSkillError, match="connect"):
-        robot.run_robot_skill("sit")
+        robot.run_onboard_skill("sit")
 
 
 def test_unitree_driver_routes_skills_and_refuses_joint_commands():
     robot = _unitree(builtin_skills="g1")
     skills, loco, _ = _skills()
     robot._skills = skills
-    assert robot.has_robot_skills and RobotAssembly(robot).has_robot_skills
-    result = robot.run_robot_skill("walk", {"vx": 0.3})
+    assert robot.has_onboard_skills and RobotAssembly(robot).has_onboard_skills
+    result = robot.run_onboard_skill("walk", {"vx": 0.3})
     assert result.args == {"vx": 0.3, "vy": 0.0, "vyaw": 0.0, "seconds": 1.0}
     assert loco.calls == [("SetVelocity", 0.3, 0.0, 0.0, 1.0)]
     with pytest.raises(RobotSkillError, match="above"):
-        robot.run_robot_skill("walk", {"vx": 2.0})
+        robot.run_onboard_skill("walk", {"vx": 2.0})
     assert len(loco.calls) == 1  # the bad call never reached the robot
     robot.reset()  # the built-in service holds the robot: nothing to do
     with pytest.raises(SafetyError, match="built-in motion service owns"):
         robot.send_action(Action(joint_target=np.zeros(robot.embodiment.num_dofs)))
 
     # Through an assembly too.
-    assert RobotAssembly(robot).run_robot_skill("sit").name == "sit"
+    assert RobotAssembly(robot).run_onboard_skill("sit").name == "sit"
 
 
 def test_unitree_driver_without_builtin_skills_has_none():
     robot = _unitree()
-    assert not robot.has_robot_skills and robot.list_robot_skills() == []
+    assert not robot.has_onboard_skills and robot.list_onboard_skills() == []
 
 
 def test_builtin_skills_excludes_lowcmd_modes():

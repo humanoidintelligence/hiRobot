@@ -1,4 +1,4 @@
-"""Robot skills: the default (none) and argument checks. G1 skills: tests/drivers/body/unitree/."""
+"""Onboard skills: the default (none) and argument checks. G1 skills: tests/drivers/body/unitree/."""
 
 from types import SimpleNamespace
 
@@ -46,10 +46,10 @@ def _skills(loco=None, arm=None):
 
 def test_default_robot_has_no_skills():
     robot = get_body("toy")(load_embodiment(G1))
-    assert not robot.has_robot_skills and robot.list_robot_skills() == []
-    with pytest.raises(RobotSkillError, match="unknown robot skill"):
-        robot.run_robot_skill("walk")
-    robot.stop_robot_skill()  # no-op
+    assert not robot.has_onboard_skills and robot.list_onboard_skills() == []
+    with pytest.raises(RobotSkillError, match="unknown onboard skill"):
+        robot.run_onboard_skill("walk")
+    robot.stop_onboard_skill()  # no-op
 
 
 def test_validate_args_defaults_ranges_and_types():

@@ -1,11 +1,11 @@
-"""Robot skills: motions a robot's own controller carries out, started by name.
+"""Onboard skills: motions a robot's own controller carries out, started by name.
 
-A robot skill is a behaviour such as walking, sitting down or waving, run by the
+An onboard skill is a behaviour such as walking, sitting down or waving, run by the
 robot's controller instead of by streaming joint targets. Each driver declares
 the skills hiRobot supports on its robot; the layers above (hiAgent, hiLive)
 do not hard-code them: they call
-:meth:`~hirobot.core.robot.Robot.list_robot_skills`, show the result to the model, and
-start one with :meth:`~hirobot.core.robot.Robot.run_robot_skill`.
+:meth:`~hirobot.core.robot.Robot.list_onboard_skills`, show the result to the model, and
+start one with :meth:`~hirobot.core.robot.Robot.run_onboard_skill`.
 
 Arguments are checked here against the skill's JSON Schema before anything
 reaches the robot, the same way :class:`~hirobot.control.safety.SafetyGate` checks
@@ -21,14 +21,14 @@ from pydantic import BaseModel, Field
 
 
 class RobotSkillError(RuntimeError):
-    """A robot skill was refused: unknown name, bad arguments, or the robot said no."""
+    """An onboard skill was refused: unknown name, bad arguments, or the robot said no."""
 
 
 class RobotSkillSpec(BaseModel):
-    """What a caller needs to offer a robot skill to a model.
+    """What a caller needs to offer an onboard skill to a model.
 
     Attributes:
-        name: Identifier passed to ``run_robot_skill``.
+        name: Identifier passed to ``run_onboard_skill``.
         description: One or two sentences for the model.
         parameters: JSON Schema of the arguments (an ``object`` schema).
             Empty means the skill takes none.
@@ -48,7 +48,7 @@ class RobotSkillSpec(BaseModel):
 class RobotSkillResult(BaseModel):
     """The robot accepted a skill.
 
-    ``run_robot_skill`` returns once the robot has accepted the command, not when
+    ``run_onboard_skill`` returns once the robot has accepted the command, not when
     the motion ends; ``duration_s`` is how long it is expected to run, if known.
     """
 

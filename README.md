@@ -77,7 +77,7 @@ SDK. hiRobot standardizes that glue:
   robot code.
 - **Agent friendly** — the interface is easy for an agent to call as tools:
   `Robot.action_modes` lists the control modes a driver accepts, `get_status`
-  reports battery, temperatures and joint faults, `list_skills()` lists what
+  reports battery, temperatures and joint faults, `list_robot_skills()` lists what
   the robot does by name (walk, gestures), each with a description and a JSON
   Schema for its arguments, and
   `SafetyGate` checks every command, so a refused action raises `SafetyError`
@@ -300,7 +300,7 @@ Core concepts:
 | --- | --- |
 | `Embodiment` | What a robot looks like to a policy: joints (by name, in the SDK's order), `floating_base`, end-effectors, cameras, microphones / speakers, `control_hz`. Built from a config (a device file or an `assembly:` tree). |
 | `Observation` / `Action` / `ActionChunk` | Typed I/O. Joint space (universal) + optional base (humanoids) + optional task space (arms) + images. `ControlMode` selects joint, Cartesian, base velocity or motion targets; an `ActionChunk` is several predicted steps. |
-| `Robot` | The contract every driver, simulator and wrapper implements: `connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`, plus `action_modes` (the modes it accepts) and skills, `list_skills` / `run_skill` / `stop_skill` (motions the robot's controller or a layer runs, started by name). Drivers implement `_send_action`; `send_action` runs the gate first. [Details](docs/api.md#robot). |
+| `Robot` | The contract every driver, simulator and wrapper implements: `connect` / `reset` / `get_observation` / `send_action` / `hold` / `set_gains` / `get_status` / `disconnect`, plus `action_modes` (the modes it accepts) and skills, `list_robot_skills` / `run_robot_skill` / `stop_robot_skill` (motions the robot's controller or a layer runs, started by name). Drivers implement `_send_action`; `send_action` runs the gate first. [Details](docs/api.md#robot). |
 | `SafetyGate` / `SafetyError` | Checks every action inside `send_action`: shape, DoF count and finiteness always; joint limits, step and tracking-error limits, battery and temperature, and a MuJoCo simulation check when configured. A refusal raises `SafetyError` (or clamps, with `clamp: true`). Set by the config's `safety:` section. [Details](docs/api.md#safetygate). |
 | `CommandArbiter` / `CommandLease` | `robot.claim(name, priority)` gives one program the command stream; others get `RobotBusyError`, a higher priority (`TAKEOVER` > `LAYER_SKILL` > `CALLER`) preempts. A lease can carry a stricter `envelope`; claims, preemptions and refusals are kept in an audit (`robot.command_events()`). With nobody holding a lease, every caller may command. [Details](docs/api.md#command-arbiter). |
 | `Layer` | Base class of a layer: a `Robot` wrapping the stack below (`inner`, public API only). It may offer layer skills (`run_layer_skill`). [Writing a layer](docs/api.md#writing-a-layer). |

@@ -5,6 +5,61 @@ User-facing changes in each hiRobot release, newest first. The format follows
 release may change the API incompatibly; such changes are listed under
 "Removed" or "Changed" and marked **breaking**.
 
+## [0.0.5] - 2026-11-14
+
+The skill methods are renamed. Joints can describe their rotation axis and
+parent link, and the Unitree G1's joints now carry limits, torque limits and
+axes.
+
+### Added
+
+- `Joint.axis` and `Joint.parent_link`, both optional and allowed in body
+  configs. `axis` is the unit vector the joint turns about, in the frame of the
+  link the joint moves (as URDF `<axis>` and MJCF `axis`), not the world frame.
+  `parent_link` is the link the joint hangs from (URDF `<parent>`).
+- The Unitree G1 body (`body/unitree/g1`) gives every one of its 29 joints a
+  `position_limit`, `torque_limit`, `axis` and `parent_link`, taken from
+  `g1_29dof_rev_1_0.urdf` in Unitree's `unitree_ros`. Nothing in hiRobot clips
+  commands to these per-joint limits; they describe the robot.
+
+### Changed
+
+- **breaking**: the skill methods are renamed. The one list of every skill
+  (layer skills and the robot controller's own) is now "robot skills"; the
+  skills the robot's own controller runs are now "onboard skills". Layer
+  skills and the `RobotSkillSpec` / `RobotSkillResult` / `RobotSkillError`
+  types keep their names.
+
+  | 0.0.4 | 0.0.5 |
+  |---|---|
+  | `list_skills()` | `list_robot_skills()` |
+  | `run_skill(name, args)` | `run_robot_skill(name, args)` |
+  | `stop_skill()` | `stop_robot_skill()` |
+  | `skill_running` | `robot_skill_running` |
+  | `has_robot_skills` | `has_onboard_skills` |
+  | `list_robot_skills()` | `list_onboard_skills()` |
+  | `run_robot_skill(name, args)` | `run_onboard_skill(name, args)` |
+  | `stop_robot_skill()` | `stop_onboard_skill()` |
+  | `_run_robot_skill` (driver SPI) | `_run_onboard_skill` |
+
+  `CommandLease.run_skill` is now `run_robot_skill`, and
+  `CommandLease.run_robot_skill` is now `run_onboard_skill`.
+
+  **Watch out:** `list_robot_skills`, `run_robot_skill` and `stop_robot_skill`
+  still exist but now mean the whole list. Code written for 0.0.4 that calls
+  them gets layer skills too, with no error. A driver that overrides
+  `list_robot_skills` or `_run_robot_skill` must rename them to
+  `list_onboard_skills` / `_run_onboard_skill`; otherwise its skills no longer
+  show up.
+- `Joint` now refuses a `position_limit` whose lower bound is above the upper,
+  a `torque_limit` that is not above 0, and an `axis` that is not a unit
+  vector, so a body config with such values fails to load. Every built-in
+  config passes.
+- `docs/setup/unitree.md`: which FSM state the G1 onboard skills need (gestures
+  only in 500, 501 or 801), a stand-up sequence verified on one G1, that
+  `SetFsmId` returns 0 even when ignored, the arm error codes 7400-7404, and
+  why the head camera stays down after `videohub_pc4` fails to start 30 times.
+
 ## [0.0.4] - 2026-11-13
 
 Franka FR3 and AgileX PiPER support, with ZED and Orbbec cameras. The Franka
@@ -228,6 +283,7 @@ once against `Observation` / `Action` and run on any robot with a driver.
   GRx, AgiBot X1, Franka FR3 and UR5e are included but not yet checked on
   hardware.
 
+[0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.1...v0.0.2

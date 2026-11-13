@@ -73,9 +73,9 @@ Core pieces:
   use `robot.microphones` / `robot.speakers`. Health
   signals (battery, motor temperatures / faults) also stay out of `Observation`: drivers
   override `get_status() -> RobotStatus` (default: empty), so they never ride to the
-  model server. Robot skills (walk, gestures run by the robot's own controller)
-  are the other way to command: `list_robot_skills` / `run_robot_skill` /
-  `stop_robot_skill` (`robot_skills.py`), empty by default; `run_robot_skill` checks
+  model server. Onboard skills (walk, gestures run by the robot's own controller)
+  are the other way to command: `list_onboard_skills` / `run_onboard_skill` /
+  `stop_onboard_skill` (`robot_skills.py`), empty by default; `run_onboard_skill` checks
   arguments against each skill's JSON Schema first. The G1's fixed list is in
   `drivers/body/unitree/sdk2/g1_skills.py` (`builtin_skills: g1`). `send_action` is a
   concrete template method that enforces the `SafetyGate` then calls the driver's
@@ -98,7 +98,7 @@ Core pieces:
   is held, direct calls raise `RobotBusyError` (a `RuntimeError`). `TAKEOVER` >
   `LAYER_SKILL` > `CALLER`; a higher one preempts (one `hold()`, the old holder gets
   `PreemptedError`, no automatic return). `send_action` / `hold` / `reset` /
-  `run_robot_skill` are checked; `estop` / `get_observation` / `get_status` / `now` are not.
+  `run_onboard_skill` are checked; `estop` / `get_observation` / `get_status` / `now` are not.
   Nobody holding a lease means anyone may command, unless `arbiter: {require_claim: true}`.
   An `envelope` only tightens the outermost gate's limits. The audit keeps events
   (claim / release / preempted / refused / busy, `robot.command_events()`) and per-lease

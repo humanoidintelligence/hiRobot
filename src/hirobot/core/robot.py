@@ -195,7 +195,7 @@ def _reports_safety(get_status):
 
 
 #: Calls the command arbiter checks (:mod:`hirobot.control.arbiter`).
-ARBITRATED = ("send_action", "hold", "reset", "run_robot_skill")
+ARBITRATED = ("send_action", "hold", "reset", "run_onboard_skill")
 
 
 def _arbitrated(method, what: str):
@@ -398,7 +398,7 @@ class Robot(Stoppable, ABC):
 
         ``priority`` is a :class:`~hirobot.control.arbiter.Priority` (``CALLER`` by
         default). While the lease is held, ``send_action`` / ``hold`` /
-        ``reset`` / ``run_robot_skill`` called on the robot directly raise
+        ``reset`` / ``run_onboard_skill`` called on the robot directly raise
         :class:`~hirobot.control.arbiter.RobotBusyError`; call them on the lease. A
         higher priority preempts a lower one (the robot holds, the old lease's
         ``on_preempt`` runs, its next call raises
@@ -597,14 +597,14 @@ class Robot(Stoppable, ABC):
         """
 
     @property
-    def has_robot_skills(self) -> bool:
-        """Whether this driver can offer robot skills at all.
+    def has_onboard_skills(self) -> bool:
+        """Whether this driver can offer onboard skills at all.
 
         Callers use it to decide whether to offer skill tools.
         """
         return False
 
-    def list_robot_skills(self) -> List[RobotSkillSpec]:
+    def list_onboard_skills(self) -> List[RobotSkillSpec]:
         """Skills the robot's own controller can run (walk, sit, wave, ...).
 
         Declared by the driver, so it differs between robots; callers show it to
@@ -612,32 +612,32 @@ class Robot(Stoppable, ABC):
         """
         return []
 
-    def run_robot_skill(
+    def run_onboard_skill(
         self, name: str, args: Optional[Mapping[str, Any]] = None
     ) -> RobotSkillResult:
-        """Start robot skill ``name``; returns once the robot accepts it.
+        """Start onboard skill ``name``; returns once the robot accepts it.
 
         Arguments are checked against the skill's schema first. Drivers with
-        skills override :meth:`_run_robot_skill`, not this method.
+        skills override :meth:`_run_onboard_skill`, not this method.
 
         Raises:
             RobotSkillError: Unknown skill, bad arguments, or the robot refused.
         """
-        specs = {s.name: s for s in self.list_robot_skills()}
+        specs = {s.name: s for s in self.list_onboard_skills()}
         if name not in specs:
             raise RobotSkillError(
-                f"unknown robot skill {name!r}; available: {sorted(specs) or 'none'}")
+                f"unknown onboard skill {name!r}; available: {sorted(specs) or 'none'}")
         spec = specs[name]
         checked = validate_args(spec, args)
-        self._run_robot_skill(spec, checked)
+        self._run_onboard_skill(spec, checked)
         return RobotSkillResult(name=name, args=checked, duration_s=spec.duration_s)
 
-    def _run_robot_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
-        """Driver primitive behind :meth:`run_robot_skill`; ``args`` are already checked."""
-        raise RobotSkillError(f"{type(self).__name__} has no robot skills")
+    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
+        """Driver primitive behind :meth:`run_onboard_skill`; ``args`` are already checked."""
+        raise RobotSkillError(f"{type(self).__name__} has no onboard skills")
 
-    def stop_robot_skill(self) -> None:
-        """Stop whatever robot skill is running and leave the robot standing still.
+    def stop_onboard_skill(self) -> None:
+        """Stop whatever onboard skill is running and leave the robot standing still.
 
         The default does nothing (there are no skills to stop).
         """
@@ -647,7 +647,7 @@ class Robot(Stoppable, ABC):
     # robot is a layer; without layers there are none.
 
     def list_layer_skills(self) -> List[RobotSkillSpec]:
-        """Skills the layers of this stack run (not the vendor's robot skills). Default: none."""
+        """Skills the layers of this stack run (not the vendor's onboard skills). Default: none."""
         return []
 
     def run_layer_skill(
@@ -668,25 +668,25 @@ class Robot(Stoppable, ABC):
         """Whether a layer skill holds the command stream. Default: ``False``."""
         return False
 
-    # Skills: the robot skills and the layer skills as one list, for callers
+    # Skills: the onboard skills and the layer skills as one list, for callers
     # (an agent, a voice front end) that need not know who runs a skill. Built
     # on the eight methods above; drivers and layers implement those, not these.
 
-    def list_skills(self) -> List[RobotSkillSpec]:
+    def list_robot_skills(self) -> List[RobotSkillSpec]:
         """Every skill this robot can run: the layers' first, then the robot's own.
 
-        A layer skill with the same name as a robot skill hides it (the outer
+        A layer skill with the same name as an onboard skill hides it (the outer
         one wins, as a subclass method hides its base's). In an assembly the
         names carry the part path (``left/grasp``).
         """
         layer = self.list_layer_skills()
         names = {s.name for s in layer}
-        return layer + [s for s in self.list_robot_skills() if s.name not in names]
+        return layer + [s for s in self.list_onboard_skills() if s.name not in names]
 
-    def run_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> RobotSkillResult:
-        """Start skill ``name`` from :meth:`list_skills`; returns once it has started.
+    def run_robot_skill(self, name: str, args: Optional[Mapping[str, Any]] = None) -> RobotSkillResult:
+        """Start skill ``name`` from :meth:`list_robot_skills`; returns once it has started.
 
-        Goes to :meth:`run_layer_skill` or :meth:`run_robot_skill`, with their
+        Goes to :meth:`run_layer_skill` or :meth:`run_onboard_skill`, with their
         argument checks and command-lease rules.
 
         Raises:
@@ -695,23 +695,23 @@ class Robot(Stoppable, ABC):
         """
         if any(s.name == name for s in self.list_layer_skills()):
             return self.run_layer_skill(name, args)
-        if any(s.name == name for s in self.list_robot_skills()):
-            return self.run_robot_skill(name, args)
+        if any(s.name == name for s in self.list_onboard_skills()):
+            return self.run_onboard_skill(name, args)
         raise RobotSkillError(f"unknown skill {name!r}; available: "
-                              f"{[s.name for s in self.list_skills()] or 'none'}")
+                              f"{[s.name for s in self.list_robot_skills()] or 'none'}")
 
-    def stop_skill(self) -> None:
+    def stop_robot_skill(self) -> None:
         """Stop the running skill, whichever kind it is, and leave the robot standing still."""
         try:
             self.stop_layer_skill()
         finally:
-            self.stop_robot_skill()
+            self.stop_onboard_skill()
 
     @property
-    def skill_running(self) -> bool:
+    def robot_skill_running(self) -> bool:
         """Whether a layer skill is still running.
 
-        A robot skill is not tracked: :meth:`run_skill` returns once the robot
+        An onboard skill is not tracked: :meth:`run_robot_skill` returns once the robot
         accepts it, and how long it runs is only estimated (``duration_s``).
         """
         return self.layer_skill_running

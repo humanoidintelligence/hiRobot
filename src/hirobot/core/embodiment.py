@@ -34,11 +34,27 @@ class Joint(BaseModel):
         name: Unique joint name; the key used for DoF mapping across robots.
         position_limit: ``(lower, upper)`` position bounds in rad, if known.
         torque_limit: Maximum absolute torque in Nm, if known.
+        axis: Unit vector the joint turns about, in the frame of the link the
+            joint moves (as URDF ``<axis>`` and MJCF ``axis``), if known.
+        parent_link: Link the joint hangs from (URDF ``<parent>``), if known.
     """
 
     name: str
     position_limit: Optional[Tuple[float, float]] = None
     torque_limit: Optional[float] = None
+    axis: Optional[Tuple[float, float, float]] = None
+    parent_link: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _check(self) -> "Joint":
+        if self.position_limit is not None and self.position_limit[0] > self.position_limit[1]:
+            raise ValueError(f"joint {self.name!r}: position_limit {list(self.position_limit)} "
+                             "has lower > upper")
+        if self.torque_limit is not None and not self.torque_limit > 0:
+            raise ValueError(f"joint {self.name!r}: torque_limit must be > 0, got {self.torque_limit}")
+        if self.axis is not None and abs(sum(a * a for a in self.axis) ** 0.5 - 1.0) > 1e-3:
+            raise ValueError(f"joint {self.name!r}: axis {list(self.axis)} is not a unit vector")
+        return self
 
 
 class CameraMount(BaseModel):

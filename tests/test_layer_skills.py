@@ -81,7 +81,7 @@ def _stack():
 def test_skills_are_listed_through_the_layers_above():
     outer, waver, _ = _stack()
     assert [s.name for s in outer.list_layer_skills()] == ["wave"]
-    assert outer.list_robot_skills() == []  # layer skills are not robot skills
+    assert outer.list_onboard_skills() == []  # layer skills are not onboard skills
 
 
 def test_caller_is_refused_while_a_skill_runs_and_can_claim_after_stop():

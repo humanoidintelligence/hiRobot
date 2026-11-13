@@ -10,7 +10,7 @@ ships none, they come from plugin packages (:func:`~hirobot.loading.registry.reg
 declarations (``action_modes``, ``motion_spaces``, ``direct_joints``,
 ``cartesian_targets``), the devices (``cameras``, ``microphones``,
 ``speakers``), the lifecycle (``connect``, ``reset``, ``disconnect``),
-observations, status, ``hold``, gains and robot skills. A subclass overrides
+observations, status, ``hold``, gains and onboard skills. A subclass overrides
 only what it changes.
 
 Two kinds of layer:
@@ -330,22 +330,22 @@ class Layer(Robot):
         not call ``inner.estop()`` here.
         """
 
-    # ----------------------------------------------------------- robot skills
+    # ----------------------------------------------------------- onboard skills
 
     @property
-    def has_robot_skills(self) -> bool:
-        return self.inner.has_robot_skills
+    def has_onboard_skills(self) -> bool:
+        return self.inner.has_onboard_skills
 
-    def list_robot_skills(self) -> List[RobotSkillSpec]:
-        return self.inner.list_robot_skills()
+    def list_onboard_skills(self) -> List[RobotSkillSpec]:
+        return self.inner.list_onboard_skills()
 
-    def run_robot_skill(
+    def run_onboard_skill(
         self, name: str, args: Optional[Mapping[str, Any]] = None
     ) -> RobotSkillResult:
-        return self.inner.run_robot_skill(name, args)
+        return self.inner.run_onboard_skill(name, args)
 
-    def stop_robot_skill(self) -> None:
-        self.inner.stop_robot_skill()
+    def stop_onboard_skill(self) -> None:
+        self.inner.stop_onboard_skill()
 
     # ----------------------------------------------------------- layer skills
     #
@@ -358,7 +358,7 @@ class Layer(Robot):
     # on its own.
 
     def list_layer_skills(self) -> List[RobotSkillSpec]:
-        """Skills this layer and the layers below it run (not the vendor's robot skills)."""
+        """Skills this layer and the layers below it run (not the vendor's onboard skills)."""
         return list(self._layer_skills()) + list(self.inner.list_layer_skills())
 
     def run_layer_skill(

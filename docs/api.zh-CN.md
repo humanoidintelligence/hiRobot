@@ -23,7 +23,7 @@
 - [Embodiment](#embodiment)
 - [Observation, Action, ActionChunk, ControlMode](#observation-action-actionchunk-controlmode)
 - [技能](#技能)
-- [机器人 skill](#机器人-skill)
+- [机载 skill](#机载-skill)
 - [命令仲裁](#命令仲裁)
 - [SafetyGate](#safetygate)
 - [RobotAssembly](#robotassembly)
@@ -49,8 +49,8 @@
 | 发命令 | `send_action(action)`、`check_action(action) -> Action`、`hold()`、`set_gains(kp, kd)`、`command_timeout_s` | [Action](#action) |
 | 急停 | `estop()` | [Robot](#robot) |
 | 共用命令流 | `claim(name, ...) -> CommandLease`、`command_events()` | [命令仲裁](#命令仲裁) |
-| 技能 | `list_skills()`、`run_skill(name, args=None)`、`stop_skill()`、`skill_running` | [技能](#技能) |
-| 按类别的技能 | 机器人 skill：`has_robot_skills`、`list_robot_skills()`、`run_robot_skill(name, args=None)`、`stop_robot_skill()`。层技能：`list_layer_skills()`、`run_layer_skill(name, args=None)`、`stop_layer_skill()`、`layer_skill_running` | [机器人 skill](#机器人-skill)、[Layer](#layer) |
+| 技能 | `list_robot_skills()`、`run_robot_skill(name, args=None)`、`stop_robot_skill()`、`robot_skill_running` | [技能](#技能) |
+| 按类别的技能 | 机载 skill：`has_onboard_skills`、`list_onboard_skills()`、`run_onboard_skill(name, args=None)`、`stop_onboard_skill()`。层技能：`list_layer_skills()`、`run_layer_skill(name, args=None)`、`stop_layer_skill()`、`layer_skill_running` | [机载 skill](#机载-skill)、[Layer](#layer) |
 | 安全和回合结果 | `safety`（挂上的 `SafetyGate`）、`success`、`done`、`reward` | [SafetyGate](#safetygate)、[控制循环](#控制循环) |
 
 ## 快速示例
@@ -87,7 +87,7 @@ finally:
 | `register_layer`, `get_layer`, `available_layers` | 函数 | `hirobot.loading.registry` | 由 `layers:` 叠加的 layer 的注册表（见 [Layer](#layer)） |
 | `load_embodiment`, `make_robot` | 函数 | `hirobot` | 从配置名、文件或 dict 构建 embodiment / 机器人 |
 | `require_sdk` | 函数 | `hirobot.loading.sdk` | 按驱动的 `manifest.yaml` 检查其厂商 SDK |
-| `RobotSkillSpec`, `RobotSkillResult`, `RobotSkillError` | pydantic 模型 / 异常 | `hirobot.core.robot_skills` | 描述、启动和拒绝机器人 skill（行走、手势） |
+| `RobotSkillSpec`, `RobotSkillResult`, `RobotSkillError` | pydantic 模型 / 异常 | `hirobot.core.robot_skills` | 描述、启动和拒绝机载 skill（行走、手势） |
 | `SafetyGate`, `SafetyVerdict`, `SafetyError` | 类 / dataclass / 异常 | `hirobot.control.safety` | 在每个动作到达硬件之前检查它 |
 | `DofMap` | 类 | `hirobot.core.dof` | 按名字重排关节向量 |
 | `pose_compose`, `pose_inverse`, `pose_from_matrix`, `pose_from_axis_angle`, ... | 函数 | `hirobot.geometry.transforms` | 7 维向量位姿 `[x, y, z, qx, qy, qz, qw]` 的位姿运算（不从 `hirobot` 重新导出） |
@@ -177,7 +177,7 @@ layer 通过 `inner.send_action` 发送关节指令，所以 `make_robot` 挂在
 相机和音频设备也能像在下面的机器人上一样经它拿到。layer 与驱动一样通过
 `hirobot.drivers` entry point 注册。
 
-**层技能。** 层可以跑自己的技能（行为、宏动作），跨很多个控制周期，和厂商的 robot skills 分开：`list_layer_skills()`（本层和
+**层技能。** 层可以跑自己的技能（行为、宏动作），跨很多个控制周期，和厂商的 onboard skills 分开：`list_layer_skills()`（本层和
 下面各层的）、`run_layer_skill(name, args=None) -> RobotSkillResult`（参数按 schema 检查，启动后返回）、`stop_layer_skill()`、
 `layer_skill_running`（本层或下面的层有技能在跑就为真）。这四个在每个 `Robot` 上都有，调用方不用先判断最外层是不是层。技能运行期间层以 `Priority.LAYER_SKILL` 持有栈的[命令租约](#命令仲裁)：调用方的租约被抢占，直接发命令抛
 `RobotBusyError`，直到技能结束或调 `stop_layer_skill()`。`TAKEOVER` 会抢占技能（技能被停下）。`estop()` 会结束技能，调用方才能
@@ -244,7 +244,7 @@ maintainers: []
 `hirobot.core.robot.Robot`，每个机器人、仿真器和包装器都要实现的抽象驱动契约。
 
 **线程。** `get_observation`、`get_status`、`now`、`estop` 任何时候都能从任何线程调。其余方法（`send_action`、`hold`、`reset`、
-`run_skill`、`run_robot_skill`、`set_gains`、`connect`、`disconnect` 等）同一时刻只由一个持有者调：[命令租约](#命令仲裁)的持有者，没人持有时就是
+`run_robot_skill`、`run_onboard_skill`、`set_gains`、`connect`、`disconnect` 等）同一时刻只由一个持有者调：[命令租约](#命令仲裁)的持有者，没人持有时就是
 唯一的调用方。租约可以在线程之间传，但调用不能重叠。两个线程同时发命令时，驱动不保证任何顺序。
 
 | 成员 | 类别 | 说明 |
@@ -270,18 +270,18 @@ maintainers: []
 | `now()` | optional | 机器人时钟（秒），`Observation.stamps` 的时间在它上面：默认 `time.monotonic()`，`toy` / `mujoco` 是仿真时间。包装层返回内层机器人的 |
 | `hold()` | optional | 让机器人保持在原处，例如在 policy 停止之后。默认情况下，驱动接受 POSITION 时把当前 `joint_pos` 作为 POSITION 动作发送，否则什么都不做。只接受笛卡尔增量的仿真器什么都不做；带 `builtin_skills` 的 Unitree 什么都不做（运动服务会让机器人保持站立）。有自己平衡回路的驱动（全身控制的人形机器人）必须覆盖它，指挥机器人站定（基座速度 `[0, 0, 0]`）：发送 `joint_pos` 会把关节冻住，人形机器人会摔倒。经过安全门 |
 | `set_gains(kp, kd)` | optional | 每个关节的 PD 增益。默认什么都不做 |
-| `has_robot_skills` | property | 驱动是否提供机器人 skill。默认 `False` |
-| `list_robot_skills() -> List[RobotSkillSpec]` | optional | 机器人自身控制器运行的 skill。默认为空。见[机器人 skill](#机器人-skill) |
-| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | 按 skill 的 schema 检查 `args`，再执行。抛出 `RobotSkillError` |
-| `stop_robot_skill()` | optional | 停止正在运行的 skill。默认什么都不做 |
+| `has_onboard_skills` | property | 驱动是否提供机载 skill。默认 `False` |
+| `list_onboard_skills() -> List[RobotSkillSpec]` | optional | 机器人自身控制器运行的 skill。默认为空。见[机载 skill](#机载-skill) |
+| `run_onboard_skill(name, args=None) -> RobotSkillResult` | concrete | 按 skill 的 schema 检查 `args`，再执行。抛出 `RobotSkillError` |
+| `stop_onboard_skill()` | optional | 停止正在运行的 skill。默认什么都不做 |
 | `list_layer_skills() -> List[RobotSkillSpec]` | concrete | 栈里各层跑的技能。每个机器人都有；没有层时为空。见[层技能](#layer) |
 | `run_layer_skill(name, args=None) -> RobotSkillResult` | concrete | 启动一个层技能。没有层时抛 `RobotSkillError` |
 | `stop_layer_skill()` | concrete | 停止正在运行的层技能。没有层时什么都不做 |
 | `layer_skill_running` | property | 是否有层技能（栈里任一层的）持有命令流。没有层时为 `False` |
-| `list_skills() -> List[RobotSkillSpec]` | concrete | 机器人能跑的所有技能，层技能和机器人 skill 合在一张表里。见[技能](#技能) |
-| `run_skill(name, args=None) -> RobotSkillResult` | concrete | 按名字启动 `list_skills()` 里的技能，不管是哪一种 |
-| `stop_skill()` | concrete | 停掉正在跑的技能，两种都停 |
-| `skill_running` | property | 是否有层技能在跑。机器人 skill 不跟踪 |
+| `list_robot_skills() -> List[RobotSkillSpec]` | concrete | 机器人能跑的所有技能，层技能和机载 skill 合在一张表里。见[技能](#技能) |
+| `run_robot_skill(name, args=None) -> RobotSkillResult` | concrete | 按名字启动 `list_robot_skills()` 里的技能，不管是哪一种 |
+| `stop_robot_skill()` | concrete | 停掉正在跑的技能，两种都停 |
+| `robot_skill_running` | property | 是否有层技能在跑。机载 skill 不跟踪 |
 | `disconnect()` | optional | 释放并停止。默认什么都不做 |
 | `safety` | attribute | 挂接的安全门，或 `None` |
 | `simulated` | class attribute | 仿真器驱动为 `True`。驱动是仿真驱动时，`make_robot` 不构建末端执行器驱动，只构建类同样为 `simulated` 的相机和音频设备（视频文件、WAV、主机的麦克风） |
@@ -319,6 +319,8 @@ maintainers: []
 | `Joint` | `name` | `str` | 唯一名字；DoF 映射的键 |
 | | `position_limit` | `(lower, upper)` or `None` | 位置上下限（rad）。末端执行器驱动按它裁剪 |
 | | `torque_limit` | `float` or `None` | 最大绝对力矩（Nm） |
+| | `axis` | `(x, y, z)` or `None` | 关节转轴的单位向量，在该关节带动的 link 的坐标系里（同 URDF `<axis>` 和 MJCF `axis`），不是世界坐标系 |
+| | `parent_link` | `str` or `None` | 关节挂在哪个 link 上（URDF `<parent>`） |
 | `EndEffector` | `name` | `str` | `ee_poses` / `ee_targets` / `gripper` 中的键 |
 | | `has_gripper` | `bool` | 有通过 `Action.gripper` 控制的夹爪。末端执行器驱动不列 `joints`（`opening` 接口）时必须为 true，列了 `joints` 时不能为 true |
 | | `joints` | `List[str]` | 该末端执行器驱动的 embodiment 关节（手指关节），按其驱动的电机顺序排列 |
@@ -479,56 +481,56 @@ observation 转给模型。机器人不报的字段保持为空。
 ## 技能
 
 机器人能按名字做的事，给要把它们展示给模型的调用方（agent、语音前端）用。底下分两种：
-[机器人 skill](#机器人-skill)（厂商控制器跑）和[层技能](#layer)（某一层跑）；下面四个调用把两种一起列出、
+[机载 skill](#机载-skill)（厂商控制器跑）和[层技能](#layer)（某一层跑）；下面四个调用把两种一起列出、
 一起启动，调用方不用区分。
 
 ```python
 robot = make_robot("my_g1.yaml")
 robot.connect()
-for s in robot.list_skills():          # RobotSkillSpec：name、description、parameters（JSON Schema）……
+for s in robot.list_robot_skills():          # RobotSkillSpec：name、description、parameters（JSON Schema）……
     print(s.name, s.description)
-robot.run_skill("walk", {"vx": 0.3, "seconds": 2.0})
-robot.stop_skill()
+robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_robot_skill()
 ```
 
 | 调用 | 说明 |
 |---|---|
-| `list_skills() -> List[RobotSkillSpec]` | 先列层技能，再列机器人 skill。层技能和机器人 skill 同名时，层技能盖住机器人 skill（外层优先）。组装出来的机器人，名字带部件路径（`left/grasp`） |
-| `run_skill(name, args=None) -> RobotSkillResult` | 转给 `run_layer_skill` 或 `run_robot_skill`，参数检查和租约规则照旧：层技能在结束前持有命令流。名字未知或参数错误抛 `RobotSkillError`，别人持有机器人时抛 `RobotBusyError` |
-| `stop_skill()` | 两种都停：先 `stop_layer_skill()`，再 `stop_robot_skill()` |
-| `skill_running` | 就是 `layer_skill_running`。机器人 skill 的 `run_skill` 在机器人接受命令时就返回，跑多久只有估计值（`duration_s`） |
+| `list_robot_skills() -> List[RobotSkillSpec]` | 先列层技能，再列机载 skill。层技能和机载 skill 同名时，层技能盖住机载 skill（外层优先）。组装出来的机器人，名字带部件路径（`left/grasp`） |
+| `run_robot_skill(name, args=None) -> RobotSkillResult` | 转给 `run_layer_skill` 或 `run_onboard_skill`，参数检查和租约规则照旧：层技能在结束前持有命令流。名字未知或参数错误抛 `RobotSkillError`，别人持有机器人时抛 `RobotBusyError` |
+| `stop_robot_skill()` | 两种都停：先 `stop_layer_skill()`，再 `stop_onboard_skill()` |
+| `robot_skill_running` | 就是 `layer_skill_running`。机载 skill 的 `run_robot_skill` 在机器人接受命令时就返回，跑多久只有估计值（`duration_s`） |
 
-`CommandLease` 也有 `run_skill`。机器人 skill 经由租约执行；层技能会抢占这个租约，技能结束后要重新 claim。
+`CommandLease` 也有 `run_robot_skill`。机载 skill 经由租约执行；层技能会抢占这个租约，技能结束后要重新 claim。
 
-驱动和层不实现这四个。驱动通过 `list_robot_skills` / `_run_robot_skill` 提供机器人 skill，层通过
+驱动和层不实现这四个。驱动通过 `list_onboard_skills` / `_run_onboard_skill` 提供机载 skill，层通过
 `_layer_skills` / `_start_layer_skill` 提供层技能（[SPI](#编写驱动和层spi)）。
 
-## 机器人 skill
+## 机载 skill
 
-`hirobot.core.robot_skills`。机器人 skill 是由机器人自身控制器完成的动作（行走、坐下、挥手），按名字启动，
+`hirobot.core.robot_skills`。机载 skill 是由机器人自身控制器完成的动作（行走、坐下、挥手），按名字启动，
 而不是靠流式发送关节目标。每个驱动声明 hiRobot 在其机器人上支持的 skill，所以调用方（agent、语音前端）
 可以列出它们并展示给模型，不必写死。
 
 ```python
 robot = make_robot("my_g1.yaml")      # robot.builtin_skills: g1
 robot.connect()
-[s.name for s in robot.list_robot_skills()]   # ['start_locomotion', 'walk', ...]
-robot.run_robot_skill("start_locomotion")
-robot.run_robot_skill("walk", {"vx": 0.3, "seconds": 2.0})
-robot.stop_robot_skill()
+[s.name for s in robot.list_onboard_skills()]   # ['start_locomotion', 'walk', ...]
+robot.run_onboard_skill("start_locomotion")
+robot.run_onboard_skill("walk", {"vx": 0.3, "seconds": 2.0})
+robot.stop_onboard_skill()
 ```
 
 ### `RobotSkillSpec`
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `name` | `str` | 传给 `run_robot_skill` |
+| `name` | `str` | 传给 `run_onboard_skill` |
 | `description` | `str` | 写给模型看的一两句话 |
 | `parameters` | `dict` | 参数的 JSON Schema（一个 `object` schema）。为空表示没有参数 |
 | `requires` | `List[str]` | 用自然语言写的前提条件，例如 `"robot standing on the ground"`。仅供参考 |
 | `duration_s` | `float` or `None` | 典型运行时长（如果已知） |
 
-### `run_robot_skill(name, args=None) -> RobotSkillResult`
+### `run_onboard_skill(name, args=None) -> RobotSkillResult`
 
 在任何内容到达机器人之前按 `parameters` 检查 `args`，然后交给驱动执行。支持的 schema
 关键字：属性的 `type`（number / integer / boolean / string）、`minimum`、`maximum`、
@@ -546,7 +548,7 @@ skill 未知、参数错误或机器人拒绝时抛出 `RobotSkillError`。
 
 | 驱动 | 配置 | Skill |
 |---|---|---|
-| `unitree_sdk2` | `builtin_skills: g1` | G1 行走和手臂手势，见 [Unitree 设置指南](setup/unitree.zh-CN.md#机器人-skillg1) |
+| `unitree_sdk2` | `builtin_skills: g1` | G1 行走和手臂手势，见 [Unitree 设置指南](setup/unitree.zh-CN.md#机载-skillg1) |
 
 其他驱动都不提供 skill。
 
@@ -559,14 +561,14 @@ skill 未知、参数错误或机器人拒绝时抛出 `RobotSkillError`。
 from hirobot import Priority, PreemptedError
 
 with robot.claim("runner", on_preempt=lambda lease: stop_runner()) as r:
-    r.send_action(action)       # 还有 r.hold()、r.reset()、r.run_skill(...)
+    r.send_action(action)       # 还有 r.hold()、r.reset()、r.run_robot_skill(...)
 ```
 
 | 项 | 含义 |
 |---|---|
 | `robot.claim(name, priority=Priority.CALLER, on_preempt=None, envelope=None) -> CommandLease` | 拿命令流。高优先级立即抢占低优先级；同级或更低抛 `RobotBusyError` |
 | `Priority` | `TAKEOVER`（人工接管：遥操作、手柄）> `LAYER_SKILL`（层技能运行期间）> `CALLER`（应用） |
-| 有人持有时直接调 | 机器人上的 `send_action`、`hold`、`reset`、`run_robot_skill` 抛 `RobotBusyError`（`RuntimeError` 子类）。`estop`、`get_observation`、`get_status`、`now` 不检查 |
+| 有人持有时直接调 | 机器人上的 `send_action`、`hold`、`reset`、`run_onboard_skill` 抛 `RobotBusyError`（`RuntimeError` 子类）。`estop`、`get_observation`、`get_status`、`now` 不检查 |
 | 没人持有 | 谁都能发，单调用方的脚本不用改。配置 `arbiter: {require_claim: true}` 后没有租约就拒绝 |
 | 抢占 | 先调旧租约的 `on_preempt(lease)`（出错记日志），再让机器人 `hold()`，不会继续跑旧目标（hold 失败记日志）。旧租约下一次调用抛 `PreemptedError`（`RobotBusyError` 子类） |
 | 归还 | `lease.release()` 或退出 `with`。不会还给被抢的租约，它要重新 claim |
@@ -760,8 +762,8 @@ robot = make_robot("examples/lab_two_cells.yaml")   # 两个 cell，每个各两
 | 租约 | 部件是带自己[命令租约](#命令仲裁)的 `Robot`，所以 `robot.claim(name, parts=["left"])` 只持有那个部件（嵌套的用 `parts=["cell_a/left"]`）；不相交的部件各自独立 claim，路径重叠抛 `RobotBusyError`。直接对已被持有的部件调用抛 `RobotBusyError`。部件自己的线程（全身控制器）仍能指挥它的内层机器人 |
 | `part(path)` | 只读视图：`embodiment`、`simulated`、`fault`、`get_observation()`、`get_status()` |
 | `get_status()` | `joint_temperature` 拼接；`joint_faults`、`board_temperature`、`extra` 的键加前缀；`battery` 和 `command` 只有一个部件报告时放在顶层，否则放进 `extra["<part>/battery"]` / `extra["<part>/command"]`；`fault` 取 assembly 自己的或第一个部件的 |
-| Skill | 部件的 skill 列为 `<part>/<skill>`；`run_robot_skill("g1/wave")` 在该部件上运行它 |
-| 生命周期 | `connect` 先连接各部件，再连接节点自己的相机，失败时撤销。`reset`、`hold`、`damp`、`estop`、`disconnect`、`stop_robot_skill` 即使某个部件失败也会作用到每个部件，然后抛出第一个错误。`reset` 也会清除故障状态 |
+| Skill | 部件的 skill 列为 `<part>/<skill>`；`run_onboard_skill("g1/wave")` 在该部件上运行它 |
+| 生命周期 | `connect` 先连接各部件，再连接节点自己的相机，失败时撤销。`reset`、`hold`、`damp`、`estop`、`disconnect`、`stop_onboard_skill` 即使某个部件失败也会作用到每个部件，然后抛出第一个错误。`reset` 也会清除故障状态 |
 | 碰撞 | 可选的 `collision=CollisionCheck(...)`（配置：`collision:`）。每个建了模的部件表示为一组胶囊体，其 MJCF（`hirobot.geometry.kinematics`）中每段 body 到父 body 的连线一个，半径都是 `radius`；只计算不同部件之间的间隙。发送前，assembly 预测每个部件的下一个姿态（`POSITION` / `PD` 的关节目标作为下一时刻的角度，其他模式用当前角度；`CARTESIAN` 的目标点作为球体比较），当最小间隙会低于 `min_distance` 时以 `SafetyError` 拒绝，除非间隙没有在缩小（已经靠得太近的部件可以分开）。每次发送读取每个建模部件的观测一次。浮动基座部件需要 base pose。两台 G1 约 1 ms。沿运动链的胶囊体比较粗糙：选一个能覆盖连杆的 `radius`；`skip:` 排除安装板之类的 body |
 | 全身控制部件 | 用 hiWBC 的 `wbc` layer 包装的部件（在其配置中写 `layers: [{type: wbc, profile: ...}]`）只接受 `BASE_VELOCITY` / `MOTION_LATENT` / `MOTION_CLIP`，所以 assembly 的 `action_modes` 通常为空：用 `Action.parts` 指挥，手臂用关节模式，它用行走指令。它的空闲关节（`direct_joints`，例如上半身）可以在同一个子动作中按名字一并发送。未被提及时，`idle_step` 运行一个控制器 tick，让仿真中的人形机器人保持站立。控制器出错会让该部件进入故障并使 assembly 保持。hiWBC 自己的测试用 `echo` profile 覆盖了这种情况 |
 | 示例 | `ur5e_dual`：两条 UR5e 臂（`left`、`right`），相距 ±0.4 m；`franka_ur5e_dual` 再加一个 Franka FR3 和一个 `scene` 相机；`examples/lab_two_cells.yaml` 把两个 `ur5e_dual` cell 嵌在一个 lab 下。所有部件默认用 toy 驱动，所以不需要硬件就能运行（按路径覆盖每条臂的本体驱动，`overrides={"left/body": {"driver": ...}}`） |
@@ -925,7 +927,7 @@ policy 设置（模型服务器、chunk 长度）不属于机器人配置。
 | `_estop()` | optional | `estop()` 背后的驱动原语。默认在驱动有 `damp()` 时调用它 |
 | `_idle_step()` | optional，SPI | 在最后一条指令下让仿真时间前进一个控制周期。assembly 对动作未提及的仿真部件调用它。默认什么都不做；toy 仿真和 MuJoCo 会步进 |
 | `_set_safety(gate)` | concrete，SPI | 挂接或清除（`None`）`SafetyGate`。给 `make_robot` 和测试用；应用在配置的 `safety:` 段里设限制 |
-| `_run_robot_skill(spec, args)` | optional | `run_robot_skill` 背后的驱动原语；`args` 已检查过 |
+| `_run_onboard_skill(spec, args)` | optional | `run_onboard_skill` 背后的驱动原语；`args` 已检查过 |
 | `_set_fault(reason)` / `_clear_fault()` | concrete，SPI | 让机器人进故障态（驱动或 layer 自己进入阻尼或停止时），命令抛 `RobotFaultError`，直到 `reset()`；清除故障 |
 | `_stop_token()`、`_commanding(token)`、`_wait(seconds, token)` | concrete，SPI | 让驱动里跑一阵的循环在别的线程调 `estop()` 时立刻结束（见[编写驱动](#编写驱动)） |
 
@@ -934,8 +936,8 @@ policy 设置（模型服务器、chunk 长度）不属于机器人配置。
 继承 `Robot`，实现 `embodiment`、`connect`、`reset`、`get_observation` 和 `_send_action`，然后注册它。
 新驱动需要的目录结构、清单和契约测试见 README 的
 [Add a new robot](../README.zh-CN.md#添加新机器人)。构造函数的第一个参数必须是 `Embodiment`；
-其余关键字参数就是用户写在 `body:` 下的内容。仿真器要设置 `simulated = True`。要提供机器人 skill，
-覆盖 `has_robot_skills`、`list_robot_skills`、`_run_robot_skill` 和 `stop_robot_skill`。机器人有安全状态的驱动覆盖
+其余关键字参数就是用户写在 `body:` 下的内容。仿真器要设置 `simulated = True`。要提供机载 skill，
+覆盖 `has_onboard_skills`、`list_onboard_skills`、`_run_onboard_skill` 和 `stop_onboard_skill`。机器人有安全状态的驱动覆盖
 `_estop()`（或提供 `damp()`）。会跑一阵的循环（ramp、等首帧）先取 `token = self._stop_token()`，每一步在
 `with self._commanding(token):` 里下发，用 `self._wait(seconds, token)` 睡眠，这样别的线程调 `estop()` 时它会立即结束。在
 `connect()` 内部导入厂商 SDK，这样没有它们也能导入本包；并用一个假 SDK 做测试

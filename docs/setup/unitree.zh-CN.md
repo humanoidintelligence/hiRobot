@@ -7,9 +7,9 @@
 
 - **G1 / H1-2 / H2** 使用 `unitree_hg` 消息族（`msg_family: hg`，默认值）。
 - **旧版 H1（19 自由度）** 使用 `unitree_go` 消息族（`msg_family: go`）。
-- **G1 的机器人 skill**（行走、坐下、手臂手势，由内置控制器执行）
+- **G1 的机载 skill**（行走、坐下、手臂手势，由内置控制器执行）
   可以替代关节控制：`builtin_skills: g1`，见
-  [机器人 skill（G1）](#机器人-skillg1)。
+  [机载 skill（G1）](#机载-skillg1)。
 
 ## 1. 前置条件
 
@@ -380,11 +380,11 @@ python scripts/inspire_hand_demo.py --iface eth0 --bridge unitree         # 桥�
 本体驱动把关节映射到槽位 `0-8, 10-19`。在
 `body:` 下设置 `motor_index` 可以覆盖这一映射。
 
-### 机器人 skill（G1）
+### 机载 skill（G1）
 
 hiRobot 可以不流式发送关节目标，而是按名字启动 G1 的内置
-动作（`list_robot_skills` / `run_robot_skill` / `stop_robot_skill`，
-见 [API 参考](../api.zh-CN.md#机器人-skill)）。在本体上启用：
+动作（`list_onboard_skills` / `run_onboard_skill` / `stop_onboard_skill`，
+见 [API 参考](../api.zh-CN.md#机载-skill)）。在本体上启用：
 
 ```yaml
 body:
@@ -402,7 +402,7 @@ body:
 说明这一点的错误信息。
 
 列表固定在 `src/hirobot/drivers/body/unitree/sdk2/g1_skills.py` 中，取自
-unitree_sdk2_python（a035ade，2025-11-28）。`list_robot_skills()` 不连接机器人
+unitree_sdk2_python（a035ade，2025-11-28）。`list_onboard_skills()` 不连接机器人
 也能返回它；hiRobot 不向机器人查询。
 
 | Skill | 参数 | SDK 调用 |
@@ -416,9 +416,18 @@ unitree_sdk2_python（a035ade，2025-11-28）。`list_robot_skills()` 不连接�
 | `damp` | | `SetFsmId(1)`：带阻尼瘫软；没有支撑时机器人会摔倒 |
 | `shake_hand`, `high_five`, `hug`, `high_wave`, `face_wave`, `clap`, `hands_up`, `right_hand_up`, `heart`, `right_heart`, `two_hand_kiss`, `left_kiss`, `right_kiss`, `reject`, `x_ray` | | `G1ArmActionClient.ExecuteAction(id)`，id 取自 SDK 的 `action_map` |
 
-`stop_robot_skill()` 先发送 `StopMove`，再发送 `release arm`（动作 99），即使其中一个
+`stop_onboard_skill()` 先发送 `StopMove`，再发送 `release arm`（动作 99），即使其中一个
 失败也会两个都尝试。行走限值有意设得低于
 控制器能接受的范围。
+
+这些 skill 只在控制器处于对应的 FSM 状态时才有效。手势只在 FSM 500、501 或 801
+下被接受（801 下还要求 FSM mode 是 0 或 3），否则 `ExecuteAction` 返回 7404。
+用 `LocoClient` 的 API 7001（`GetFsmId`）和 7002（`GetFsmMode`）读当前状态。
+控制器忽略请求时 `SetFsmId` 也返回 0，所以每一步之后都要读回状态确认。
+在一台 G1 上（固件版本未知），机器人在地上时可用的顺序是 `0`（零力矩）→
+`1`（阻尼）→ `4`（锁定站立，机器人站起来）→ `500`。在 4 下，200
+（`start_locomotion`）和 501 都被忽略。0 之后的每一步都会让机器人动，所以只在
+机器人吊着或周围有空间、遥控器在手边时这样做。
 
 有意未包含的：`ZeroTorque`（FSM 0，机器人会在没有阻尼的情况下瘫倒），
 `SetBalanceMode`，`LocoClient` 的挥手和握手任务 id（手势已
@@ -737,9 +746,13 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
   locomotion / `ai`）处于活动状态时，它占用 `rt/lowcmd`，你的命令不起
   作用。`unitree_setup.py status` 会显示这一点；`--release-motion-mode`
   释放它，`restore` 把它恢复。如果要使用内置动作
-  而不是关节命令，见[机器人 skill（G1）](#机器人-skillg1)。
-- **机器人 skill 失败，RPC 错误码 3102：** 没有内置服务应答，
+  而不是关节命令，见[机载 skill（G1）](#机载-skillg1)。
+- **机载 skill 失败，RPC 错误码 3102：** 没有内置服务应答，
   通常是因为它已被释放。运行 `unitree_setup.py restore`。
+- **手势失败，RPC 错误码 7404：** 控制器不在 FSM 500、501 或 801
+  （见[机载 skill（G1）](#机载-skillg1)）。手臂的其他错误码：7400
+  `rt/armsdk` 被占用，7401 手臂保持中（发 99 或同一个 id），7402
+  动作 id 无效。
 - **没有 LowState：** `connect()` 约 5 s 后超时。检查网卡名、
   子网，以及机器人是否已上电。
 - **关节数量 / 顺序：** G1 = 29，H1-2 = 27，H2 = 31，H1 = 19。用错
@@ -753,4 +766,8 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
   请求，即 PC2（192.168.123.164）上的 `videohub_pc4` 服务没有
   运行；网络和相机本身可能都没问题。D435i 同一时间只能
   被一个进程打开，所以要检查 PC2 上是否有其他相机服务占用了它
-  （`ps -ef | grep -i camera`，`lsusb`）。
+  （`ps -ef | grep -i camera`，`lsusb`）。`master_service` 负责启动
+  `videohub_pc4`，每 5 s 重启一次；启动失败 30 次后就不再重启，
+  `/unitree/var/log/master_service/master_service.LOG` 里会反复出现
+  `monitor start child service error. name:video_hub_pc4, ret:30008`。
+  重启 PC2 会清零这个计数。
