@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="hirobot",
         description=(
-            "Unified interface layer for controlling diverse robots from VLA models and agents."
+            "Unified interface layer for controlling diverse robots."
         ),
     )
     parser.add_argument("--version", action="version", version=f"hirobot {__version__}")

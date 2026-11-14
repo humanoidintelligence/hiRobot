@@ -10,7 +10,8 @@ from hirobot.drivers.body.agibot.gdk import AgibotG1Robot
 from hirobot.drivers.body.agilex.piper_sdk import PiperRobot
 from hirobot.drivers.body.fourier.grx import FourierRobot
 from hirobot.drivers.body.franka.droid import FrankaDroidRobot
+from hirobot.drivers.body.trossen.dynamixel import WidowXRobot
 from hirobot.drivers.body.unitree.sdk2 import UnitreeRobot
 from hirobot.drivers.body.ur.rtde import URRobot
 
-__all__ = ["UnitreeRobot", "FourierRobot", "URRobot", "FrankaDroidRobot", "AgibotX1Robot", "AgibotG1Robot", "PiperRobot"]
+__all__ = ["UnitreeRobot", "FourierRobot", "URRobot", "FrankaDroidRobot", "AgibotX1Robot", "AgibotG1Robot", "PiperRobot", "WidowXRobot"]

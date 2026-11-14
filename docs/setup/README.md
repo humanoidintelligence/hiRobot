@@ -26,6 +26,7 @@ safety, connection parameters, the minimal hiRobot loop, and common pitfalls.
 | Franka FR3 | arm with gripper, 7 DoF, on a DROID station | `franka_droid` | zerorpc to a DROID robot server | `franka_fr3_droid` | [franka.md](franka.md) |
 | UR5e | arm, 6 DoF | `ur_rtde` | ur_rtde | `ur_ur5e` | [ur.md](ur.md) |
 | AgileX PiPER | arm with gripper, 6 DoF | `agilex_piper_sdk` | piper_sdk | `agilex_piper` | [agilex_piper.md](agilex_piper.md) |
+| Trossen WidowX 250S | arm with gripper, 6 DoF | `trossen_dynamixel` | dynamixel_sdk | `trossen_wx250s` | [trossen_wx250s.md](trossen_wx250s.md) |
 
 ## General workflow
 

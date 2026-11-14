@@ -190,6 +190,27 @@
    }
   }
  },
+ "robots/trossen_wx250s": {
+  "assembly": {
+   "name": "trossen-wx250s",
+   "parts": {
+    "body": {
+     "from": "body/trossen/wx250s",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "wrist": {
+     "from": "camera/intel/d435i_realsense"
+    },
+    "scene": {
+     "from": "camera/intel/d435i_realsense"
+    }
+   }
+  }
+ },
  "robots/unitree_g1": {
   "assembly": {
    "name": "unitree-g1",

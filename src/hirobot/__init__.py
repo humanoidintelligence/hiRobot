@@ -1,4 +1,4 @@
-"""hiRobot — a unified interface layer for controlling diverse robots from VLA models and agents.
+"""hiRobot — a unified interface layer for controlling diverse robots.
 
 hiRobot standardizes how a model or agent observes and commands a robot —
 humanoid or arm, in simulation or on real hardware — regardless of the vendor
@@ -56,7 +56,7 @@ from hirobot.core.types import (
     RobotStatus,
 )
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 
 __all__ = [
     "Observation",

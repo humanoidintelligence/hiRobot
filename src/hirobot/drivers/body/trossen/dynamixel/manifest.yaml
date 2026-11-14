@@ -1,0 +1,10 @@
+# Drivers registered here: trossen_dynamixel
+sdk:
+  - distribution: dynamixel_sdk
+    module: dynamixel_sdk
+    install: pip install dynamixel_sdk
+verified:
+  - model: Trossen WidowX 250S with its gripper (follower arm, U2D2 on /dev/ttyDXL), read, POSITION (single joints) and gripper; estop not yet on hardware
+    sdk: {dynamixel_sdk: "4.1.0"}
+    date: 2026-11-15
+maintainers: []

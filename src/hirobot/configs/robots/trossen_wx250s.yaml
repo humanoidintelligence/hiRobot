@@ -1,0 +1,25 @@
+# Trossen WidowX 250S: 6-DoF arm with its parallel gripper (trossen_dynamixel
+# over a U2D2), plus two Intel RealSense D435i cameras — a wrist camera and a
+# third-person scene camera, matching a dual-arm teleop data-collection rig.
+#
+# The gripper is driven by the arm's own driver and read / commanded as
+# Observation.gripper["ee"] / Action.gripper["ee"] (0 closed, 1 open).
+#
+# Runs on the toy body by default; the cameras then are skipped. On hardware
+# drop the toy override and set the serial port and each camera's serial, in a
+# local config:
+#   defaults: [robots/trossen_wx250s]
+#   assembly:
+#     parts:
+#       body:  {overrides: {driver: {type: trossen_dynamixel, port: /dev/ttyDXL}}}
+#       wrist: {overrides: {driver: {serial: "<wrist camera serial>"}}}
+#       scene: {overrides: {driver: {serial: "<scene camera serial>"}}}
+# The cameras have no placement (it depends on the station). See
+# docs/setup/trossen_wx250s.md.
+
+assembly:
+  name: trossen-wx250s
+  parts:
+    body: {from: body/trossen/wx250s, overrides: {driver: {type: toy}}}
+    wrist: {from: camera/intel/d435i_realsense}
+    scene: {from: camera/intel/d435i_realsense}

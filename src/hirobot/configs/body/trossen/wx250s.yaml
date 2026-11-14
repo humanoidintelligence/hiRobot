@@ -1,0 +1,26 @@
+# Trossen WidowX 250S: 6-DoF arm with a parallel gripper, over Dynamixel servos
+# on a U2D2 (trossen_dynamixel). No ROS, no Interbotix stack.
+#
+# Joint names, order and limits follow Interbotix's wx250s motor config and the
+# wx250s URDF (rad). The driver commands the six primary servos (waist 1,
+# shoulder 2, elbow 4, forearm_roll 6, wrist_angle 7, wrist_rotate 8); the
+# shoulder and elbow shadow servos (IDs 3, 5) follow in firmware. The frame "ee"
+# is the gripper frame; the gripper follows Action.gripper["ee"] (0 closed,
+# 1 open). driver.port is the U2D2 serial device (the follower arm is /dev/ttyDXL).
+
+device: body
+control_hz: 50
+floating_base: false
+joints:
+  - {name: waist, position_limit: [-3.14159, 3.14159]}
+  - {name: shoulder, position_limit: [-1.88496, 1.98968]}
+  - {name: elbow, position_limit: [-2.14675, 1.60570]}
+  - {name: forearm_roll, position_limit: [-3.14159, 3.14159]}
+  - {name: wrist_angle, position_limit: [-1.74533, 2.14675]}
+  - {name: wrist_rotate, position_limit: [-3.14159, 3.14159]}
+
+frames:
+  - {name: ee}
+grippers: [ee]
+
+driver: {type: trossen_dynamixel, port: /dev/ttyDXL}

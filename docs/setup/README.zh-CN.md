@@ -23,6 +23,7 @@
 | Franka FR3 | 带夹爪的机械臂，7 自由度，DROID 平台 | `franka_droid` | zerorpc 连 DROID 机器人服务 | `franka_fr3_droid` | [franka.zh-CN.md](franka.zh-CN.md) |
 | UR5e | 机械臂，6 自由度 | `ur_rtde` | ur_rtde | `ur_ur5e` | [ur.zh-CN.md](ur.zh-CN.md) |
 | AgileX PiPER | 带夹爪的机械臂，6 自由度 | `agilex_piper_sdk` | piper_sdk | `agilex_piper` | [agilex_piper.zh-CN.md](agilex_piper.zh-CN.md) |
+| Trossen WidowX 250S | 带夹爪的机械臂，6 自由度 | `trossen_dynamixel` | dynamixel_sdk | `trossen_wx250s` | [trossen_wx250s.zh-CN.md](trossen_wx250s.zh-CN.md) |
 
 ## 通用流程
 

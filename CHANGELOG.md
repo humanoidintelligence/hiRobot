@@ -5,6 +5,42 @@ User-facing changes in each hiRobot release, newest first. The format follows
 release may change the API incompatibly; such changes are listed under
 "Removed" or "Changed" and marked **breaking**.
 
+## [0.0.6] - 2026-11-15
+
+Trossen WidowX 250S support, with its gripper and RealSense D435i cameras. The
+project subtitle is shorter.
+
+### Added
+
+- **Trossen WidowX 250S arm** (new driver `trossen_dynamixel`): talks to the
+  arm's Dynamixel servos directly with Robotis' `dynamixel_sdk` over a U2D2
+  (Protocol 2.0, 1 Mbit/s), with no ROS and no Interbotix stack. It reads
+  joint positions and velocities, the gripper opening, motor temperatures, bus
+  voltage and per-servo torque and error state. It commands the six joints in
+  `ControlMode.POSITION` and the gripper through `Action.gripper["ee"]` (0
+  closed, 1 open). `connect()` and reading enable no torque and send no goal,
+  so the arm stays limp until the first `send_action`. That call enables torque
+  at the current position, so the arm does not jump. Configs
+  `body/trossen/wx250s` and `robots/trossen_wx250s` (the arm, its gripper and
+  two RealSense D435i cameras, wrist and scene). Verified on a real WidowX
+  250S: readout, gripper calibration and commands, POSITION moves of single
+  joints, and one D435i streaming colour and depth. `estop()` holding a moving
+  arm has not been tried on hardware.
+- `docs/setup/trossen_wx250s.md`: a setup guide for the WidowX 250S
+  (prerequisites, power-on and safety, configuration and gripper calibration,
+  observation and action, a minimal loop, cameras, troubleshooting).
+
+### Changed
+
+- The project subtitle is now "A Unified Interface Layer for Controlling
+  Diverse Robots" (it was "... from VLA Models and Agents"), in the README
+  title, the citation, the package description and `hirobot --help`. Update
+  the title if you cite hiRobot.
+- The WidowX 250S is marked hardware-verified (✅) in the README and
+  `docs/supported_robots.md`, and links to its setup guide. The photo wall gets
+  the WidowX 250S gripper. The end-effector table there gets a WidowX 250S
+  gripper row, and the RealSense D435i camera row lists `trossen_wx250s`.
+
 ## [0.0.5] - 2026-11-14
 
 The skill methods are renamed. Joints can describe their rotation axis and
@@ -283,6 +319,7 @@ once against `Observation` / `Action` and run on any robot with a driver.
   GRx, AgiBot X1, Franka FR3 and UR5e are included but not yet checked on
   hardware.
 
+[0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.2...v0.0.3

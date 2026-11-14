@@ -4,6 +4,28 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。0.1.0 之前任何版本都可能有不兼容的接口改动，
 这类改动列在"移除"或"变更"下，并标 **不兼容**。
 
+## [0.0.6] - 2026-11-15
+
+支持 Trossen WidowX 250S，带它的夹爪和 RealSense D435i 相机。项目副标题缩短。
+
+### 新增
+
+- **Trossen WidowX 250S 机械臂**（新驱动 `trossen_dynamixel`）：用 Robotis 的 `dynamixel_sdk` 通过 U2D2 直接和机械臂的
+  Dynamixel 舵机通信（Protocol 2.0，1 Mbit/s），不需要 ROS，也不需要 Interbotix 软件栈。读取关节位置和速度、夹爪开合、电机温度、
+  总线电压，以及每个舵机的力矩和错误状态。用 `ControlMode.POSITION` 控制六个关节，用 `Action.gripper["ee"]` 控制夹爪
+  （0 闭合，1 张开）。`connect()` 和读取都不使能力矩、不发目标位置，所以在第一次 `send_action` 之前机械臂一直是软的。
+  第一次 `send_action` 在当前位置使能力矩，机械臂不会跳。配置 `body/trossen/wx250s` 和 `robots/trossen_wx250s`（机械臂、夹爪，
+  以及腕部和场景两台 RealSense D435i）。已在真机 WidowX 250S 上验证：读数、夹爪标定和控制、单关节 POSITION 运动，以及一台 D435i
+  输出彩色和深度。`estop()` 在机械臂运动中保持住还没在真机上试过。
+- `docs/setup/trossen_wx250s.md`：WidowX 250S 的设置指南（前置条件、上电与安全、配置和夹爪标定、观测与动作、最小循环、相机、排错）。
+
+### 变更
+
+- 项目副标题改为 "A Unified Interface Layer for Controlling Diverse Robots"（原来是 "... from VLA Models and Agents"），
+  README 标题、引用、包描述和 `hirobot --help` 都改了。引用 hiRobot 的请更新标题。
+- README 和 `docs/supported_robots.md` 里 WidowX 250S 标为真机验证（✅），并链到它的设置指南。照片墙加了 WidowX 250S 夹爪。
+  那里的末端执行器表加了 WidowX 250S 夹爪一行，RealSense D435i 相机那一行加了 `trossen_wx250s`。
+
 ## [0.0.5] - 2026-11-14
 
 技能方法改名。关节可以写转轴和挂接的 link，Unitree G1 的关节带上了限位、力矩上限和转轴。
@@ -183,6 +205,7 @@
   和底盘，以及它的头部（RealSense D457）和腕部（RealSense D405）相机；Unitree G1 和 H1 上的 RealSense D435i 头部相机。
   Fourier GRx、AgiBot X1、Franka FR3 和 UR5e 的驱动已包含，还没在真机上验证。
 
+[0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.2...v0.0.3

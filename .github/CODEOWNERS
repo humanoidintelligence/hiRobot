@@ -20,6 +20,7 @@
 /src/hirobot/drivers/body/agilex/piper_sdk/         @artpli
 /src/hirobot/drivers/body/fourier/grx/              @artpli
 /src/hirobot/drivers/body/franka/droid/             @artpli
+/src/hirobot/drivers/body/trossen/dynamixel/        @artpli
 /src/hirobot/drivers/body/unitree/sdk2/             @artpli
 /src/hirobot/drivers/body/ur/rtde/                  @artpli
 /src/hirobot/drivers/end_effector/inspire/sdkpy/            @artpli
@@ -42,6 +43,7 @@
 /tests/drivers/body/agilex/piper_sdk/               @artpli
 /tests/drivers/body/fourier/grx/                    @artpli
 /tests/drivers/body/franka/droid/                   @artpli
+/tests/drivers/body/trossen/dynamixel/              @artpli
 /tests/drivers/body/unitree/sdk2/                   @artpli
 /tests/drivers/body/ur/rtde/                        @artpli
 /tests/drivers/end_effector/inspire/sdkpy/                  @artpli
