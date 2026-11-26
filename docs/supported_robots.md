@@ -57,7 +57,7 @@ Click a photo for its setup guide.
 | Fourier GR2 | 29 | — | — | fourier_aurora_client | — | By Nov 20 |
 | AgiBot G1 | 18 | `agibot_g1` | `agibot_gdk` | GDK topics (cosine_bus) | [agibot_g1.md](setup/agibot_g1.md) | ✅ |
 | AgiBot G2 | 22 | — | — | agibot_gdk (GDK 2.1) | — | By Nov 20 |
-| AgiBot X1 | 29 | `agibot_x1` | `agibot_aimrt` | ROS2 bridge to AimRT | [agibot_x1.md](setup/agibot_x1.md) | By Nov 20 |
+| AgiBot X1 | 29 | `agibot_x1` | `ros2` | ROS 2 to AimRT | [agibot_x1.md](setup/agibot_x1.md) | By Nov 20 |
 | AgileX ALOHA | 12 | — | — | pyAgxArm | — | By Nov 12 |
 | AgileX PiPER | 6 | `agilex_piper` | `agilex_piper_sdk` | piper_sdk | [agilex_piper.md](setup/agilex_piper.md) | ✅ |
 | Franka FR3 | 7 | `franka_fr3_droid` | `franka_droid` | zerorpc to a DROID robot server | [franka.md](setup/franka.md) | ✅ |
@@ -124,11 +124,38 @@ config. It is used in two ways:
 
 | Use | How | Real robot |
 | --- | --- | --- |
-| On its own | A `*_mujoco` config (`unitree_g1_mujoco`, `unitree_g1_mujoco_standing`, `unitree_g1_dex3_mujoco`), or your config plus a `sim/mujoco/...` overlay | None |
+| On its own | A `*_mujoco` config (`unitree_g1_mujoco`, `unitree_g1_mujoco_standing`, `unitree_g1_dex3_mujoco`, `ur_ur5e_mujoco`, `agilex_piper_mujoco`, `trossen_wx250s_mujoco`), or your config plus a `sim/mujoco/...` overlay | None |
 | Rehearsal | [`examples/rehearse_in_sim.py`](../examples/rehearse_in_sim.py): read the real robot's pose once, start a `*_mujoco` robot from it with `set_state`, and run the motion there before it is sent | Read-only |
 
-The models are not shipped; the G1 MJCF is fetched from Unitree's
-[unitree_ros](https://github.com/unitreerobotics/unitree_ros/tree/master/robots/g1_description)
-([commands](setup/unitree.md#5-mujoco-g1-optional)). The dependency-free
+The models are not shipped with hiRobot. `hirobot assets fetch NAME` (`pip install
+'hirobot[assets]'`) downloads them, with their licenses, from the Hugging
+Face dataset `humanoidintelligence/hirobot-assets` into `~/.cache/hirobot/assets`, where
+the built-in configs look for them. `hirobot assets list` shows each one and whether it
+is downloaded:
+
+| Source | Names | Models |
+| --- | --- | --- |
+| [unitree_ros](https://github.com/unitreerobotics/unitree_ros), [unitree_mujoco](https://github.com/unitreerobotics/unitree_mujoco) | `unitree_g1`, `unitree_h1`, `unitree_h1_2`, `unitree_h2`, `unitree_dex3` | G1 (with Dex3-1 and Inspire hands), H1, H1-2, H2, Dex3-1 |
+| [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) | `menagerie_<directory>` | `unitree_g1`, `unitree_h1`, `agilex_piper`, `aloha`, `franka_fr3`, `franka_fr3_v2`, `universal_robots_ur5e`, `trossen_wx250s`, `robotiq_2f85`, `robotiq_2f85_v4`, `realsense_d435i` |
+| [Wiki-GRx-Models](https://github.com/FFTAI/Wiki-GRx-Models) | `fourier_gr1`, `fourier_gr2` | Fourier GR1T1, GR1T2, GR2 (GPL-3.0) |
+| Inspire | `inspire_rh56dfx` | RH56DFX hands (URDF) |
+| Camera vendors | `camera_zed`, `camera_realsense`, `camera_orbbec` | Camera meshes |
+
+Every built-in body except the AgiBot ones names its model in its device file
+(`model:`), so `hirobot.model_path` finds it after the download:
+
+| Body | Model | `*_mujoco` config |
+| --- | --- | --- |
+| Unitree G1 | unitree_ros `g1_29dof_rev_1_0.xml` | `unitree_g1_mujoco` and others ([setup](setup/unitree.md#5-mujoco-g1-optional)) |
+| Unitree H1, H1-2 | unitree_ros MJCF, a copy with the waist joint renamed to `waist_yaw_joint` (`*_hirobot.xml`) | None yet |
+| Unitree H2 | unitree_mujoco `h2_mujoco.xml` | None yet |
+| UR5e, AgileX PiPER, WidowX 250 S | MuJoCo Menagerie | `ur_ur5e_mujoco`, `agilex_piper_mujoco`, `trossen_wx250s_mujoco` |
+| Franka FR3 | MuJoCo Menagerie `franka_fr3`, a copy with the joints renamed to `joint1`...`joint7` (`fr3_hirobot.xml`) | None yet |
+| Fourier GR1T1, GR1T2 | Fourier's URDF (no MJCF exists) | None: the simulation needs an MJCF |
+| AgiBot G1, X1 | None: no model whose license allows redistribution | None |
+
+The other humanoids have no `*_mujoco` config because no source gives gains that hold them up.
+In the arm configs the gripper does not move: the simulation does not drive gripper joints.
+The dependency-free
 `toy` driver, which every shipped config defaults to, integrates joint targets
 in-process for tests.

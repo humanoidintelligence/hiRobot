@@ -21,4 +21,20 @@ frames:
   - {name: ee}
 grippers: [ee]
 
+# The MJCF comes from MuJoCo Menagerie (agilex_piper, MIT); it is not shipped with
+# hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch menagerie_agilex_piper
+#
+# which downloads it to ~/.cache/hirobot/assets/menagerie/agilex_piper. Gains are the
+# MJCF's position actuators (kp, kv); home is its home keyframe. The gripper fingers
+# (joint7, joint8) are in the model but the simulation does not drive them:
+# Action.gripper has no effect in MuJoCo.
+model:
+  mjcf: ~/.cache/hirobot/assets/menagerie/agilex_piper/piper.xml
+  kp: [80, 80, 80, 40, 10, 10]
+  kd: [5, 5, 5, 5, 1.5, 1.5]
+  home: [0.0, 1.57, -1.3485, 0.0, 0.0, 0.0]
+
 driver: {type: agilex_piper_sdk, can: can0}

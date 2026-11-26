@@ -22,7 +22,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
-from hirobot.core.embodiment import Embodiment
+from hirobot.core.embodiment import CameraInfo, CameraIntrinsics, Embodiment
 from hirobot.core.robot_skills import (
     RobotSkillError,
     RobotSkillResult,
@@ -209,12 +209,32 @@ def _arbitrated(method, what: str):
             return method(self, *args, **kwargs)
         from hirobot.control.arbiter import _touched
 
-        with arbiter._admit(None, what, touched=lambda: _touched(self, what, args)):
+        action = (args[0] if args else kwargs.get("action")) if what == "send_action" else None
+        with arbiter._admit(None, what, touched=lambda: _touched(self, what, args),
+                            action=action):
             return method(self, *args, **kwargs)
 
     wrapped.__name__, wrapped.__qualname__ = method.__name__, method.__qualname__
     wrapped.__doc__, wrapped.__wrapped__ = method.__doc__, method
     wrapped._arbitrated = True  # type: ignore[attr-defined]
+    return wrapped
+
+
+def _observed(get_observation):
+    """Wrap a ``get_observation``: pass a top-level result to the ``on_observation`` listeners."""
+    if getattr(get_observation, "_observed", False) or getattr(
+            get_observation, "__isabstractmethod__", False):
+        return get_observation
+
+    def wrapped(self, *args, **kwargs):
+        arbiter = self._arbiter
+        if arbiter is None or not arbiter._observation_listeners:
+            return get_observation(self, *args, **kwargs)
+        return arbiter._observed(lambda: get_observation(self, *args, **kwargs))
+
+    wrapped.__name__, wrapped.__qualname__ = get_observation.__name__, get_observation.__qualname__
+    wrapped.__doc__, wrapped.__wrapped__ = get_observation.__doc__, get_observation
+    wrapped._observed = True  # type: ignore[attr-defined]
     return wrapped
 
 
@@ -388,6 +408,8 @@ class Robot(Stoppable, ABC):
         for what in ARBITRATED:
             if what in cls.__dict__:
                 setattr(cls, what, _arbitrated(cls.__dict__[what], what))
+        if "get_observation" in cls.__dict__:
+            cls.get_observation = _observed(cls.__dict__["get_observation"])  # type: ignore[method-assign]
 
     # ------------------------------------------------------------ arbiter
 
@@ -427,6 +449,35 @@ class Robot(Stoppable, ABC):
         preemptions, refusals, busy calls); empty without an arbiter. See
         :class:`~hirobot.control.arbiter.CommandEvent`."""
         return [] if self._arbiter is None else self._arbiter.events()
+
+    def add_listener(self, on_observation: Any = None, on_command: Any = None) -> Any:
+        """Watch this robot's observations and commands (a recorder, a monitor).
+
+        ``on_observation(obs)`` gets the :class:`~hirobot.core.types.Observation`
+        of every top-level :meth:`get_observation` on this robot.
+        ``on_command(record)`` gets a :class:`~hirobot.control.arbiter.CommandRecord`
+        for every top-level ``send_action`` and ``hold``, made on the robot or on
+        a lease, accepted or refused (by the gate, an envelope, the arbiter, the
+        fault state or the driver). Calls nested in another (``hold()`` sending an
+        action, a read inside a command, what a layer sends below) are not
+        reported; ``reset`` and skills are not either. Use it on the outermost
+        robot (what :func:`~hirobot.make_robot` returns); on a bare driver it
+        attaches a :class:`~hirobot.control.arbiter.CommandArbiter` the way
+        :meth:`claim` does.
+
+        Callbacks run synchronously on the caller's thread, after the call, so
+        they must return quickly (put the item on a queue). One that raises is
+        logged (at most once per 10 s per listener) and never changes the
+        call's result. Adding and removing listeners is safe from any thread.
+
+        Returns a :class:`~hirobot.control.arbiter.ListenerHandle`; ``remove()``
+        stops the callbacks.
+        """
+        from hirobot.control.arbiter import CommandArbiter
+
+        if self._arbiter is None:
+            self._arbiter = CommandArbiter(self)
+        return self._arbiter.add_listener(on_observation=on_observation, on_command=on_command)
 
     def estop(self) -> None:
         """Stop the robot now. Safe to call from any thread, at any time.
@@ -596,6 +647,57 @@ class Robot(Stoppable, ABC):
         (real robots keep running on their own).
         """
 
+    def camera_info(self, name: str) -> CameraInfo:
+        """Intrinsics and mount (extrinsics) of camera ``name``, to turn its pixels and depth into 3D.
+
+        The intrinsics are those of ``Observation.images[name]`` (and of
+        ``depth[name]``, registered to it). They come from the first source
+        that has them:
+
+        1. the camera's ``intrinsics:`` in the config (a calibration);
+        2. the camera driver, read from the device (call after ``connect()``;
+           RealSense, Orbbec, ZED);
+        3. an ideal pinhole from the mount's ``fovy`` and the image size (what a
+           simulator renders).
+
+        Each is rescaled to the image size the embodiment declares when it was
+        given for another size. ``mount`` is the pose of the camera's optical
+        frame (OpenCV: z forward, x right, y down) in a robot link; for a head
+        or wrist camera, composing it with that link's current pose is the
+        caller's step.
+
+        Raises:
+            KeyError: No camera of that name.
+        """
+        cam = next((c for c in self.embodiment.cameras if c.name == name), None)
+        if cam is None:
+            raise KeyError(f"no camera {name!r}; cameras: {[c.name for c in self.embodiment.cameras]}")
+        intr, source = cam.intrinsics, "config" if cam.intrinsics is not None else None
+        if intr is None:
+            read = getattr(self._camera_driver(name), "intrinsics", None)
+            intr = read() if callable(read) else None
+            source = "driver" if intr is not None else None
+        if intr is None and cam.mount is not None and cam.width > 0 and cam.height > 0:
+            intr = CameraIntrinsics.from_fovy(cam.width, cam.height, cam.mount.fovy)
+            source = "fovy"
+        if intr is not None and cam.width > 0 and cam.height > 0 \
+                and (intr.width, intr.height) != (cam.width, cam.height):
+            intr = intr.scaled(cam.width, cam.height)
+        return CameraInfo(name=name, intrinsics=intr, intrinsics_source=source,
+                          mount=cam.mount, depth=cam.depth)
+
+    def _camera_driver(self, name: str) -> Any:
+        """The driver of camera ``name``: this robot's own, or a child part's (``left/wrist``)."""
+        if name in self.cameras:
+            return self.cameras[name]
+        part, sep, rest = name.partition("/")
+        child = (getattr(self, "parts", None) or {}).get(part) if sep else None
+        return None if child is None else child._camera_driver(rest)
+
+    #: The config's ``mcp:`` section (a dict), set by ``make_robot``; ``None`` if it has none.
+    #: :func:`hirobot.mcp.serve_mcp` reads it.
+    mcp_config: Optional[Dict[str, Any]] = None
+
     @property
     def has_onboard_skills(self) -> bool:
         """Whether this driver can offer onboard skills at all.
@@ -618,7 +720,9 @@ class Robot(Stoppable, ABC):
         """Start onboard skill ``name``; returns once the robot accepts it.
 
         Arguments are checked against the skill's schema first. Drivers with
-        skills override :meth:`_run_onboard_skill`, not this method.
+        skills override :meth:`_run_onboard_skill`, not this method. The result's
+        ``duration_s`` is the driver's estimate for these arguments, else the
+        spec's ``duration_s``.
 
         Raises:
             RobotSkillError: Unknown skill, bad arguments, or the robot refused.
@@ -629,11 +733,16 @@ class Robot(Stoppable, ABC):
                 f"unknown onboard skill {name!r}; available: {sorted(specs) or 'none'}")
         spec = specs[name]
         checked = validate_args(spec, args)
-        self._run_onboard_skill(spec, checked)
-        return RobotSkillResult(name=name, args=checked, duration_s=spec.duration_s)
+        duration = self._run_onboard_skill(spec, checked)
+        return RobotSkillResult(name=name, args=checked,
+                                duration_s=spec.duration_s if duration is None else duration)
 
-    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
-        """Driver primitive behind :meth:`run_onboard_skill`; ``args`` are already checked."""
+    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> Optional[float]:
+        """Driver primitive behind :meth:`run_onboard_skill`; ``args`` are already checked.
+
+        Returns how long this run is expected to take in seconds, or ``None`` to
+        use ``spec.duration_s``.
+        """
         raise RobotSkillError(f"{type(self).__name__} has no onboard skills")
 
     def stop_onboard_skill(self) -> None:

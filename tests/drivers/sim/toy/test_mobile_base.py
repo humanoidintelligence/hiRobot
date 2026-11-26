@@ -197,6 +197,23 @@ def test_g1_ur5e_cell_humanoid_poses_follow_origin_and_odometry():
     assert np.allclose(robot.get_observation().joint_pos[:2], [0.1, 0.2])
 
 
+def test_imu_acceleration_is_specific_force_in_the_body_frame():
+    # At rest, with or without the flag: the reaction to gravity.
+    for mobile in (False, True):
+        robot = ToyRobot(_base(joints=["hip"]), mobile_base=mobile)
+        robot.connect()
+        assert np.allclose(robot.get_observation().base_linear_acceleration, [0, 0, 9.81])
+    # Turning at wz with forward speed vx: centripetal wz * vx toward the centre (+y).
+    _drive(robot, [0.5, 0, 1.0], 10)
+    assert np.allclose(robot.get_observation().base_linear_acceleration, [0, 0.5, 9.81])
+    _drive(robot, [0, 0.5, 1.0], 10)  # sideways to +y: the centre is behind (-x)
+    assert np.allclose(robot.get_observation().base_linear_acceleration, [-0.5, 0, 9.81])
+    # A fixed-base toy has no IMU.
+    arm = ToyRobot(_arm())
+    arm.connect()
+    assert arm.get_observation().base_linear_acceleration is None
+
+
 def test_a_floating_toy_without_the_flag_has_no_odometry():
     # The toy without mobile_base reports no base_position: its end effectors
     # leave the node frame (the rule itself is tested in test_assembly_parts.py).

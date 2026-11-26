@@ -24,4 +24,14 @@ frames:
   - {name: ee}
 grippers: [ee]
 
+# The MJCF is fr3_hirobot.xml from the hirobot-assets dataset: MuJoCo Menagerie's
+# franka_fr3/fr3.xml (Apache-2.0) with fr3_joint1..7 renamed to joint1..7; nothing
+# else changes. It is the arm alone (no gripper). It is not shipped with hiRobot.
+# Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch menagerie_franka_fr3
+model:
+  mjcf: ~/.cache/hirobot/assets/menagerie/franka_fr3/fr3_hirobot.xml
+
 driver: {type: franka_droid, ip: 172.16.0.2}

@@ -32,6 +32,60 @@ without the SDK; only a hardware `connect()` needs it.
   `body.network_interface` in the config. It is the second argument of
   `ChannelFactoryInitialize(0, <iface>)`. If unset, the SDK auto-detects.
 
+### Generate a local config
+
+Once the cable is in and the robot is on, `hirobot scan` shows what this computer and
+the robot network have, and `hirobot init` writes a local config for the robot it sees:
+
+```bash
+hirobot scan                    # summary; --json for the full report
+hirobot init -o my_g1.yaml      # asks for the model, then writes and checks the file
+```
+
+Both are read-only. The scan subscribes to `rt/lowstate` and `rt/dex3/{left,right}/state`
+and asks the motion switcher `CheckMode` once. It creates no publisher, sends no
+command and changes no network setting. A suggestion that needs `sudo` (an address on
+`192.168.123.x` for the card) is printed only.
+
+On a G1 with Dex3 hands the summary looks like this (example):
+
+```text
+Host: robot-pc (Linux 5.15.0-tegra, aarch64, Python 3.10.12), NVIDIA Jetson Orin NX
+Network cards:
+  eth0: up, 1000 Mb/s, 192.168.123.164/24  <- 192.168.123.x
+SDKs ok: cyclonedds 0.10.2, unitree_sdk2py 1.0.1
+SDKs missing or too old: pyrealsense2
+ROS 2: distro not sourced, rclpy not importable
+Cameras: none seen
+Audio (alsa): none seen
+Unitree: found on eth0
+  lowstate hg, 29 of 35 motor slots report, mode_machine 5, 500.0 Hz
+  motion service mode 'ai', owns rt/lowcmd: yes
+  hands: dex3_left yes, dex3_right yes
+  candidate robots/unitree_g1_dex3 (0.9): unitree_hg with 29 motors reporting: G1 29-DoF; rt/dex3/left/state and rt/dex3/right/state seen
+  candidate robots/unitree_g1 (0.85): unitree_hg with 29 motors reporting: G1 29-DoF
+  note: built-in motion service 'ai' owns rt/lowcmd; joint commands need it released (robot hung or supported)
+```
+
+Confirm the model `init` offers: the scan guesses from what it saw, and something not
+seen is not proof it is absent. A G1 with a locked waist reports 27 motors, the same as
+an H1-2, so both are offered. A hand that is off or not on the bus shows as not seen;
+pick `robots/unitree_g1_dex3` anyway if the hands are fitted. `--model robots/unitree_g1`
+skips the question, and `--interface eth0` picks the card.
+
+`init` never replaces an existing file without a "y" at its prompt, `--force`, or
+`overwrite: true` in an answers file; `--yes` only accepts the first model offered. The
+written file inherits the built-in config and sets only the real body driver and
+`network_interface` on each part, then `init` opens it read-only and prints which parts
+sent data (the speaker is skipped: its driver has no read-only mode). A hand, camera or
+microphone that sends nothing or fails to connect is reported as not seen and left out;
+only the body must report. Exit 2 means the file was written but the check failed. Flags, the answers file and the report keys
+are in the [API reference](../api.md#hirobot-scan-and-hirobot-init).
+
+The generated file keeps the built-in gains and safety limits. Before the first
+commanded motion follow the steps below; section 6 shows the per-joint gains to add for
+a G1.
+
 ## 3. Power-on and safety
 
 1. The robot is **hung or supported**, with the area around it clear.
@@ -413,7 +467,8 @@ without a robot connected; hiRobot does not ask the robot.
 | Skill | Arguments | SDK call |
 |---|---|---|
 | `start_locomotion` | | `LocoClient.SetFsmId(200)`: enter the balance controller |
-| `walk` | `vx` (±0.5 m/s), `vy` (±0.3 m/s), `vyaw` (±0.8 rad/s), `seconds` (0 to 10, default 1) | `LocoClient.SetVelocity` |
+| `walk` | `vx` (±0.5 m/s), `vy` (±0.3 m/s), `vyaw` (±0.8 rad/s), `seconds` (0 to 10, default 1) | `LocoClient.SetVelocity`; `duration_s` is `seconds` |
+| `turn` | `degrees` (±180, default 30; positive turns left) | `LocoClient.SetVelocity` in a loop on the IMU yaw, then `StopMove`; returns while the robot turns, with `duration_s` an upper estimate from the angle (about 2.7 s for 30°, 5.2 s for 90°) |
 | `high_stand` / `low_stand` | | `LocoClient.SetStandHeight` |
 | `sit` | | `SetFsmId(3)` |
 | `squat_stand` | | `SetFsmId(706)`: squat down, or stand up from a squat |
@@ -443,8 +498,15 @@ cover them), and dances (the SDK has no call for them). The robot's
 included. hiRobot does not check a gesture's own preconditions either, so a
 gesture the controller cannot run in its current state shows up as a refusal.
 
-None of these skills has been run on a robot yet. Try them with the robot hung
-first.
+`ExecuteAction` only replies when the gesture has finished, and some gestures
+(`high_wave`) take longer than 3 s. So `run_onboard_skill` waits 0.5 s for an
+early reply: an error code in that time (7404, 7400, 3102) raises, otherwise it
+returns with the gesture still running. A gesture that fails later is only
+logged as a warning.
+
+Tried on a real G1: the FSM sequence above, `walk`, `right_hand_up` and
+`high_wave`. The other skills have not been run on a robot yet; try them with
+the robot hung first.
 
 ## 5. MuJoCo (G1, optional)
 
@@ -452,13 +514,13 @@ Driving the real robot needs no MuJoCo. With it, the G1 runs in simulation on
 its own (no robot at all), or from the real robot's pose to rehearse a motion
 before it runs on hardware. Install MuJoCo and
 fetch the G1 model from [unitree_ros](https://github.com/unitreerobotics/unitree_ros)
-(not shipped with hiRobot):
+(BSD-3-Clause, not shipped with hiRobot). `hirobot assets fetch` downloads it,
+unchanged, from the Hugging Face dataset `humanoidintelligence/hirobot-assets`;
+`hirobot assets list` shows what else is there:
 
 ```bash
-pip install -e '.[sim]'          # mujoco
-git clone --depth 1 --filter=blob:none --sparse \
-    https://github.com/unitreerobotics/unitree_ros.git ~/.cache/hirobot/unitree_ros
-git -C ~/.cache/hirobot/unitree_ros sparse-checkout set robots/g1_description
+pip install -e '.[sim,assets]'   # mujoco, huggingface_hub
+hirobot assets fetch unitree_g1  # into ~/.cache/hirobot/assets/unitree_ros/robots/g1_description
 ```
 
 ### Simulated G1 (no robot)
@@ -686,19 +748,15 @@ The same procedure ran on a hung legacy H1, body only. What differs from the G1:
                  1.5, 1.5, 1.5, 1.5]
   ```
 
-- **Simulation model:** fetch `robots/h1_description` from unitree_ros the same way as
-  in section 5. Its `mjcf/h1.xml` needs edits in a local copy before MuJoCo
-  loads it. The model names the waist `torso_joint`, but the config calls it
-  `waist_yaw`. Its `home` keyframe also no longer fits once `fixed_base` removes
-  the free joint. Set `meshdir` to the absolute `meshes/` path, since the copy
-  lives elsewhere:
-
-  ```bash
-  M=~/.cache/hirobot/unitree_ros/robots/h1_description
-  sed -e "s|meshdir=\"../meshes\"|meshdir=\"$M/meshes\"|" \
-      -e 's/"torso_joint"/"waist_yaw_joint"/g' \
-      -e '/<keyframe>/,/<\/keyframe>/d' $M/mjcf/h1.xml > h1_sim.xml
-  ```
+- **Simulation model:** `hirobot assets fetch unitree_h1` (see section 5). The H1
+  device file's `model:` points at `mjcf/h1_hirobot.xml`, a copy of unitree_ros's
+  `mjcf/h1.xml` in the hirobot-assets dataset with two changes: the waist joint is
+  renamed from `torso_joint` to `waist_yaw_joint` (the config calls it `waist_yaw`),
+  and the `home` keyframe is removed (it no longer fits once `fixed_base` removes
+  the free joint). H1-2 (`h1_2_handless_hirobot.xml`, same rename, `hirobot assets
+  fetch unitree_h1_2`) and H2 (unitree_mujoco's `h2_mujoco.xml`, `hirobot assets fetch
+  unitree_h2`) have a `model:` too. None of the three has a built-in `*_mujoco`
+  config yet.
 
   Then write a local simulation config, say `my_h1_mujoco.yaml`, and rehearse
   with `python examples/rehearse_in_sim.py my_h1.yaml my_h1_mujoco.yaml ...`:
@@ -709,7 +767,7 @@ The same procedure ran on a hung legacy H1, body only. What differs from the G1:
     parts:
       body:
         overrides:
-          model: {mjcf: h1_sim.xml}   # kp / kd / armature: copy from the real config
+          model: {kp: [...], kd: [...]}   # copy from the real config's default_kp / default_kd
   sim:
     fixed_base: [body]
     base_height: {body: 1.2}
@@ -789,4 +847,14 @@ action's mode, computes the CRC, and publishes.
   `videohub_pc4` and restarts it every 5 s; after 30 failed starts it stops,
   and `/unitree/var/log/master_service/master_service.LOG` repeats
   `monitor start child service error. name:video_hub_pc4, ret:30008`.
-  Rebooting PC2 resets that count.
+  Rebooting PC2 resets that count. A camera service of your own that starts
+  at boot (for example a systemd unit using the RealSense) takes the camera
+  first, and videohub keeps failing: check `fuser /dev/video*` and disable that
+  service if you want videohub.
+  videohub also stays up but serves nothing when the D435i drops off USB and
+  comes back (`dmesg` shows `usb 2-3: USB disconnect`): its colour node moves
+  from `/dev/video4`, which `videohub_pc4` opens by that fixed name, to another
+  number, and `master_service` still reports the service alive. Check
+  `ls -l /dev/v4l/by-id/` (`video-index0` should point to `video4`). Restarting
+  videohub does not help; rebooting PC2 does. Motion control runs on PC1, so
+  rebooting PC2 does not stop the robot standing.

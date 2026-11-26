@@ -83,3 +83,32 @@ def test_unknown_resolution_rejected():
 def test_resolution_sets_size():
     cam = ZedCamera("left", resolution="vga")
     assert (cam.width, cam.height) == (672, 376)
+
+
+def test_intrinsics_from_the_sdk(monkeypatch):
+    bus = fake_sdk.install(monkeypatch)
+    bus.set_image()
+    cam = ZedCamera("wrist")
+    assert cam.intrinsics() is None  # not started
+    cam.start()
+    try:
+        intr = cam.intrinsics()
+        assert (intr.width, intr.height) == (1280, 720)
+        assert (intr.fx, intr.fy, intr.cx, intr.cy) == (700.0, 700.0, 640.5, 360.25)
+        assert intr.model == "none"  # the image is rectified
+    finally:
+        cam.stop()
+
+
+def test_frames_flow_without_intrinsics(monkeypatch, caplog):
+    bus = fake_sdk.install(monkeypatch)
+    bus.set_image()
+    bus.left = None
+    cam = ZedCamera("wrist")
+    cam.start()
+    try:
+        assert cam.intrinsics() is None and "could not read the left intrinsics" in caplog.text
+        cam.wait_for_frame(2.0)
+        assert cam.latest() is not None
+    finally:
+        cam.stop()

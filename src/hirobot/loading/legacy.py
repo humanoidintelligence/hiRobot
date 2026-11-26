@@ -14,6 +14,7 @@ passes ``overrides={'<part path>': {...}}``.
 
 from __future__ import annotations
 
+import os
 import warnings
 from typing import Any, Dict, Mapping, Optional
 
@@ -33,9 +34,18 @@ def _warn(what: str) -> None:
 
 
 def legacy_embodiment(config: Mapping[str, Any]) -> Embodiment:
-    """The ``embodiment:`` section of an old-format config."""
+    """The ``embodiment:`` section of an old-format config.
+
+    ``model`` comes from the ``body:`` section's ``model_path`` (the MJCF of a
+    ``mujoco`` body), relative paths from the working directory, as the driver
+    opens them; ``None`` without one.
+    """
     _warn("the embodiment: config format")
-    return Embodiment(**config["embodiment"])
+    data = dict(config["embodiment"])
+    mjcf = (config.get("body") or {}).get("model_path")
+    if "model" not in data and isinstance(mjcf, str) and mjcf:
+        data["model"] = {"kind": "mjcf", "path": os.path.abspath(os.path.expanduser(mjcf))}
+    return Embodiment(**data)
 
 
 def body_overrides_as_tree(config: Any, body_overrides: Mapping[str, Any]) -> Dict[str, Any]:

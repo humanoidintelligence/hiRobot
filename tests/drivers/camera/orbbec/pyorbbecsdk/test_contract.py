@@ -124,3 +124,52 @@ def test_bad_arguments():
         OrbbecCamera("scene", color_format="H264")
     with pytest.raises(ValueError, match="align"):
         OrbbecCamera("scene", align="gpu")
+
+
+def test_intrinsics_from_the_sdk(monkeypatch):
+    bus = fake_sdk.install(monkeypatch)
+    bus.set_color()
+    cam = OrbbecCamera("scene")
+    assert cam.intrinsics() is None  # not started
+    cam.start()
+    try:
+        intr = cam.intrinsics()
+        assert (intr.width, intr.height) == (640, 480)
+        assert (intr.fx, intr.fy, intr.cx, intr.cy) == (605.0, 604.5, 318.0, 242.0)
+        assert intr.model == "none"
+    finally:
+        cam.stop()
+
+
+def test_intrinsics_distortion(monkeypatch, caplog):
+    bus = fake_sdk.install(monkeypatch)
+    bus.set_color()
+    bus.distortion.update(k1=0.1, k2=-0.05, p1=0.001, p2=-0.002, k3=0.01)
+    cam = OrbbecCamera("scene")
+    cam.start()
+    try:
+        intr = cam.intrinsics()
+        assert intr.model == "brown_conrady" and intr.coeffs == (0.1, -0.05, 0.001, -0.002, 0.01)
+    finally:
+        cam.stop()
+    bus.distortion.update(k4=0.2)  # rational model: kept as a plain pinhole, with a warning
+    cam = OrbbecCamera("scene")
+    cam.start()
+    try:
+        assert cam.intrinsics().model == "none" and "rational distortion" in caplog.text
+    finally:
+        cam.stop()
+
+
+def test_frames_flow_without_intrinsics(monkeypatch, caplog):
+    bus = fake_sdk.install(monkeypatch)
+    bus.set_color()
+    bus.intrinsics = None
+    cam = OrbbecCamera("scene")
+    cam.start()
+    try:
+        assert cam.intrinsics() is None and "could not read the colour intrinsics" in caplog.text
+        cam.wait_for_frame(2.0)
+        assert cam.latest() is not None
+    finally:
+        cam.stop()

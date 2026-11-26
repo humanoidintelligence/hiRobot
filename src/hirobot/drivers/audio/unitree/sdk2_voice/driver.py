@@ -37,6 +37,7 @@ from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     QueuedMicrophone,
     SpeakerDriver,
+    check_volume,
     register_audio,
     resample,
 )
@@ -159,9 +160,10 @@ class UnitreeG1Speaker(SpeakerDriver):
         network_interface: NIC on the robot LAN. If the body driver already
             initialised DDS, the SDK keeps that setting, so give both the same NIC.
         domain_id: DDS domain (``0`` on hardware).
-        volume: Volume 0-100 to set on ``open()``; the previous volume comes back
-            on ``close()``. ``None`` leaves the volume alone. 60 is clearly
-            audible next to the robot, 30 is quiet.
+        volume: Volume 0-100 to set on ``open()``. ``None`` leaves the volume
+            alone. 60 is clearly audible next to the robot, 30 is quiet. Whether
+            set here or with :meth:`set_volume`, the volume the robot had on
+            ``open()`` comes back on ``close()``.
         app_name: Stream owner name sent with every request.
         chunk_s: Seconds of audio per ``PlayStream`` request (the SDK example uses 3).
         lead_s: How far ahead of playback audio is sent.
@@ -169,6 +171,7 @@ class UnitreeG1Speaker(SpeakerDriver):
     """
 
     sample_rate = 16000
+    supports_volume = True
 
     def __init__(
         self,
@@ -182,8 +185,8 @@ class UnitreeG1Speaker(SpeakerDriver):
         timeout_s: float = 2.0,
     ) -> None:
         super().__init__(name)
-        if volume is not None and not 0 <= volume <= 100:
-            raise ValueError(f"speaker volume must be 0-100, got {volume}")
+        if volume is not None:
+            volume = check_volume(volume)
         self._network_interface = network_interface
         self._domain_id = domain_id
         self._volume = volume
@@ -192,9 +195,13 @@ class UnitreeG1Speaker(SpeakerDriver):
         self._lead_s = lead_s
         self._timeout_s = timeout_s
         self._client = None
-        self._saved_volume: Optional[int] = None
+        self._saved_volume: Optional[int] = None  # volume on open(), restored on close()
+        self._changed_volume = False
         self._stop = threading.Event()
         self._play_lock = threading.Lock()
+        # Serialises the voice-service RPCs between play() and set_volume() /
+        # volume on another thread. Held per call, not for a whole play().
+        self._rpc_lock = threading.Lock()
         self._stream = 0
 
     def open(self) -> None:
@@ -219,13 +226,14 @@ class UnitreeG1Speaker(SpeakerDriver):
             logger.warning("speaker %s: GetVolume failed with code %s%s", self.name, code,
                            self._hint(code))
             return
+        self._saved_volume = int(data["volume"])
         if self._volume is not None:
-            self._saved_volume = int(data["volume"])
             code = _code(client.SetVolume(int(self._volume)))
             if code != 0:
                 logger.warning("speaker %s: SetVolume(%s) failed with code %s",
                                self.name, self._volume, code)
-                self._saved_volume = None
+            else:
+                self._changed_volume = True
 
     @staticmethod
     def _hint(code: int) -> str:
@@ -251,14 +259,17 @@ class UnitreeG1Speaker(SpeakerDriver):
             while True:
                 elapsed = 0.0 if start is None else time.monotonic() - start
                 if self._stop.is_set():
-                    self._client.PlayStop(self._app_name)
+                    with self._rpc_lock:
+                        self._client.PlayStop(self._app_name)
                     return min(elapsed, total)
                 sent_s = offset / bps
                 if offset < len(pcm) and sent_s - elapsed <= self._lead_s:
                     block = pcm[offset : offset + self._chunk_bytes]
-                    code = _code(self._client.PlayStream(self._app_name, stream_id, block))
+                    with self._rpc_lock:
+                        code = _code(self._client.PlayStream(self._app_name, stream_id, block))
+                        if code != 0:
+                            self._client.PlayStop(self._app_name)
                     if code != 0:
-                        self._client.PlayStop(self._app_name)
                         raise RuntimeError(
                             f"speaker {self.name!r}: PlayStream failed with code {code}"
                             f"{self._hint(code)}"
@@ -278,13 +289,34 @@ class UnitreeG1Speaker(SpeakerDriver):
     def stop(self) -> None:
         self._stop.set()
 
-    def set_volume(self, volume: int) -> None:
-        """Set the robot's speaker volume (0-100) now."""
-        if self._client is None:
+    @property
+    def volume(self) -> Optional[int]:
+        """The robot's speaker volume now (``GetVolume``), or ``None`` if not open or the call fails."""
+        client = self._client
+        if client is None:
+            return None
+        with self._rpc_lock:
+            code, data = client.GetVolume()
+        if code != 0 or not data or "volume" not in data:
+            return None
+        return int(data["volume"])
+
+    def set_volume(self, level: int) -> None:
+        """Set the robot's speaker volume (0-100) now; safe while :meth:`play` runs.
+
+        Raises:
+            ValueError: ``level`` is outside 0-100.
+            RuntimeError: The speaker is not open, or ``SetVolume`` failed.
+        """
+        level = check_volume(level)
+        client = self._client
+        if client is None:
             raise RuntimeError(f"speaker {self.name!r} is not open")
-        code = _code(self._client.SetVolume(int(volume)))
+        with self._rpc_lock:
+            code = _code(client.SetVolume(level))
         if code != 0:
             raise RuntimeError(f"speaker {self.name!r}: SetVolume failed with code {code}")
+        self._changed_volume = True
 
     def close(self) -> None:
         if self._client is None:
@@ -292,8 +324,10 @@ class UnitreeG1Speaker(SpeakerDriver):
         self.stop()
         with self._play_lock:  # wait for a play() in progress to see the stop
             try:
-                if self._saved_volume is not None:
-                    self._client.SetVolume(self._saved_volume)
+                if self._changed_volume and self._saved_volume is not None:
+                    with self._rpc_lock:
+                        self._client.SetVolume(self._saved_volume)
             finally:
                 self._saved_volume = None
+                self._changed_volume = False
                 self._client = None

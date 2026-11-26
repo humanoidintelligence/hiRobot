@@ -45,4 +45,16 @@ frames:
   - {name: left_hand}
   - {name: right_hand}
 
+# The MJCF comes from unitreerobotics/unitree_mujoco (unitree_robots/h2/h2_mujoco.xml,
+# BSD-3-Clause), which has one motor per joint. (unitree_ros's H2_loop.xml has
+# closed-linkage knees and ankles driven by other joints, so the simulation cannot
+# drive left_knee and the rest.) It is not shipped with hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch unitree_h2
+#
+# No gains here: there is no *_mujoco config for H2 yet.
+model:
+  mjcf: ~/.cache/hirobot/assets/unitree_mujoco/unitree_robots/h2/h2_mujoco.xml
+
 driver: {type: unitree_sdk2}

@@ -67,6 +67,39 @@ def resample(pcm: bytes, src_rate: int, dst_rate: int) -> bytes:
     return np.clip(np.round(y), -32768, 32767).astype("<i2").tobytes()
 
 
+def check_volume(level: Any) -> int:
+    """``level`` as an int if it is a volume 0-100; ``ValueError`` otherwise."""
+    if isinstance(level, bool) or not isinstance(level, (int, np.integer)) or not 0 <= level <= 100:
+        raise ValueError(f"speaker volume must be an int 0-100, got {level!r}")
+    return int(level)
+
+
+def apply_gain(pcm: bytes, level: int) -> bytes:
+    """Scale mono int16 PCM by ``level / 100`` (software volume)."""
+    if level >= 100 or not pcm:
+        return pcm
+    x = np.frombuffer(pcm[: len(pcm) // SAMPLE_WIDTH * SAMPLE_WIDTH], dtype="<i2")
+    return np.round(x * (level / 100.0)).astype("<i2").tobytes()
+
+
+class SoftwareVolume:
+    """Mixin: volume as a gain on the PCM, for speakers with no hardware volume.
+
+    The level is one int read once per block, so :meth:`set_volume` from
+    another thread takes effect at the next block the driver scales.
+    """
+
+    supports_volume = True
+    _level: int = 100
+
+    @property
+    def volume(self) -> Optional[int]:
+        return self._level
+
+    def set_volume(self, level: int) -> None:
+        self._level = check_volume(level)
+
+
 class AudioDriver(ABC):
     """Shared base of microphones and speakers.
 
@@ -119,7 +152,33 @@ class SpeakerDriver(AudioDriver):
 
     :meth:`play` blocks until the audio has played or :meth:`stop` cuts it
     short; :meth:`stop` is called from another thread.
+
+    Volume is an optional capability. A driver that has it sets
+    :attr:`supports_volume` and overrides :attr:`volume` and :meth:`set_volume`;
+    callers check :attr:`supports_volume` before offering it. Other optional
+    device capabilities follow the same pattern: a ``supports_<name>`` class
+    attribute, ``False`` by default, and methods that raise
+    ``NotImplementedError`` on drivers without it.
     """
+
+    #: True if :meth:`set_volume` works on this driver.
+    supports_volume: bool = False
+
+    @property
+    def volume(self) -> Optional[int]:
+        """Current volume, 0-100, or ``None`` when unknown or unsupported."""
+        return None
+
+    def set_volume(self, level: int) -> None:
+        """Set the volume, 0 (silent) to 100 (full). Safe to call while :meth:`play` runs.
+
+        Raises:
+            ValueError: ``level`` is outside 0-100.
+            NotImplementedError: The driver has no volume control
+                (:attr:`supports_volume` is ``False``).
+        """
+        check_volume(level)
+        raise NotImplementedError(f"speaker {self.name!r} ({type(self).__name__}) has no volume control")
 
     @abstractmethod
     def play(self, pcm: bytes, sample_rate: Optional[int] = None) -> float:

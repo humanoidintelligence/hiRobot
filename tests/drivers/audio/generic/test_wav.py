@@ -122,6 +122,26 @@ def test_wav_speaker_records_what_was_played(tmp_path):
     assert rate == RATE and pcm == a + b
 
 
+def test_wav_speaker_volume_is_a_software_gain(tmp_path):
+    out = tmp_path / "out.wav"
+    spk = WavSpeaker("s", str(out), realtime=False)
+    assert spk.supports_volume and spk.volume == 100
+    a = _tone(0.1)
+    spk.play(a)
+    spk.set_volume(50)
+    spk.play(a)
+    spk.set_volume(0)
+    spk.play(a)
+    spk.close()
+    pcm, _ = read_wav(str(out))
+    x = np.frombuffer(pcm, dtype="<i2").astype(np.int32)
+    ref = np.frombuffer(a, dtype="<i2").astype(np.int32)
+    n = len(ref)
+    assert np.array_equal(x[:n], ref)
+    assert np.abs(x[n:2 * n] - np.round(ref * 0.5)).max() <= 1
+    assert not x[2 * n:].any()
+
+
 def test_wav_speaker_resamples_to_its_rate(tmp_path):
     out = tmp_path / "out.wav"
     spk = WavSpeaker("s", str(out), realtime=False, sample_rate=RATE)

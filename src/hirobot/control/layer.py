@@ -3,8 +3,9 @@
 A layer sits between the caller and the assembled robot (``layers:`` in a
 config, first entry innermost). It sees the robot below as :attr:`Layer.inner`
 and is itself a ``Robot``, so callers do not change when a layer is added.
-Whole-body control (hiWBC), IK, filters and teleop takeover are layers; hiRobot
-ships none, they come from plugin packages (:func:`~hirobot.loading.registry.register_layer`).
+Whole-body control (hiWBC), IK, filters and teleop takeover are layers. hiRobot
+ships one, the ``mink_ik`` IK layer (:mod:`hirobot.layers`); the others come from
+plugin packages (:func:`~hirobot.loading.registry.register_layer`).
 
 :class:`Layer` forwards everything to ``inner`` by default: the capability
 declarations (``action_modes``, ``motion_spaces``, ``direct_joints``,
@@ -49,7 +50,7 @@ from typing import Any, List, Mapping, Optional
 
 import numpy as np
 
-from hirobot.core.embodiment import Embodiment
+from hirobot.core.embodiment import CameraInfo, Embodiment
 from hirobot.core.robot import Robot
 from hirobot.core.robot_skills import RobotSkillError, RobotSkillResult, RobotSkillSpec, validate_args
 from hirobot.core.types import Action, Observation, RobotStatus
@@ -220,6 +221,9 @@ class Layer(Robot):
     @property
     def microphones(self) -> Mapping[str, Any]:  # type: ignore[override]
         return self.inner.microphones
+
+    def camera_info(self, name: str) -> CameraInfo:
+        return self.inner.camera_info(name)
 
     @property
     def speakers(self) -> Mapping[str, Any]:  # type: ignore[override]

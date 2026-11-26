@@ -29,9 +29,13 @@
 - [RobotAssembly](#robotassembly)
 - [控制循环](#控制循环)
 - [DofMap](#dofmap)
+- [特征向量](#特征向量)
+- [录制](#录制)
 - [Kinematics](#kinematics)
+- [仿真资产](#仿真资产)
 - [配置文件参考](#配置文件参考)
 - [CLI](#cli)
+- [MCP 服务器](#mcp-服务器)
 - [编写驱动和层（SPI）](#编写驱动和层spi)
 - [扩展点：相机、末端执行器与音频](#扩展点相机末端执行器与音频)
 
@@ -49,6 +53,7 @@
 | 发命令 | `send_action(action)`、`check_action(action) -> Action`、`hold()`、`set_gains(kp, kd)`、`command_timeout_s` | [Action](#action) |
 | 急停 | `estop()` | [Robot](#robot) |
 | 共用命令流 | `claim(name, ...) -> CommandLease`、`command_events()` | [命令仲裁](#命令仲裁) |
+| 旁听（录制、监控） | `add_listener(on_observation=None, on_command=None) -> ListenerHandle` | [旁听回调](#旁听回调)、[特征向量](#特征向量) |
 | 技能 | `list_robot_skills()`、`run_robot_skill(name, args=None)`、`stop_robot_skill()`、`robot_skill_running` | [技能](#技能) |
 | 按类别的技能 | 机载 skill：`has_onboard_skills`、`list_onboard_skills()`、`run_onboard_skill(name, args=None)`、`stop_onboard_skill()`。层技能：`list_layer_skills()`、`run_layer_skill(name, args=None)`、`stop_layer_skill()`、`layer_skill_running` | [机载 skill](#机载-skill)、[Layer](#layer) |
 | 安全和回合结果 | `safety`（挂上的 `SafetyGate`）、`success`、`done`、`reward` | [SafetyGate](#safetygate)、[控制循环](#控制循环) |
@@ -75,7 +80,7 @@ finally:
 
 | 名字 | 类别 | 模块 | 用途 |
 |---|---|---|---|
-| `Embodiment`, `Joint`, `EndEffector`, `EndEffectorFrame`, `Camera`, `CameraMount`, `AudioDevice`, `EmbodimentKind` | pydantic 模型 / 枚举 | `hirobot.core.embodiment` | 声明式的机器人 I/O 契约 |
+| `Embodiment`, `Joint`, `EndEffector`, `EndEffectorFrame`, `Camera`, `CameraMount`, `CameraIntrinsics`, `CameraInfo`, `AudioDevice`, `ModelRef`, `EmbodimentKind` | pydantic 模型 / 枚举 | `hirobot.core.embodiment` | 声明式的机器人 I/O 契约 |
 | `Observation`, `Action`, `ActionChunk`, `ControlMode`, `MotionClip`, `JOINT_MODES`, `MOTION_SPACES` | pydantic 模型 / 枚举 / 元组 | `hirobot.core.types` | 机器人与 policy 之间的类型化 I/O |
 | `RobotStatus`, `BatteryState`, `CommandProgress` | pydantic 模型 | `hirobot.core.types` | `get_status()` 的返回值（见 [`RobotStatus`](#robotstatus)） |
 | `Robot` | 抽象类 | `hirobot.core.robot` | 驱动契约 |
@@ -86,10 +91,13 @@ finally:
 | `register_body`, `get_body`, `available_bodies` | 函数 | `hirobot.loading.registry` | 按名字注册的驱动注册表 |
 | `register_layer`, `get_layer`, `available_layers` | 函数 | `hirobot.loading.registry` | 由 `layers:` 叠加的 layer 的注册表（见 [Layer](#layer)） |
 | `load_embodiment`, `make_robot` | 函数 | `hirobot` | 从配置名、文件或 dict 构建 embodiment / 机器人 |
+| `model_path`, `available_configs` | 函数 | `hirobot` | 配置里唯一本体的模型文件；内置配置的名字 |
 | `require_sdk` | 函数 | `hirobot.loading.sdk` | 按驱动的 `manifest.yaml` 检查其厂商 SDK |
 | `RobotSkillSpec`, `RobotSkillResult`, `RobotSkillError` | pydantic 模型 / 异常 | `hirobot.core.robot_skills` | 描述、启动和拒绝机载 skill（行走、手势） |
 | `SafetyGate`, `SafetyVerdict`, `SafetyError` | 类 / dataclass / 异常 | `hirobot.control.safety` | 在每个动作到达硬件之前检查它 |
 | `DofMap` | 类 | `hirobot.core.dof` | 按名字重排关节向量 |
+| `CommandRecord`、`ListenerHandle` | frozen dataclass / 类 | `hirobot.control.arbiter` | `on_command` 回调收到的记录；`add_listener` 的返回值（见[旁听回调](#旁听回调)） |
+| `observation_features`、`flatten_observation`、`action_features`、`flatten_action`、`image_features` | 函数 | `hirobot.core.features` | 把 `Observation` / `Action` 拍平成带名字的向量（见[特征向量](#特征向量)） |
 | `pose_compose`, `pose_inverse`, `pose_from_matrix`, `pose_from_axis_angle`, ... | 函数 | `hirobot.geometry.transforms` | 7 维向量位姿 `[x, y, z, qx, qy, qz, qw]` 的位姿运算（不从 `hirobot` 重新导出） |
 | `Kinematics`, `BodyPoses` | 类 | `hirobot.geometry.kinematics` | MJCF 模型的正运动学（见 [Kinematics](#kinematics)；不从 `hirobot` 重新导出） |
 | `__version__` | str | `hirobot` | 包版本 |
@@ -106,6 +114,36 @@ finally:
 （`"unitree_g1"`，等同于 `"robots/unitree_g1"`）、文件路径或已加载的 dict，在展开 `defaults:` 之后
 （见[配置文件参考](#配置文件参考)）。对带部件的 assembly，embodiment 是合并后的整棵树，每个部件的名字都在它的
 `<part>/` 前缀下。不连接、不构建任何东西。配置两者都不是时抛出 `ValueError`。
+
+### `model_path(config) -> Optional[ModelRef]`
+
+配置里唯一那个本体的模型文件，不构建机器人：除了本体个数，和 `load_embodiment(config).model` 一样。
+配置没有本体或有多个本体时抛出 `ValueError`（信息里列出各本体的路径）。返回 `None` 表示只有一个本体，
+但它的设备文件没写 `model:`。不检查文件是否存在。配置加载不了时抛出 `load_embodiment` 抛的异常
+（`ValueError`、`FileNotFoundError`），所以要区分这几种情况的调用方先调 `load_embodiment`：
+
+```python
+import os
+import hirobot
+
+try:
+    hirobot.load_embodiment(config)
+except Exception as e:                # the config does not load
+    ...
+try:
+    ref = hirobot.model_path(config)
+except ValueError as e:               # no body, or more than one
+    ...
+if ref is None:                       # one body without model:
+    ...
+elif ref.kind == "mjcf" and os.path.isfile(ref.path):
+    ...
+```
+
+### `available_configs(group=None) -> List[str]`
+
+内置配置的名字，已排序：`robots/unitree_g1`、`body/unitree/g1`……`group`（`robots`、`body`、
+`end_effector`、`camera`、`microphone`、`speaker`）只列一个目录。和 `hirobot configs` 打印的一样。
 
 ### `make_robot(config, overrides=None, sim=None) -> Robot`
 
@@ -137,6 +175,11 @@ entry-point 插件）。按顺序执行以下步骤：
 带挂载点的相机由世界渲染，不建任何真机驱动。`sim=False` 为带 `sim:` 段的配置构建真机。`sim` 也可以是一个
 合并进配置 `sim:` 的映射（`{"realtime": False, "viewer": True}`）。
 
+仿真相机和真机相机一样按自己的帧率出图：仿真时间到了下一帧的时刻才渲染新的一帧，间隔 `1 / fps`（用它的
+`Camera.fps`；没有时用 `sim.camera_fps`，默认 30）。两帧之间的观测带着同一个图像对象和同一个时间戳（`t`、`seq`），
+所以图像要当只读用。`camera_fps: null` 让没有 `fps` 的相机每次观测都渲染。`connect`、`reset` 或 `set_state`
+之后的第一次观测一定渲染。单独使用的 `mujoco` 本体也有同名的驱动选项 `camera_fps`。
+
 要在上真机之前先在仿真中预演一个动作，也可以用 `read_only: true` 打开真机，用它的 `*_mujoco` 配置另建一个机器人，
 再用 `MujocoRobot.set_state` 让它从真机姿态起步（见 `examples/rehearse_in_sim.py`）。
 
@@ -146,8 +189,8 @@ entry-point 插件）。按顺序执行以下步骤：
 ### Layer
 
 layer 是一个包装另一台机器人、改变其指挥方式的 `Robot`：例如一个全身控制器，接受 `BASE_VELOCITY` /
-`MOTION_CLIP` / `CARTESIAN`，每个 tick 向下层机器人发送保持平衡的关节目标。hiRobot 本身不提供任何
-layer；由插件包（hiWBC）注册。
+`MOTION_CLIP` / `CARTESIAN`，每个 tick 向下层机器人发送保持平衡的关节目标。hiRobot 自带一个，即 IK 层
+[`mink_ik`](#mink_ik内置-ik-层)；其余由插件包（hiWBC）注册。
 
 ```python
 from hirobot import Layer, Robot, register_layer
@@ -183,6 +226,48 @@ layer 通过 `inner.send_action` 发送关节指令，所以 `make_robot` 挂在
 `RobotBusyError`，直到技能结束或调 `stop_layer_skill()`。`TAKEOVER` 会抢占技能（技能被停下）。`estop()` 会结束技能，调用方才能
 `reset()`。
 
+#### `mink_ik`（内置 IK 层）
+
+`mink_ik`（`hirobot.layers.MinkIkLayer`）接收末端目标、发出关节目标：每个 `CARTESIAN` 或 `CARTESIAN_DELTA` 动作在机器人的
+MuJoCo 模型上跑几步微分 IK（[mink](https://github.com/kevinzakka/mink)），再经 `inner.send_action` 发一个含全部关节的
+`POSITION` 动作，所以下面的安全门会检查它。其他模式原样透传。安装：`pip install 'hirobot[ik]'`（mink 要 Python 3.11+）；
+没装时 `hirobot` 照常导入，层也照常注册，构建它时抛 `ImportError`，提示要装的 extra。
+
+```yaml
+layers:
+  - type: mink_ik
+    model: unitree_g1           # MJCF path, or a config whose body has model: mjcf:
+    frames:                     # optional; default: every end-effector with a frame
+      right_hand: {name: right_wrist_yaw_link, type: body}   # body | site | geom
+```
+
+| 键 | 默认值 | 含义 |
+|---|---|---|
+| `model` | 仿真的模型 | MJCF 路径（展开 `~`），或某个配置的名字 / 路径，该配置唯一的本体带 `model: mjcf:`。不给时，层在 `connect()` 时用下面仿真机器人的 MuJoCo 模型；真机必须给 |
+| `frames` | 每个带 `frame` 的末端 | 末端名 -> MJCF body、site 或 geom 的 `{name, type}` |
+| `dt` | 一个控制周期 | 一次 `send_action` 积分的秒数 |
+| `iterations` | `3` | 每次 `send_action` 的 QP 步数 |
+| `position_cost`、`orientation_cost` | `1.0`、`0.5` | 末端任务的权重 |
+| `posture_cost` | `0.01` | 把每个关节拉向上次重新取种时的姿态（让腿和腰不动） |
+| `damping`、`lm_damping` | `0.001`、`0.001` | QP 阻尼；末端任务的 Levenberg-Marquardt 阻尼 |
+| `max_joint_velocity` | `3.0` | 每个关节的 rad/s（或 m/s）；`null` 关掉速度限制 |
+| `joint_limits` | `true` | 解保持在模型的关节范围内 |
+| `solver` | `daqp` | QP 求解器名（qpsolvers） |
+
+- **坐标系。** 目标和层报告的 `ee_poses` 都在机器人基座系：关节所在那棵树的根 body（人形的骨盆、机械臂的基座连杆），与 MuJoCo
+  驱动报告 `ee_poses` 的坐标系相同。浮动基座的自由关节在 QP 里被冻结，不参与求解。
+- **目标。** `CARTESIAN`：`ee_targets[name]` 是 `[x, y, z, qx, qy, qz, qw]`。`CARTESIAN_DELTA`：每个 tick 一个
+  `[dx, dy, dz, dax, day, daz]`（位置加基座系下的轴角旋转），加在该末端上一个目标上，而不是加在测量位姿上。动作里没写的末端保持上一个目标。
+  第一次使用、`reset()`、`hold()` 以及透传过一条命令之后，目标从测量位姿重新取种。未知的末端或长度不对的目标抛 `SafetyError`。
+- **其他关节。** 机器人有而 IK 模型没有的关节（手指）在 `direct_joints` 里，用 `Action.joint_names` / `joint_target` 设置。
+  `gripper` 原样下传。
+- **失败。** 求解器出错或结果非有限时，再发一次上一个关节目标并记一条警告，从不抛异常。够不到的目标不算错误：IK 在限制允许的范围内尽量靠近。
+- **查看状态。** `layer.commanded_ee_poses` 是上一个关节目标的正运动学（它和 `ee_poses` 的差是跟踪误差，例如手臂在 PD 下下垂）；
+  `layer.stats` 有 `count`、`mean_ms`、`max_ms`、`failures`。
+- **关节目标。** `layer.commanded_joint_targets` 是关节名 -> 最近一次 IK 命令下发的 `POSITION` 目标，含该动作的全部关节
+  （录制器每条命令后读它，把 IK 解出的关节目标和请求的 `CARTESIAN` 动作存在一起）。求解失败时保留重发的那个上一个目标。
+  第一次 IK 命令之前、`reset()`、`hold()` 或透传过一条命令之后为 `None`。返回的是副本。
+
 ### 注册表
 
 ```python
@@ -205,12 +290,12 @@ entry-point 组添加驱动；它们与内置驱动一起加载。厂商 SDK 在
 
 | 名字 | 类 | 模块 | 目标 |
 |---|---|---|---|
-| `toy` | `ToyRobot` | `drivers/sim/toy/` | 玩具运动学积分器，无依赖 |
-| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo 物理仿真，本身就是一台机器人；渲染带 `mount` 的相机；为带 `frame` 的末端执行器提供 `ee_poses`；`set_state` 让它从测得的姿态起步 |
+| `toy` | `ToyRobot` | `drivers/sim/toy/` | 玩具运动学积分器，无依赖。浮动基座的 toy 像 IMU 一样报告 `base_linear_acceleration`，静止时为 `[0, 0, 9.81]` |
+| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo 物理仿真，本身就是一台机器人；按相机的 `fps` 渲染带 `mount` 的相机（没有 `fps` 的相机用 `camera_fps`，默认 30；`None` 为每次观测都渲染）；为带 `frame` 的末端执行器提供 `ee_poses`；`set_state` 让它从测得的姿态起步。有浮动基座时，`base_linear_acceleration` 是 IMU 加速度计的读数，与真实 Unitree G1 一致：基座坐标系下的比力（加速度减去重力），单位 m/s²，直立静止时约为 `[0, 0, 9.81]`；固定基座读数为 `[0, 0, 9.81]` |
 | `unitree_sdk2` | `UnitreeRobot` | `drivers/body/unitree/sdk2/` | Unitree G1 / H1 / H1-2 / H2 |
 | `fourier_grx` | `FourierRobot` | `drivers/body/fourier/grx/` | Fourier GR1T1 / GR1T2 |
 | `agibot_gdk` | `AgibotG1Robot` | `drivers/body/agibot/gdk/` | AgiBot G1（精灵 G01）：手臂、腰、头和夹爪走 GDK 的 DDS topic；底盘走其控制盒 |
-| `agibot_aimrt` | `AgibotX1Robot` | `drivers/body/agibot/aimrt/` | AgiBot X1 |
+| `ros2` | `Ros2Robot` | `drivers/body/generic/ros2/` | 任何 ROS 2 机器人，写配置接入：读 `JointState` / `Imu` / `Odometry`；发 `JointTrajectory`、`Float64MultiArray` 或自定义消息（字段映射）。AgiBot X1 是它的一份配置（[指南](setup/ros2.zh-CN.md)） |
 | `franka_droid` | `FrankaDroidRobot` | `drivers/body/franka/droid/` | 走 DROID 机器人服务（zerorpc）的 Franka FR3 和夹爪 |
 | `ur_rtde` | `URRobot` | `drivers/body/ur/rtde/` | Universal Robots UR5e |
 | `agilex_piper_sdk` | `PiperRobot` | `drivers/body/agilex/piper_sdk/` | AgileX PiPER 及其夹爪，走 SocketCAN（`piper_sdk`） |
@@ -257,15 +342,17 @@ maintainers: []
 | `send_action(action)` | concrete | 先 `check_action`，再调驱动的 `_send_action`（[SPI](#编写驱动和层spi)）。被拒绝时抛出 `SafetyError` 且不发送任何内容，`action.joint_names` 列出了 `direct_joints` 之外的关节时也一样。处于故障状态时抛出 `RobotFaultError`；别人持有机器人的[命令租约](#命令仲裁)时（例如它是某个 assembly 的部件而调用不经过 assembly）抛出 `RobotBusyError`（`RuntimeError` 子类） |
 | `check_action(action) -> Action` | concrete | 执行 `send_action` 的全部检查但不发送；返回（可能被裁剪过的）动作。assembly 在发送给任何部件之前对每个部件那部分都运行它 |
 | `fault` | property | 机器人拒绝指令的原因，或 `None`。驱动或 layer 自己进入阻尼或停止时设置，`estop()` 也会设置。`reset()` 返回时清除，期间来过 `estop()` 则不清除。包装器（`RobotAssembly`）也会报告内层机器人的故障。也见 `get_status().fault` |
-| `estop()` | concrete | 立即停下；任何线程、任何时候都能调，不走安全闸，也不受[命令仲裁](#命令仲裁)限制。别的线程上的长调用（`reset` ramp、`connect` 里的等待）在下一步抛出 `RobotStoppedError`；机器人进入故障状态；正在下发的指令先发完（最多等 `ESTOP_LOCK_TIMEOUT_S`，0.2 s），之后不会再有指令发出；然后执行驱动自己的停止。Unitree 和 MuJoCo 进阻尼（Unitree 开着 `builtin_skills` 时改为停掉 skill），AgiBot G1 发 `MotionStop`，UR 减速停下（`servoStop` / `speedStop` / `stopJ`），Franka 停掉位置控制器；没有 `damp()` 的驱动（`toy`、`fourier_grx`、`agibot_aimrt`）只拒绝后续指令。`RobotAssembly` 对它的本体和每个末端执行器、或每个部件都调急停。在 layer 上调时，先直接急停栈最底下的机器人，再从外往里让每一层停下自己的工作（见[层的钩子](#层的钩子)、[Layer](#layer)） |
+| `estop()` | concrete | 立即停下；任何线程、任何时候都能调，不走安全闸，也不受[命令仲裁](#命令仲裁)限制。别的线程上的长调用（`reset` ramp、`connect` 里的等待）在下一步抛出 `RobotStoppedError`；机器人进入故障状态；正在下发的指令先发完（最多等 `ESTOP_LOCK_TIMEOUT_S`，0.2 s），之后不会再有指令发出；然后执行驱动自己的停止。Unitree 和 MuJoCo 进阻尼（Unitree 开着 `builtin_skills` 时改为停掉 skill），AgiBot G1 发 `MotionStop`，UR 减速停下（`servoStop` / `speedStop` / `stopJ`），Franka 停掉位置控制器；没有 `damp()` 的驱动（`toy`、`fourier_grx`、`ros2`）只拒绝后续指令。`RobotAssembly` 对它的本体和每个末端执行器、或每个部件都调急停。在 layer 上调时，先直接急停栈最底下的机器人，再从外往里让每一层停下自己的工作（见[层的钩子](#层的钩子)、[Layer](#layer)） |
 | `claim(name, priority=Priority.CALLER, on_preempt=None, envelope=None, parts=None) -> CommandLease` | concrete | 拿机器人的命令流。见[命令仲裁](#命令仲裁) |
 | `command_events() -> List[CommandEvent]` | concrete | 仲裁器的审计事件，从旧到新；没有仲裁器时为空。见[审计](#审计) |
+| `add_listener(on_observation=None, on_command=None) -> ListenerHandle` | concrete | 每次顶层 `get_observation()` 和 `send_action` / `hold` 都回调一次。见[旁听回调](#旁听回调) |
 | `command_timeout_s` | attribute | 多少秒没有新的 `VELOCITY` / `BASE_VELOCITY` 指令就停下运动并打 warning（`hirobot.control.watchdog.CommandWatchdog`）；不进故障态，下一条指令照常执行。`toy`、`mujoco`（仿真时间）、`unitree_sdk2`（零速、kp 0）、`ur_rtde`（`speedStop`）默认 0.2 s；`agibot_gdk` 的底盘有自己的 `command_timeout`（0.3 s）；其他驱动是 `None`。配置里写 `body.command_timeout_s: null` 关掉。位置目标不看 |
 | `action_modes` | class attribute | 机器人接受的模式。构建动作的调用方读取它 |
 | `motion_spaces` | class attribute | 机器人在 `MOTION_CLIP` 下能跟踪的 `MotionClip.space` 取值。默认为空 |
 | `direct_joints` | class attribute | 调用方可以在非关节模式旁按名字指挥的关节。默认为空 |
 | `cartesian_targets` | property | 接受 `CARTESIAN` 位姿目标的末端执行器：`CARTESIAN` 在 `action_modes` 中时为全部末端执行器，否则为空。只跟踪其中一部分的机器人会覆盖它 |
 | `cameras`、`microphones`、`speakers` | attributes | 挂载的设备，按名字：相机驱动、麦克风和扬声器。裸驱动上为空；`make_robot` 建的 assembly 会填上，每一层 layer 往上传，所以最外层也有。见[扩展点](#扩展点相机末端执行器与音频) |
+| `camera_info(name)` | method -> `CameraInfo` | 相机 `name` 的内参和安装位姿（外参），用来把 `images[name]` 和 `depth[name]`（米，已配准到彩色图）换成 3D。内参取第一个有的来源：配置的 `intrinsics:`；相机驱动（`connect()` 之后；RealSense、Orbbec、ZED 从设备读）；否则由安装位置的 `fovy` 推出理想针孔。结果会缩放到相机声明的 `width` / `height`。`mount` 是光学坐标系在某个机器人连杆中的位姿；头部、腕部相机还要乘上该连杆的当前位姿，这一步由调用方做。子部件的相机名为 `<部件>/<名字>`。相机名不存在时抛 `KeyError` |
 | `accepts_parts` | class attribute | `send_action` 是否接受 `Action.parts`：带子部件的 assembly 为 `True`，其余为 `False` |
 | `now()` | optional | 机器人时钟（秒），`Observation.stamps` 的时间在它上面：默认 `time.monotonic()`，`toy` / `mujoco` 是仿真时间。包装层返回内层机器人的 |
 | `hold()` | optional | 让机器人保持在原处，例如在 policy 停止之后。默认情况下，驱动接受 POSITION 时把当前 `joint_pos` 作为 POSITION 动作发送，否则什么都不做。只接受笛卡尔增量的仿真器什么都不做；带 `builtin_skills` 的 Unitree 什么都不做（运动服务会让机器人保持站立）。有自己平衡回路的驱动（全身控制的人形机器人）必须覆盖它，指挥机器人站定（基座速度 `[0, 0, 0]`）：发送 `joint_pos` 会把关节冻住，人形机器人会摔倒。经过安全门 |
@@ -306,6 +393,8 @@ maintainers: []
 | `cameras` | `List[Camera]` | `[]` | 相机流 |
 | `microphones` | `List[AudioDevice]` | `[]` | 麦克风 |
 | `speakers` | `List[AudioDevice]` | `[]` | 扬声器 |
+| `battery_soc_limit` | `(warn, shutdown)` 或 `None` | `None` | 电池电量（百分比）：`warn` 是监控该标为电量低的值，`shutdown` 是不能再继续命令的值。两档都在 0-100 内，`warn >= shutdown`。`safety:` 没写 `min_battery_soc` 时安全门用 `shutdown` |
+| `model` | `ModelRef` 或 `None` | `None` | 机器人唯一本体的模型文件，来自它设备文件的 `model:`。有多个本体或没写 `model:` 时为 `None`。由 `load_embodiment` 和 `make_robot` 填写，真机也有 |
 
 属性：`joint_names -> List[str]`、`num_dofs -> int`。
 
@@ -321,6 +410,7 @@ maintainers: []
 | | `torque_limit` | `float` or `None` | 最大绝对力矩（Nm） |
 | | `axis` | `(x, y, z)` or `None` | 关节转轴的单位向量，在该关节带动的 link 的坐标系里（同 URDF `<axis>` 和 MJCF `axis`），不是世界坐标系 |
 | | `parent_link` | `str` or `None` | 关节挂在哪个 link 上（URDF `<parent>`） |
+| | `temperature_limit` | `(warn, shutdown)` or `None` | 电机温度（摄氏度）：`warn` 是监控该标为过热的温度，`shutdown` 是不能再继续命令的温度。两档都 > 0，`warn <= shutdown`。`safety:` 没写 `max_joint_temperature` 时安全门用 `shutdown` |
 | `EndEffector` | `name` | `str` | `ee_poses` / `ee_targets` / `gripper` 中的键 |
 | | `has_gripper` | `bool` | 有通过 `Action.gripper` 控制的夹爪。末端执行器驱动不列 `joints`（`opening` 接口）时必须为 true，列了 `joints` 时不能为 true |
 | | `joints` | `List[str]` | 该末端执行器驱动的 embodiment 关节（手指关节），按其驱动的电机顺序排列 |
@@ -330,10 +420,19 @@ maintainers: []
 | | `width`, `height` | `int` | 交付的画面尺寸 |
 | | `driver` | `dict` or `None` | 相机驱动规格：`type` 指定一个已注册的相机驱动，其他键是它的参数。由本体驱动自己渲染的相机（仿真器）省略此项。旧键 `source` 会报错 |
 | | `depth` | `bool` | RGB-D 相机：其驱动还会交付一张与彩色图像配准的深度图，放在 `Observation.depth` 中同名键下。默认 `False` |
-| | `fps` | `float` or `None` | 标称帧率。`stale_sources` 用它判断过期；`control_hz` 超过它两倍时 `make_robot` 警告 |
-| | `mount` | `CameraMount` or `None` | 相机的安装位置：`body`（连杆名）、`pos`（m，在该连杆中）、光学坐标系（z 向前，x 向右，y 向下）在该连杆中的 `quat` `[x, y, z, w]`、`fovy`（垂直视场角，度）。`mujoco` 本体把装好的相机渲染进 `images`；真实相机驱动忽略它 |
+| | `fps` | `float` or `None` | 标称帧率。`stale_sources` 用它判断过期；`control_hz` 超过它两倍时 `make_robot` 警告。仿真相机按这个帧率渲染（没有时按 `sim.camera_fps`） |
+| | `mount` | `CameraMount` or `None` | 相机的安装位置：`body`（连杆名）、`pos`（m，在该连杆中）、光学坐标系（z 向前，x 向右，y 向下）在该连杆中的 `quat` `[x, y, z, w]`、`fovy`（垂直视场角，度）。这就是相机的外参：`mujoco` 本体按这个位姿把相机渲染进 `images`；对真实相机，它是标定出的位姿，用 `Robot.camera_info` 读回。配置里由相机的 `placement` 给出 |
+| | `intrinsics` | `CameraIntrinsics` or `None` | 标定得到的固定内参（相机文件的 `intrinsics:`）。比驱动从设备读到的优先 |
+| `CameraIntrinsics` | `width`, `height` | `int` | 这套内参对应的图像尺寸。配置里默认取相机的 `width` / `height` |
+| | `fx`, `fy`, `cx`, `cy` | `float` | 针孔模型的焦距和主点，单位像素。像素 `(u, v)` 原点在左上角，`u` 向右，`v` 向下，像素中心在整数坐标上。光学坐标系（OpenCV：z 向前，x 向右，y 向下；单位 m）中的点 `(x, y, z)` 在畸变前投影到 `u = fx·x/z + cx`、`v = fy·y/z + cy` |
+| | `model`, `coeffs` | `str`, `tuple` | 畸变：`none`（默认，无系数）、`brown_conrady` / `plumb_bob`（OpenCV 的 `k1, k2, p1, p2, k3`）、`inverse_brown_conrady`（RealSense，同样 5 个）、`kannala_brandt`（OpenCV 鱼眼 `k1..k4`）。系数全为 0 时算作 `none` |
+| | `K`, `scaled(w, h)`, `from_fovy(w, h, fovy)` | | `K` 是 3x3 的 numpy 相机矩阵。`scaled` 给出同一相机在另一分辨率下的内参（整图缩放，不裁剪）。`from_fovy` 是主点在图像中心的理想针孔，即仿真器渲染出的相机 |
+| `CameraInfo` | `name`, `intrinsics`, `intrinsics_source`, `mount`, `depth` | | `Robot.camera_info` 的返回值。`intrinsics_source` 为 `config`、`driver`、`fovy` 或 `None` |
 | `AudioDevice` | `name` | `str` | `robot.microphones` / `robot.speakers` 中的键 |
 | | `driver` | `dict` or `None` | 音频驱动规格：`type` 指定一个已注册的麦克风或扬声器驱动，其他键是它的参数 |
+| `ModelRef` | `kind` | `"mjcf"` 或 `"urdf"` | `path` 的格式。`model:` 两个都有时取 `mjcf`。不可修改，可哈希；以后加的字段都是可选的 |
+| | `path` | `str` | 绝对路径，`~` 已展开。不检查文件是否存在 |
+| | `package_roots` | `Dict[str, str]` | 只用于 URDF：包名 -> 绝对目录，用来解析 `package://` 网格路径。MJCF 时为空 |
 
 `EmbodimentKind` 是字符串枚举，取值 `HUMANOID = "humanoid"` 和 `ARM = "arm"`。
 
@@ -536,7 +635,8 @@ robot.stop_onboard_skill()
 关键字：属性的 `type`（number / integer / boolean / string）、`minimum`、`maximum`、
 `exclusiveMinimum`、`enum`、`default` 和 `required`。缺少的参数取其 `default`；未知参数会被拒绝。
 它在机器人接受指令后就返回，而不是等动作结束。`RobotSkillResult` 包含 `name`、检查后的 `args`
-（已填入默认值）和 `duration_s`。
+（已填入默认值）和 `duration_s`：驱动按这次参数给了估计值就用它（G1 `walk` 是它的 `seconds`；`turn` 按角度估的上限），
+否则用 spec 的 `duration_s`。
 
 skill 未知、参数错误或机器人拒绝时抛出 `RobotSkillError`。
 
@@ -618,6 +718,29 @@ robot.get_status().safety["audit"]   # 计数、当前持有者、最后一次�
 `detail`。放行的命令只计数不记事件：`safety["audit"]` 里有 `accepted`、`refused`、`by_lease`（没人持有时的调用记在
 `"(direct)"`；最多留最近 64 个名字）、`holder`、`last_refusal`。租约上也有 `accepted`、`refused`。
 
+### 旁听回调
+
+`robot.add_listener` 让录制器或监控程序看到机器人读到什么、被要求做什么，自己不在命令通路上。
+在最外层机器人（`make_robot` 返回的）上调用；在单个驱动上调用时，会像 `claim` 一样挂一个仲裁器。
+
+```python
+import queue
+
+q: "queue.Queue" = queue.Queue()
+handle = robot.add_listener(on_observation=q.put, on_command=q.put)
+...
+handle.remove()
+```
+
+| 项 | 含义 |
+|---|---|
+| `on_observation(obs)` | 这个机器人上每次顶层 `get_observation()`，参数是返回的 `Observation`。命令内部的读取（`hold()` 读当前姿态）不回调 |
+| `on_command(record)` | 每次顶层 `send_action` 和 `hold`，直接调用或经租约，放行或被拒都算。`hold()` 内部发的 `send_action` 不回调，`reset`、skill、层往下发的命令也不回调 |
+| `CommandRecord` | `t`（调用开始时的 `now()`）、`call`（`send_action` / `hold`）、`action`（调用方传入的原样，包络或 gate 截断之前；`hold` 为 `None`）、`lease` 和 `priority`（直接调用为 `None`）、`accepted`、`reason`（`SafetyError`、`RobotBusyError`、`RobotFaultError` 或驱动错误的消息）、`parts`（租约的部件路径） |
+| 线程 | 回调在调用方线程上、调用结束后同步执行，必须很快返回：把数据放进队列。任何线程都可以添加、移除回调 |
+| 错误 | 回调抛出的异常只记日志（每个回调每 10 s 最多一条；`handle.errors` 计数），不改变调用结果 |
+| `ListenerHandle` | `remove()`（调两次也行）、`active` |
+
 ## SafetyGate
 
 `hirobot.control.safety`。`Robot.send_action` 在每个动作到达驱动之前运行的检查。
@@ -643,6 +766,9 @@ gate.check(action, embodiment=None) -> SafetyVerdict   # 只看动作本身的�
 | `max_joint_error` | 位置目标离实测位置最远多少（rad），每个关节。`None` 跳过 |
 | `min_battery_soc` | `get_status().battery.soc` 低于这个值（百分比）时拒绝命令。`None` 跳过 |
 | `max_joint_temperature` | `get_status().joint_temperature` 里有关节高于这个值（摄氏度）时拒绝命令。`None` 跳过 |
+
+没给 `min_battery_soc` 和 `max_joint_temperature` 时，`from_embodiment` 从本体取：`Embodiment.battery_soc_limit[1]`
+和所有 `Joint.temperature_limit[1]` 里最小的那个。`safety:` 里写了的值优先。
 
 始终检查：`joint_target` 是一维且有限的，夹爪值有限；`base_velocity`、`base_target`、`latent`、
 `ee_targets` 的每一项以及 `motion` 的每个数组都是有限的。
@@ -803,6 +929,125 @@ policy_q = m.remap(obs.joint_pos)
 robot_target = m.scatter(policy_target, default=obs.joint_pos)
 ```
 
+## 特征向量
+
+`hirobot.core.features` 把 `Observation` 或 `Action` 拍平成 float32 向量，每一维带名字，即 LeRobot 这类数据集存的格式。
+关节按 `Embodiment.joints` 的顺序；组装体里的名字带 `<part>/` 前缀。
+
+```python
+from hirobot import flatten_observation, observation_features
+
+names = observation_features(robot.embodiment)   # {"observation.state": ["j0.pos", ...], ...}
+obs = robot.get_observation()
+row = flatten_observation(obs, robot.embodiment)  # {"observation.state": array([...]), ...}
+```
+
+| 键 | 值 | 名字 |
+|---|---|---|
+| `observation.state` | `joint_pos`，接着每个带夹爪的末端的 `gripper` | `<joint>.pos`、`<ee>.gripper` |
+| `observation.ee_pose` | `ee_poses`，每个末端 7 维 | `<ee>.x` ... `<ee>.qw` |
+| `observation.joint_vel`、`observation.joint_torque` | `joint_vel`、`joint_torque` | `<joint>.vel`、`<joint>.torque` |
+| `observation.imu` | `base_orientation` `[x, y, z, w]`、`base_angular_velocity`、`base_linear_acceleration` | `imu.qx` ... `imu.az`（10 维） |
+| `observation.base` | `base_position`、`base_linear_velocity` | `base.x` ... `base.vz`（6 维） |
+| `action` | 关节模式：`joint_target`，接着各夹爪。非关节模式旁带的关节：`joint_names` 给出的目标，按全部关节排，其余为 `NaN` | `<joint>.pos`（对应模式下为 `.vel`、`.torque`）、`<ee>.gripper` |
+| `action.gripper` | 非关节模式下的夹爪 | `<ee>.gripper` |
+| `action.ee`、`action.ee_delta` | `CARTESIAN`（每个 7 维）/ `CARTESIAN_DELTA`（每个 6 维）下的 `ee_targets` | `<ee>.x` ... `<ee>.qw` / `<ee>.dx` ... `<ee>.daz` |
+| `action.base_velocity`、`action.base_target` | `base_velocity`、`base_target`（`BASE_POSE`） | `base.vx`、`base.vy`、`base.wz` / `base.x`、`base.y`、`base.yaw` |
+
+| 函数 | 返回 |
+|---|---|
+| `observation_features(embodiment, obs=None)` | 键 -> 名字。不给 `obs` 时是这个 embodiment 可能有的全部键（`imu` 和 `base` 只在浮动基座时有）；给了就是它填了的键 |
+| `flatten_observation(obs, embodiment)` | 键 -> 向量。长度不对抛 `ValueError` |
+| `action_features(embodiment, mode=POSITION, action=None)` | 键 -> 名字，按 `mode` 或按 `action` |
+| `flatten_action(action, embodiment)` | 键 -> 向量。`Action.parts` 按机器人里的名字拍平；各叶子必须同一种模式 |
+| `image_features(embodiment)` | `observation.images.<cam>` -> 相机名。图像不拍平 |
+
+观测或动作没填的来源，对应的键就不出现。出现的键总是完整长度；其中缺的部分（某个末端的位姿、IMU 的加速度、某个夹爪）为 `NaN`。
+`kp` / `kd`、`latent`、`motion`、`extra` 不拍平。
+
+## 录制
+
+`hirobot.record` 把 episode 存成 LeRobot v3.0 数据集，不 import lerobot（`pip install 'hirobot[record]'`：pyarrow 和 PyAV）。
+`Recorder` 是最外层机器人上的一个[旁听回调](#旁听回调)：它从不给机器人发命令，它出错也不会影响控制循环。
+
+```python
+from hirobot.record import Recorder
+
+rec = Recorder(robot, "data/")           # fps：min(30, control_hz)；没有相机时为 control_hz
+rec.subscribe(lambda e: print(e.state, e.path, [f.name for f in e.flags]))
+rec.start("pick the cube", meta={"operator": "ann"})
+...                                      # 控制循环照常跑
+rec.stop()                               # 立刻返回；episode 在后台保存
+rec.close()                              # 把队列里的存完
+```
+
+| 项 | 含义 |
+|---|---|
+| `Recorder(robot, root, *, fps=None, max_queue=15, min_duration_s=1.0, max_buffer_mb=4096, max_samples=1_000_000, copy_images=False, robot_config=None, hold_after_s=0.5, frozen_s=1.0, max_queue_mb=8192, worker="process", ring_mb=256)` | 没装 pyarrow 或 PyAV 时抛 `ImportError`。`fps` 必须是整数。图像像素超过 `max_buffer_mb`、或读数超过 `max_samples` 后，这个 episode 不再存新的。`copy_images` 仍可传但不起作用：存下的每张图本来就会复制进帧环 |
+| `worker` | episode 在哪里保留和保存。`"process"`（默认）：一个 Python 子进程，第一次 `start()` 时启动并复用，对齐和编码不占控制进程的 GIL。`"thread"`：本进程的一个线程。没有 `memfd`（非 Linux），或子进程连续两次没就绪就退出时，录制器记一条警告并改用 `"thread"` |
+| `ring_mb` | 新图像送往 worker 途中复制进的共享内存环的大小（至少能放下声明的最大相机的 16 帧），在构造时分配并逐页写一遍。环满时到达的帧被丢弃，episode 标红 `dropped_samples` |
+| `Recorder.worker` | `"process"` 或 `"thread"`：现在在哪里保存（算上回退） |
+| `start(task, meta=None) -> int` | 开始一个 episode，返回编号。正在录、或等着保存的停下的 episode 已有 `max_queue` 个或占的图像超过 `max_queue_mb` 时抛 `RecorderError`。`meta` 原样保存 |
+| `stop() -> int` / `cancel()` | `stop` 把 episode 放进保存队列；`cancel` 丢弃 |
+| `subscribe(callback) -> Subscription` | 在录制器的分发线程上调 `callback(SaveEvent)`（不是控制循环的线程，也不是 worker 的）：先 `saving`，再 `saved`（带 `path`、`flags`、`frames`）或 `failed`（带 `error`）。回调慢只会推迟后面的事件，不影响录制 |
+| `wait(timeout=None)`、`close(timeout=None)`、`recording`、`queue_length` | `close` 停下正在录的 episode 并保存（元数据里 `"stopped_by": "close"`），结束 worker，送出最后的事件，然后结束录制器的线程、释放帧环。超过 `timeout` 后，子进程仍会存完已经收到的 episode，即使本进程已退出；还没交给它的样本会丢失。没调 `close()` 就丢掉的录制器会被垃圾回收，它的线程和 worker 也按同样方式结束 |
+| `append_verdict(path, episode, verdict, note="", reviewer=None)` | 给 `meta/qc.jsonl` 加一行人工 `PASS` / `FAIL` / `UNREVIEWED`；`read_qc(path)` 读回各行 |
+
+录制时旁听回调每个新的 `stamps[source].seq` 存一个状态样本（不带 `images`、`depth` 和 `extra`，数据集不读它们），
+每个新的相机 `seq` 把一张图复制进帧环；一个发送线程把两者流式交给 worker。`stop()` 之后，worker 把所有数据对齐到 `1/fps` 的网格上，网格覆盖所有流都有数据的时段（连续量线性插值，四元数归一化，夹爪取帧时刻及之前的最近读数，
+命令和它所回应的那次状态读数配对，图像取最近的一帧），每路相机编码成 H.264，每个 episode 写一个目录：
+
+```
+<root>/<YYYYmmdd-HHMMSS>_<task>_<NNNN>/
+  meta/info.json, meta/stats.json, meta/tasks.parquet, meta/episodes/chunk-000/file-000.parquet
+  data/chunk-000/file-000.parquet
+  videos/observation.images.<cam>/chunk-000/file-000.mp4
+  meta/hi/info.json           # hi.action_mode, hi.robot_config, hi.hirobot_version, hi.control_hz, hi.recorder_fps
+  meta/hi/alignment.json      # 各流、图像偏差、裁掉的时间、命令、租约事件
+  meta/hi/episode.json        # 任务、meta、起止时间
+  meta/qc.jsonl               # 保存时的标红项，之后是人工结论
+```
+
+`meta/info.json` 只有 LeRobot 自己的键。录制器的数据集级键在 `meta/hi/info.json` 里，是一个扁平的 JSON 对象，键保留 `hi.` 前缀
+（LeRobot 加载数据集时会丢掉 `info.json` 里不认识的键）。
+
+状态和动作列就是[特征向量](#特征向量)（`observation.state`、`action` 等）。录制器另加：
+
+| 列 | 含义 |
+|---|---|
+| `action` | 这个 episode 里最多的那种模式的命令（`meta/hi/info.json` 的 `hi.action_mode`）。第 `k` 行是这一帧的状态读数之后、下一次读数之前发出的第一条命令，所以第 `k` 行的状态就是这条命令回应的状态；那段时间没有命令时取仍在生效的那条。状态读数比网格慢时（每个动作块只观测一次的循环），显示同一次读数的后续帧取自己这一帧时段内发出的第一条命令，没有时取帧时刻仍在生效的那条。`hold()` 之后，以及 `hold_after_s` 内没有命令而算作 `hold` 的帧（命令看门狗的 hold 不会上报），位置类目标（`POSITION`、`PD`、`CARTESIAN`、`BASE_POSE`）和夹爪保持最后的值，速度、每拍增量和力矩（`VELOCITY`、`TORQUE`、`CARTESIAN_DELTA`、`BASE_VELOCITY`，以及 `CARTESIAN` 旁的 `base_velocity`）为 0。处在别的模式命令下的帧为 `NaN`，episode 标红 `mixed_action_modes` |
+| `hi.control_source` | 那条命令的来源：`policy`（直接调用或 `CALLER` 租约）、`teleop`（`TAKEOVER` 租约）、`skill`（`LAYER_SKILL`），或 `hold`：还没有命令、调了 `hold()`、或 `hold_after_s` 内没有命令 |
+| `intervention` | 在同时有 `policy` 帧的 episode 里 `hi.control_source == "teleop"`；纯遥操作的 episode 全是 `false` |
+| `hi.rejected_action`、`hi.rejected_action_mask` | 被拒的 `send_action`（被抢占、被安全包络或 gate 拒绝）只记在时段包含它的那一帧上，一段里有多条时取最后一条。一帧的时段从它的状态读数开始（前面已有帧显示同一次读数时从它的网格时刻开始），到下一帧时段开始为止。没有时 `hi.rejected_action` 为 `0.0`、mask 为 `false`；被拒的动作转换不成这些列时也是 `0.0`（mask 仍为 `true`）。判断哪一行有被拒动作要看 mask，不要看值。用 0 而不用 `NaN`，是因为 pandas（以及 LeRobot 的 `aggregate_datasets`）会把列表列里的 `NaN` 变成 null |
+| `hi.capture_time` | 帧时刻及之前那次状态读数的机器人时钟时间 |
+| `hi.stamp.<source>.t`、`hi.stamp.<source>.seq` | 那次读数的时间戳，每个源都有，相机也有 |
+| `hi.image_skew.<cam>` | 图像时间减帧时间，单位秒 |
+| `hi.ik_joint_target` | 这一帧的命令对应的 IK 层下发的关节目标（机器人有 `commanded_joint_targets` 时才有） |
+
+保存时的标红项，在 `SaveEvent` 和 `meta/qc.jsonl` 里（有任何一项时结论为 `FAIL`）：`too_short`、`missing_camera`、`camera_gap`、
+`frozen_camera`（帧在来但 32x24 缩略图 `frozen_s` 内没变）、`alignment`（超过 1% 的帧取到的图像偏差大于 `1/(2 fps)` 秒）、
+`invalid_state`、`dropped_samples`（到了缓冲上限、帧环满了，或有 worker 收不下的样本）、`fault`（`stop()` 时机器人报了 `start()` 时没有的故障）、`no_commands`、
+`mixed_action_modes`、`unrecorded_action`。
+
+正在录的 episode 和停下但还没存完的 episode 的原始图像都在 worker 里，1080p 每帧约 6 MB。一个 episode 最多留 `max_buffer_mb`。
+停下但还没存完的 episode 占的图像超过 `max_queue_mb` 时 `start()` 拒绝开录，所以原始图像不超过 `max_queue_mb + 2 * max_buffer_mb`
+（默认值下 16 GB）。控制进程自己只占帧环（`ring_mb`）。
+
+仿真（`toy`、`mujoco`）只在发命令或装配体空转某个部件时推进时间，所以 `hold()` 之后只调 `get_observation()` 的循环一直读到同一个仿真时刻。
+这些读数按 stamp 去重，录不出超过 `hold_after_s` 的帧，episode 在最后一条命令处结束。要在仿真里录 hold，就每拍调一次 `hold()`（或重发保持的目标）。
+真机的时钟自己走，不用多调。
+
+这个版本之前录的 MuJoCo episode，`observation.imu` 第 7 到 9 维（线加速度）是 `NaN`，不要和新录的 episode 合并。
+
+**已知限制：大图像下的控制循环延迟。** 在 50 Hz 的 MuJoCo G1 + IK 循环、一路 1920x1080 相机、仿真在空闲 GPU 上渲染时测得：
+
+- 录制期间单拍 p99 为 8.2 到 8.9 ms，最慢 14.3 ms，没有超过 20 ms 的拍。
+- 保存期间单拍 p99 为 8.4 到 10.2 ms。
+- `stop()` 之后控制进程每个 episode 花约 2 ms CPU（之前在本进程线程上保存时约 600 ms）。
+
+如果 GPU 同时在驱动显示器，不录制时仿真同步读回 1080p 画面本身的 p99 就到了 23.7 ms。用 `MUJOCO_EGL_DEVICE_ID` 给 MuJoCo 的 EGL 渲染选一块空闲 GPU。
+在 import numpy 之前设 `NUMPY_MADVISE_HUGEPAGE=0`，可以避免分配大帧数组时透明大页整理造成的卡顿。
+
 ## Kinematics
 
 `hirobot.geometry.kinematics.Kinematics.from_mjcf(path, backend="numpy")` 加载一个 MJCF 模型，并由关节角和基座位姿
@@ -829,10 +1074,34 @@ robot_target = m.scatter(policy_target, default=obs.joint_pos)
 ```python
 from hirobot.geometry.kinematics import Kinematics
 
-kin = Kinematics.from_mjcf("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
+kin = Kinematics.from_mjcf("~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
 poses = kin.forward(obs.joint_pos, base_pos=[0, 0, 0.79], base_quat=[0, 0, 0, 1],
                     joint_names=robot.embodiment.joint_names)
 pos, quat = poses["torso_link"]
+```
+
+## 仿真资产
+
+`hirobot.assets` 从 Hugging Face 数据集 `humanoidintelligence/hirobot-assets` 下载仿真模型
+（MJCF / URDF）到 `~/.cache/hirobot/assets`，保留数据集里的目录结构；内置的 `*_mujoco` 配置就指向
+那里的文件。需要 `pip install 'hirobot[assets]'`（`huggingface_hub`）。import 和加载配置都不联网，
+只有 `fetch` 联网。命令行是 `hirobot assets list` / `hirobot assets fetch`。
+
+| 名字 | 说明 |
+|---|---|
+| `REPO_ID`, `REVISION` | 数据集，以及 `fetch` 下载它的哪个 tag |
+| `repo_id() -> str` | `fetch` 用的数据集：设了 `$HIROBOT_ASSETS_REPO`（目录和 tag 都相同的另一个数据集，比如镜像）就用它，否则用 `REPO_ID` |
+| `ASSETS` | `{名字: allow_patterns}`：每个模型的目录，加上来源的 `LICENSE`、`SOURCE.md` 和数据集的 `README.md` |
+| `assets_dir() -> Path` | `~/.cache/hirobot/assets`，内置配置就在这里找 |
+| `fetch(names, *, token=None) -> Path` | 下载一个名字或一组（`snapshot_download`，已有的文件不重下），返回 `assets_dir()`。未知名字报 `ValueError`，没装 `huggingface_hub` 报 `RuntimeError`。`token` 默认用 `hf auth login` 保存的或 `$HF_TOKEN` |
+| `is_fetched(name) -> bool` | 这个模型的文件是否已在 `assets_dir()` 里 |
+| `asset_of(path) -> Optional[str]` | 哪个名字的模型文件包含 `path`（在 `assets_dir()` 下），都不是就 `None` |
+
+```python
+from hirobot import assets
+
+assets.fetch(["unitree_g1", "menagerie_universal_robots_ur5e"])
+assets.is_fetched("unitree_g1")   # True
 ```
 
 ## 配置文件参考
@@ -859,12 +1128,18 @@ frames:                     # 任务空间坐标系（末端执行器 site）
   - {name: tcp}
 mounts:                     # 组件可以挂接的位置（link -> site）
   wrist_camera: {link: wrist_3_link}
-model:                      # 可选的 MJCF，用于仿真 / 碰撞 / 运动学
-  mjcf: ~/models/ur5e.xml
+model:                      # 可选：本体的模型文件（Embodiment.model）
+  mjcf: ~/models/ur5e.xml   # MJCF，用于仿真 / 碰撞 / 运动学
+  # urdf: ../urdf/ur5e.urdf                        # 或者 URDF（只用于绘制）
+  # package_roots: {ur_description: ../urdf}       # URDF package:// 的根目录
 driver: {type: ur_rtde}     # 注册的驱动名 + 它的构造参数
 ```
 
-相机文件带 `width` / `height` / `fps` / `depth` / `fovy`；末端执行器文件带 `interface`（`joints` 或
+`model:` 要有 `mjcf` 或 `urdf`；两个都有时 `Embodiment.model` 取 MJCF。相对路径（包括
+`package_roots` 里的）按设备文件所在目录展开。仿真、`mujoco` 驱动和 `mink_ik` 需要 `mjcf`，只有 `urdf`
+的本体在那里会被拒绝。`kp`、`kd`、`armature`、`home` 设置 `mujoco` 本体的增益、armature 和初始姿态。
+
+相机文件带 `width` / `height` / `fps` / `depth` / `fovy` / `intrinsics`（`{fx, fy, cx, cy}`，可选 `width`、`height`、`model`、`coeffs`）；末端执行器文件带 `interface`（`joints` 或
 `opening`）、`joints`、`tcp`；麦克风或扬声器只带 `driver`。
 
 **机器人配置**有一个 `assembly:` 节点列出它的部件。部件是一个设备或另一个节点，用 `from:`（内置名字或路径，
@@ -896,6 +1171,9 @@ arbiter:
   audit_size: 256          # 可选；审计环形缓冲保留的事件数
 sim:                       # 可选；make_robot(..., sim=True) 构建一个共享的 MuJoCo 世界
   realtime: true
+  camera_fps: 30           # 没有 fps 的相机；null 为每次观测都渲染
+mcp:                       # 可选；`hirobot mcp` / serve_mcp 提供什么（见“MCP 服务器”）
+  tools: [observe]
 ```
 
 单机器人配置就是只有一个 `body` 部件的 `assembly:`（见 `robots/ur_ur5e`）。设备引用上的 `overrides` 合并进
@@ -911,11 +1189,193 @@ policy 设置（模型服务器、chunk 长度）不属于机器人配置。
 | 命令 | 说明 |
 |---|---|
 | `hirobot --version` | 打印版本 |
-| `hirobot info --config NAME_OR_PATH [--resolved]` | 打印 embodiment：类型、控制频率、浮动基座、关节、末端执行器、相机。`--resolved` 打印合并 `defaults:` 之后的完整配置 |
+| `hirobot info --config NAME_OR_PATH [--resolved]` | 打印 embodiment：类型、控制频率、浮动基座、关节、末端执行器、相机、模型文件。`--resolved` 打印合并 `defaults:` 之后的完整配置 |
 | `hirobot configs [GROUP]` | 列出内置配置（`robots`、`body`、`end_effector`、`camera`、`microphone`、`speaker`）。`robots/` 下的名字也可以不带前缀（`unitree_g1`） |
+| `hirobot assets list` | 列出 `hirobot assets fetch` 能下载的仿真模型、是否已在 `~/.cache/hirobot/assets` 里、是什么（见“[仿真资产](#仿真资产)”） |
+| `hirobot assets fetch NAME... \| --all [--token T]` | 把这些模型（或全部）下载到 `~/.cache/hirobot/assets`；需要 `hirobot[assets]`。未知名字、没装 `huggingface_hub` 或下载失败时退出码 2（私有数据集要先 `hf auth login`；`HF_ENDPOINT` 可以指向镜像） |
 | `hirobot sim CONFIG [--seconds N] [--viewer] [--fast]` | 运行一台仿真机器人：连接，保持起始姿态 N 秒（默认 3），打印剩余的关节误差、基座高度、渲染出的图像和 `get_observation` 耗时。自由基座摔倒时会提示。对真机本体以退出码 2 退出；`--viewer` 需要 MuJoCo 本体 |
 | `hirobot check --sim CONFIG [--against-real] [--driver PART:KEY=VALUE ...] [--tolerance 0.02]` | 建仿真检查用的世界，不推进：每个本体要有 `model:`，每个关节要在它的 MJCF 里且有执行器，每个末端 frame 是 MJCF 里的 body；关节限位和 MJCF 的 range 差超过 0.1 rad 打印 warning。`--against-real` 再以 `read_only: true` 打开每个本体的真机驱动（没有这个模式就拒绝），读一次观测，打印同一组关节角下每个末端的实测和模型位置差。出错或误差超过 `--tolerance` m 时退出码 1。库：`hirobot.sim.check_sim` |
+| `hirobot mcp CONFIG [--transport stdio\|http] [--host H] [--port P] [--path /mcp] [--tools CATEGORY ...] [--max-steps N] [--no-reset]` | 把机器人作为 MCP 服务器提供出来（见“[MCP 服务器](#mcp-服务器)”）；需要 `hirobot[mcp]`。没装 `mcp` 包或配置有错时退出码 1 |
 | `hirobot view CONFIG [--model MUJOCO_CONFIG] [--body KEY=VALUE ...] [--hz 30] [--seconds N]` | 在 MuJoCo viewer 里显示真机姿态。以 `read_only: true` 打开 CONFIG（驱动没有 `read_only` 模式就拒绝），每帧把测得的关节（按名字对）和基座姿态拷进模型，从不发命令。`--model` 默认用内置的 `<config>_mujoco`。仿真机器人或找不到模型时退出码 2。库：`hirobot.sim.view` |
+| `hirobot scan [--interface NIC] [--timeout 2] [--no-unitree] [--json]` | 只读地查看本机和机器人网络，打印摘要（`--json`：只打印报告）。不发命令，不改任何设置。什么都没找到也退出码 0。见“[`hirobot scan` 和 `hirobot init`](#hirobot-scan-和-hirobot-init)”。库：`hirobot.scan` |
+| `hirobot init -o FILE [--model NAME] [--interface NIC] [--answers FILE] [--yes] [--force] [--no-verify] [--timeout 2]` | 扫描，选定型号和网卡，把本地配置写到 FILE，再只读打开它，说明哪些部件发来了数据。退出码 0 已写入（并已检查），1 什么都没写，2 已写入但检查失败。库：`hirobot.scan.init_config` |
+
+### `hirobot scan` 和 `hirobot init`
+
+这个版本只认识 Unitree 机器人（G1、带 Dex3 手的 G1、H1、带 Inspire 手的 H1、H1-2、H2）。
+`hirobot scan` 读取本机信息（网卡、已装的 SDK、ROS 2、相机、音频设备）；当某块网卡有
+`192.168.123.x` 的地址（或用 `--interface` 指定一块）时，探测这块网卡上的 Unitree 机器人。
+探测只订阅 `rt/lowstate` 和 `rt/dex3/{left,right}/state`，并向 motion switcher 查询一次
+`CheckMode`。它不创建 DDS publisher，不发命令，不改网络设置。需要 `sudo` 的操作只列在
+suggestions 里，不会执行。
+
+在带 Dex3 手的 G1 上，`hirobot scan --json` 打印的报告形如（示例，有删节）：
+
+```json
+{
+  "version": 1,
+  "host": {
+    "hostname": "robot-pc", "os": "Linux 5.15.0-tegra", "arch": "aarch64",
+    "python": "3.10.12", "jetson": "NVIDIA Jetson Orin NX",
+    "interfaces": [{"name": "eth0", "up": true, "ipv4": ["192.168.123.164/24"],
+                    "mac": "00:11:22:33:44:55", "speed_mbps": 1000, "unitree_subnet": true}],
+    "sdks": [{"distribution": "unitree_sdk2py", "minimum": "1.0.1", "installed": "1.0.1",
+              "ok": true, "drivers": ["unitree_handcmd", "unitree_sdk2", "..."],
+              "install": "pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>"}],
+    "ros2": {"distro": null, "rclpy": false},
+    "cameras": [{"kind": "realsense", "name": "Intel RealSense D435", "serial": "123456789",
+                 "device": null}],
+    "audio": {"source": "alsa", "devices": [{"name": "USB Audio", "inputs": 1, "outputs": 2}]},
+    "suggestions": [],
+    "notes": []
+  },
+  "unitree": {
+    "interface": "eth0",
+    "status": "found",
+    "error": null,
+    "msg_family": "hg",
+    "motor_slots": 35,
+    "motors_reporting": 29,
+    "reporting_slots": [0, 1, 2, "...", 28],
+    "mode_machine": 5,
+    "lowstate_hz": 500.0,
+    "motion_service": {"checked": true, "mode": "ai", "owns_lowcmd": true},
+    "hands": {"dex3_left": true, "dex3_right": true},
+    "candidates": [
+      {"config": "robots/unitree_g1_dex3", "confidence": 0.9, "why": "unitree_hg with 29 motors reporting: G1 29-DoF; rt/dex3/left/state and rt/dex3/right/state seen"},
+      {"config": "robots/unitree_g1", "confidence": 0.85, "why": "unitree_hg with 29 motors reporting: G1 29-DoF"}
+    ],
+    "notes": ["built-in motion service 'ai' owns rt/lowcmd; joint commands need it released (robot hung or supported)"]
+  }
+}
+```
+
+扫描没看到的值是 `null`（或 `[]`），意思是“没看到，请确认”，不是“不存在”。锁了腰的 G1
+只报告 27 个电机；不在总线上的 Dex3 手显示为 `null`。
+
+| 键 | 含义 |
+|---|---|
+| `host.interfaces[].unitree_subnet` | 网卡有 `192.168.123.0/24` 上的 IPv4 地址；探测第一块处于 up 状态的这种网卡 |
+| `host.sdks[]` | 驱动 manifest 里列出的每个 SDK 一项。`installed` 是版本号；模块能导入但没有包元数据（源码检出）时为 `"unknown"`；没装时为 `null`。已安装且不低于 `minimum` 时 `ok` 为 true。`install` 是 manifest 里的安装提示 |
+| `host.suggestions` | 给你执行的命令（机器人子网的地址、SDK 安装）；扫描从不执行它们 |
+| `host.notes` | 本机上失败的探测项（缺 `ip` 命令、相机库抛了异常）；扫描会继续 |
+| `unitree.status` | `found`（收到了 `rt/lowstate`）、`not_seen`（`--timeout` 内什么都没收到）、`skipped`（没有 `192.168.123.x` 上的网卡，或给了 `--no-unitree`）、`error`（缺 SDK，或 DDS 无法在这块网卡上启动；原因在 `error` 里） |
+| `unitree.msg_family` | `hg`（G1、H1-2、H2）或 `go`（19 自由度的 H1） |
+| `unitree.motor_slots`、`motors_reporting`、`reporting_slots` | `LowState` 消息里的电机槽位数，其中读到温度或电压的个数，以及它们的下标。只有探测真正运行时才有 `reporting_slots` |
+| `unitree.motion_service` | `CheckMode` 的结果：`mode` 是正在运行的内置服务（没有时为 `""`）；有服务运行时 `owns_lowcmd` 为 true。查询没有回应时 `checked: false` |
+| `unitree.hands` | 对应的 Dex3 状态 topic 发来数据时为 `true`，没看到时为 `null` |
+| `unitree.candidates` | 符合的内置机器人配置，按 `confidence` 从高到低，每项带 `why` |
+
+`hirobot init` 先扫描，然后：
+
+1. **型号。** `--model`（或 answers 文件里的 `model:`）照原样使用（`unitree_g1` 和
+   `robots/unitree_g1` 都可以）。没有给出时，`init` 列出候选并询问；`--yes` 取第一个；
+   没有终端时，只有第一个候选的 confidence 不低于 0.9 才取它。既没有候选也没有给型号：
+   什么都不写，退出码 1。
+2. **网卡。** `--interface`、answers 文件里的 `interface:`，或扫描到的网卡。都没有：退出码 1。
+3. **已有文件。** 替换 FILE 之前 `init` 会询问（默认否）。只有回答“y”、给了 `--force`
+   或 `overwrite: true` 时才覆盖。只给 `--yes` 从不覆盖：文件保留，退出码 1。
+4. **写入。** FILE 开头是一段注释（型号、网卡、日期、扫描看到的内容），然后是
+   `defaults: [robots/<model>]` 和 `assembly: parts:` 覆盖项：把本体驱动设为
+   `unitree_sdk2` 并带上 `network_interface`，并给每个驱动接受该参数的部件设
+   `network_interface`（Dex3 手、头部相机、麦克风、扬声器）。不写增益，也不写安全参数：
+   它们保持内置默认值。写完立即用 `load_embodiment` 加载一次。
+5. **只读检查**（用 `--no-verify` 或 `verify: false` 跳过）。`init` 以本体驱动
+   `read_only: true` 打开 FILE（和 `hirobot view` 一样；手随本体一起变为只读），在
+   `--timeout` 秒内（至少 1 秒）读取观测，把每个部件打印为 data seen、partly seen、
+   not seen 或 skipped。相机和麦克风只接收数据，所以会打开。驱动没有 `read_only`
+   模式的部件跳过、不打开：扬声器就是这样（它在 connect 时设置音量）。机器人连不上、
+   `joint_pos` 不是每个关节一个值、或本体有关节不是有限值时，检查失败。手、相机或
+   麦克风没有数据或连不上时，报告为 not seen 并略过，不算失败；只有本体必须有数据。
+
+answers 文件（`--answers FILE`）是 YAML，只能有下面这些键，用于没有终端的运行：
+
+```yaml
+model: robots/unitree_g1_dex3   # skip the model question
+interface: eth0                 # skip the network card choice
+overwrite: true                 # replace FILE if it exists (default: keep it)
+verify: false                   # skip the read-only check
+```
+
+退出码：0 已写入（检查通过或已跳过）；1 什么都没写（没有型号、没有网卡、文件已存在且被保留、
+answers 或型号名有误）；2 已写入但只读检查失败（文件保留，排除原因后重新运行 `init`）。
+
+第一次发命令让机器人动之前，先检查写出的文件：见
+[Unitree 设置指南](setup/unitree.zh-CN.md#生成本地配置)。
+
+## MCP 服务器
+
+怎样接入客户端、在仿真里第一次跑通、在真机上安全使用：见 [MCP 指南](./mcp.zh-CN.md)。
+
+`pip install -e '.[mcp]'`（`mcp` SDK，要 Python 3.10+，以及 Pillow）把一台机器人作为
+[MCP](https://modelcontextprotocol.io) 服务器提供出来，让 LLM agent 或任何 MCP 客户端调用它的观测和命令工具。这些工具就是
+下面的机器人接口，不多做事：每条命令都经过机器人的 `send_action`、它的 `SafetyGate` 和一个命令租约。控制循环留在调用工具的一方。
+
+```bash
+hirobot mcp robots/ur_ur5e                       # stdio：由 MCP 客户端启动这个命令
+hirobot mcp my_robot.yaml --tools observe act    # 同时允许运动
+hirobot mcp my_robot.yaml --transport http --port 8000   # streamable HTTP，地址 http://127.0.0.1:8000/mcp
+```
+
+`hirobot mcp` 构建机器人、连接、reset（`--no-reset` 时不 reset），一直服务到客户端断开或 Ctrl-C，然后断开连接。日志写到
+stderr。HTTP 默认只听 `127.0.0.1`；用别的 `--host` 时，能访问这个端口的人都能命令机器人，并会打一条警告。
+
+### 工具
+
+| 类别 | 工具 | 作用 |
+|---|---|---|
+| `observe` | `describe_robot` | 名字、类型、`control_hz`、关节（名字和限位，顺序就是关节列表用的顺序）、末端执行器、相机（内参和安装位置）、`action_modes`、开着的工具、`max_steps` |
+| `observe` | `get_observation` | 状态 JSON（关节数组为 `{关节: 值}`、末端位姿、夹爪、基座、时间戳），加每个相机一张 JPEG。`images: false` 只要状态；`cameras: [...]` 选相机 |
+| `observe` | `get_robot_status` | `get_status()`（故障、电池、温度、安全门计数、命令进度），加 `skill_running` 和 MCP 租约状态 |
+| `act` | `send_actions` | 1 到 `max_steps` 个动作，按 `control_hz` 每拍一个（仿真也一样），最后 `hold`。有一步被拒就结束整个动作块。返回 `sent`、`of`、`stopped`（`done` / `refused` / `stop`）、`error` 和新的观测 |
+| `act` | `hold` | `hold()` |
+| `act` | `stop` | 让正在执行的 `send_actions` 在下一步之前停下，停掉正在运行的技能，然后 hold。不是急停 |
+| `skill` | `list_skills` | `list_robot_skills()`，带每个技能的参数 schema |
+| `skill` | `run_skill` | `run_robot_skill(name, args)`；启动后就返回 |
+| `skill` | `stop_skill` | `stop_robot_skill()` |
+| `episode` | `reset` | `reset(seed)`，然后返回新的观测 |
+
+默认只开 `observe`；运动要在配置里或用 `--tools` 打开。没有 `estop` 工具（急停给人或看门狗用，不给模型调），也没有声明任务完成的工具
+（那是 agent 或 benchmark 的事）。深度图不发送。
+
+`send_actions` 里的一个动作就是 JSON 形式的 `Action`：`mode`（`action_modes` 之一）和这个模式用的字段。`joint_target` /
+`kp` / `kd` 可以是按 `describe_robot` 顺序的列表，也可以是 `{关节名: 值}`；只写了部分关节的映射会设 `joint_names`（用于非关节
+模式）。有部件的机器人可以用 `parts` 写 `{部件: 动作}`。
+
+第一条命令申请一个名为 `mcp` 的租约（见[命令仲裁](#命令仲裁)），配置设了 `envelope` 就带上。如果优先级更高的一方接管了机器人
+（`Priority.TAKEOVER`），下一条命令会报告被抢占并被拒绝，不会重新申请。
+
+调用方写错的、或被机器人拒绝的工具调用，返回一个设了 `isError` 的结果，原因写在文本里。结果同时在 `structuredContent` 里带 JSON。
+
+### `mcp:` 配置段
+
+只能写在根配置里，和 `arbiter:` 一样。每个键都可选；命令行选项和 `serve_mcp` 的关键字参数优先于它。
+
+```yaml
+mcp:
+  tools: [observe, act]          # 类别：observe、act、skill、episode（默认 [observe]）
+  max_steps: 10                  # 每次 send_actions 最多几个动作，1-50（默认 5）
+  image_max_side: 512            # 返回图像的最长边，像素（默认 512）
+  image_quality: 80              # JPEG 质量 1-100（默认 80）
+  envelope: {max_joint_step: 0.05}   # mcp 租约的限制；键和 claim(envelope=...) 相同
+```
+
+### 在 Python 里用
+
+```python
+from hirobot import make_robot
+from hirobot.mcp import serve_mcp
+
+robot = make_robot("my_robot.yaml")
+robot.connect()
+serve_mcp(robot, transport="stdio", tools=["observe", "act"])   # 阻塞
+```
+
+`serve_mcp(robot, *, transport="stdio", host="127.0.0.1", port=8000, path="/mcp",
+name=None, tools=None, max_steps=None, image_max_side=None, image_quality=None,
+envelope=None)` 不连接也不断开机器人；返回时释放租约。`hirobot.mcp.RobotTools(robot, settings=None)` 是不依赖 SDK 的同一套
+工具：`tools.call(name, args)` 返回 `ToolResult`（`data`、`images`）。`build_server(tools)` 返回 SDK 的低层 `Server`，
+用于进程内（`mcp.Client(server)`）或别的传输方式。所有机器人调用都在 `RobotTools` 自己的一个线程上执行。
 
 ## 编写驱动和层（SPI）
 
@@ -927,7 +1387,7 @@ policy 设置（模型服务器、chunk 长度）不属于机器人配置。
 | `_estop()` | optional | `estop()` 背后的驱动原语。默认在驱动有 `damp()` 时调用它 |
 | `_idle_step()` | optional，SPI | 在最后一条指令下让仿真时间前进一个控制周期。assembly 对动作未提及的仿真部件调用它。默认什么都不做；toy 仿真和 MuJoCo 会步进 |
 | `_set_safety(gate)` | concrete，SPI | 挂接或清除（`None`）`SafetyGate`。给 `make_robot` 和测试用；应用在配置的 `safety:` 段里设限制 |
-| `_run_onboard_skill(spec, args)` | optional | `run_onboard_skill` 背后的驱动原语；`args` 已检查过 |
+| `_run_onboard_skill(spec, args)` | optional | `run_onboard_skill` 背后的驱动原语；`args` 已检查过。返回这次参数预计跑多少秒，返回 `None` 时用 `spec.duration_s` |
 | `_set_fault(reason)` / `_clear_fault()` | concrete，SPI | 让机器人进故障态（驱动或 layer 自己进入阻尼或停止时），命令抛 `RobotFaultError`，直到 `reset()`；清除故障 |
 | `_stop_token()`、`_commanding(token)`、`_wait(seconds, token)` | concrete，SPI | 让驱动里跑一阵的循环在别的线程调 `estop()` 时立刻结束（见[编写驱动](#编写驱动)） |
 
@@ -1025,13 +1485,13 @@ layer 是受信任代码，按内核模块的标准审。`self.inner` 是只给�
 | 名字 | 说明 |
 |---|---|
 | `register_camera(name)`, `get_camera(name)`, `available_cameras()` | 注册表，行为与驱动注册表相同 |
-| `CameraDriver(name)` | 抽象类：`start()`、`latest() -> Optional[Frame]`（`(image, Stamp)`，`Stamp.t` 在 `time.monotonic()` 上，每来一帧新的 `seq` 加一；不能阻塞；第一帧之前返回 `None`）、`stop()`（幂等）。RGB-D 驱动还要覆盖 `latest_rgbd() -> Optional[RgbdFrame]`；默认实现返回不带深度的 `latest()` |
+| `CameraDriver(name)` | 抽象类：`start()`、`latest() -> Optional[Frame]`（`(image, Stamp)`，`Stamp.t` 在 `time.monotonic()` 上，每来一帧新的 `seq` 加一；不能阻塞；第一帧之前返回 `None`）、`stop()`（幂等）。RGB-D 驱动还要覆盖 `latest_rgbd() -> Optional[RgbdFrame]`；默认实现返回不带深度的 `latest()`。可选的 `intrinsics() -> Optional[CameraIntrinsics]`：交付图像的内参，`start()` 之后从设备读；默认 `None` |
 | `PollingCameraDriver(name, poll_hz=30.0, retry_s=0.2)` | 在后台线程上运行阻塞的 `_grab() -> HxWx3 uint8 RGB`，只保留最新一帧。子类实现 `_grab`，可选实现 `_open` / `_close`。提供 `wait_for_frame(timeout)`、`error`、`frames`、`errors` |
 | `Frame` | `Tuple[np.ndarray, Stamp]`：图像及其到达时间（`Stamp(t, seq)`，`t` 在 `time.monotonic()` 上） |
 | `RgbdFrame` | `Tuple[np.ndarray, Optional[np.ndarray], Stamp]`：彩色图像、与之配准的深度（HxW float32，米）或 `None`，以及两者共同的 `Stamp` |
-| `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Intel RealSense（D435i、D405、L515……），走 `pyrealsense2`。接了多个时用 `serial` 指定设备（否则取枚举到的第一个）。设置 `depth: true` 时它是 RGB-D 相机：深度传感器对齐到彩色，使 `Observation.depth` 与彩色共用同一像素网格，并按传感器的 `depth_scale` 把设备单位换算为米。深度流尺寸和彩色不同时用 `depth_width` / `depth_height` 设置（默认和彩色一样）；对齐后的深度图仍是彩色的尺寸。需要 `pyrealsense2`（`pip install pyrealsense2`）；L515 要老版本（2.54.2 已验证；2.59.1 列不出 L515） |
-| `orbbec_pyorbbecsdk` → `OrbbecCamera(name, serial=None, uid=None, width=640, height=480, fps=30, color_format="MJPG", depth=False, align="hw", timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Orbbec 相机（Dabai DC1……），走 1.x 版 `pyorbbecsdk`（OrbbecSDK 1.10；老型号在 2.x 下枚举不到）。用 `uid`（USB 端口路径）或 `serial` 指定设备。设置 `depth: true` 时它是 RGB-D 相机：深度对齐到彩色（`align`：`hw` 在相机上做，`sw` 在 SDK 里做），设备单位换算为米。MJPEG / YUYV 彩色用 OpenCV 解码。绑定需从源码编译，见 [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md#6-orbbec-相机) |
-| `stereolabs_zed` → `ZedCamera(name, serial=None, resolution="HD720", fps=30, depth=False, depth_mode="NEURAL", min_depth_m=0.1, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Stereolabs ZED（ZED 2i、ZED Mini……），走 `pyzed`。接了多台时用 `serial` 指定（否则取第一台）。图像是左目彩色（`resolution`：`HD2K`、`HD1080`、`HD1200`、`HD720`、`SVGA`、`VGA`）。设置 `depth: true` 时它是 RGB-D 相机：深度由 SDK 的 `depth_mode`（`NEURAL`、`ULTRA`、`QUALITY`、`PERFORMANCE`）算出，单位米，对齐到左目图像，没有读数处为 0。需要 ZED SDK、它的 `pyzed` wheel 和 NVIDIA GPU |
+| `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Intel RealSense（D435i、D405、L515……），走 `pyrealsense2`。接了多个时用 `serial` 指定设备（否则取枚举到的第一个）。设置 `depth: true` 时它是 RGB-D 相机：深度传感器对齐到彩色，使 `Observation.depth` 与彩色共用同一像素网格，并按传感器的 `depth_scale` 把设备单位换算为米。深度流尺寸和彩色不同时用 `depth_width` / `depth_height` 设置（默认和彩色一样）；对齐后的深度图仍是彩色的尺寸。需要 `pyrealsense2`（`pip install pyrealsense2`）；L515 要老版本（2.54.2 已验证；2.59.1 列不出 L515）。`intrinsics()` 是彩色流的 `get_intrinsics()`，带它的畸变模型和系数 |
+| `orbbec_pyorbbecsdk` → `OrbbecCamera(name, serial=None, uid=None, width=640, height=480, fps=30, color_format="MJPG", depth=False, align="hw", timeout_ms=1000, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Orbbec 相机（Dabai DC1……），走 1.x 版 `pyorbbecsdk`（OrbbecSDK 1.10；老型号在 2.x 下枚举不到）。用 `uid`（USB 端口路径）或 `serial` 指定设备。设置 `depth: true` 时它是 RGB-D 相机：深度对齐到彩色（`align`：`hw` 在相机上做，`sw` 在 SDK 里做），设备单位换算为米。MJPEG / YUYV 彩色用 OpenCV 解码。绑定需从源码编译，见 [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md#6-orbbec-相机)。`intrinsics()` 是 `get_camera_param()` 给的彩色内参，有畸变时为 Brown-Conrady（有理模型 k4-k6 会去掉畸变并警告） |
+| `stereolabs_zed` → `ZedCamera(name, serial=None, resolution="HD720", fps=30, depth=False, depth_mode="NEURAL", min_depth_m=0.1, poll_hz=60.0)` | 直接插在跑 hiRobot 的计算机本地 USB 上的 Stereolabs ZED（ZED 2i、ZED Mini……），走 `pyzed`。接了多台时用 `serial` 指定（否则取第一台）。图像是左目彩色（`resolution`：`HD2K`、`HD1080`、`HD1200`、`HD720`、`SVGA`、`VGA`）。设置 `depth: true` 时它是 RGB-D 相机：深度由 SDK 的 `depth_mode`（`NEURAL`、`ULTRA`、`QUALITY`、`PERFORMANCE`）算出，单位米，对齐到左目图像，没有读数处为 0。需要 ZED SDK、它的 `pyzed` wheel 和 NVIDIA GPU。`intrinsics()` 是校正后左目的标定，无畸变 |
 | `agibot_cosine` → `AgibotCosineCamera(name, topic, depth_topic=None, depth_scale=0.001, max_pair_skew_s=0.005, pair_wait_s=0.02, queue=4, poll_hz=60.0)` | 走机器人 `cosine_bus` topic 的 AgiBot G1 相机（`/camera/head_color` + `/camera/head_depth`、`/camera/hand_left_color`……）。设置了 `depth_topic` 时它是 RGB-D 相机：每个彩色帧与同一次采集（`source_timestamp`）的深度帧配对，Z16 换算为米。在机器人的计算机上运行，需先 source 厂商环境（`LOCATOR_IP`、`AORTA_DISCOVERY_URI`） |
 | `unitree_videohub` → `UnitreeVideohubCamera(name, network_interface=None, domain_id=0, timeout_s=1.0, poll_hz=30.0)` | G1 头部相机 |
 | `unitree_image_server` → `UnitreeImageServerCamera(name, address, header=False, crop=None, timeout_s=1.0, poll_hz=60.0)` | H1 头部相机：通过 ZeroMQ SUB 接收 Unitree 遥操作 `image_server`（或 `scripts/camera_image_server.py`）发出的 JPEG 帧。`header` 去掉 `Unit_Test` 的时间戳 / 帧号（保存在 `remote_stamp` / `remote_frame_id` 中）；`crop: [x, y, w, h]` 从左右拼接的画面中取出一个相机。需要 `camera` extra |
@@ -1084,15 +1544,16 @@ spec 没有设置 `network_interface` 时，`make_robot` 会填入本体的值�
 | `register_audio(name)`, `get_audio(name)`, `available_audio()` | 麦克风和扬声器共用的注册表 |
 | `MicrophoneDriver(name)` | 抽象类：`open()`、`read(timeout=None) -> Optional[AudioChunk]`（最早的先返回；超时或关闭后返回 `None`）、`close()`（幂等）、`sample_rate` |
 | `QueuedMicrophone(name, queue_s=10.0, retry_s=0.2)` | 在后台线程上运行阻塞的 `_receive() -> Optional[bytes]`，最多缓存 `queue_s` 秒的音频，超出部分丢弃最早的 chunk。子类实现 `_receive`，可选实现 `_open` / `_close`。提供 `wait_for_audio(timeout)`、`error`、`chunks`、`dropped` |
-| `SpeakerDriver(name)` | 抽象类：`open()`、`play(pcm, sample_rate=None) -> float`（阻塞；返回播放的秒数，被停止时会更短）、`stop()`（可从另一个线程调用）、`close()`、`sample_rate` |
+| `SpeakerDriver(name)` | 抽象类：`open()`、`play(pcm, sample_rate=None) -> float`（阻塞；返回播放的秒数，被停止时会更短）、`stop()`（可从另一个线程调用）、`close()`、`sample_rate`。可选的音量能力：`supports_volume`（类属性，默认 `False`）、`volume -> Optional[int]`（0-100，不知道时为 `None`）、`set_volume(level: int)`（0-100，可在 `play()` 运行时从另一个线程调用；超出 0-100 抛 `ValueError`，`supports_volume` 为 `False` 时抛 `NotImplementedError`）。以后其他可选的设备能力也照这个写法：一个 `supports_<名字>` 标记，调用方先查它 |
+| `SoftwareVolume` | 给没有硬件音量的扬声器用的 mixin：`supports_volume = True`，音量存在驱动里，驱动用 `apply_gain(pcm, level)` 缩放 PCM |
 | `AudioChunk` | Dataclass：`pcm`、`sample_rate`、`stamp`（主机接收时间）、`duration` |
 | `resample(pcm, src_rate, dst_rate)` | 用于语音的线性插值重采样 |
 | `unitree_voice_mic` → `UnitreeG1Microphone(name, network_interface=None, local_ip=None, group="239.168.123.161", port=5555, queue_s=10.0)` | G1 麦克风：音频板的 UDP 组播，16 kHz |
-| `unitree_voice_speaker` → `UnitreeG1Speaker(name, network_interface=None, domain_id=0, volume=None, app_name="hirobot", chunk_s=1.0, lead_s=1.0, timeout_s=2.0)` | G1 扬声器：SDK 的 `voice` 服务，16 kHz。`volume` 在 `open()` 时设置，在 `close()` 时恢复；`set_volume(v)` 立即修改音量 |
+| `unitree_voice_speaker` → `UnitreeG1Speaker(name, network_interface=None, domain_id=0, volume=None, app_name="hirobot", chunk_s=1.0, lead_s=1.0, timeout_s=2.0)` | G1 扬声器：SDK 的 `voice` 服务，16 kHz。硬件音量（`supports_volume`）：`volume` 读机器人当前的音量（`GetVolume`），`set_volume(level)` 立即修改（没打开或调用失败时抛 `RuntimeError`）。配置项 `volume` 在 `open()` 时设置；只要两者之一改过音量，`close()` 时就恢复成 `open()` 时机器人原来的音量 |
 | `wav_mic` → `WavMicrophone(name, path, chunk_ms=20, realtime=True, tail_silence=1.0)` | 把一个 16-bit WAV 文件送入队列（有 `realtime` 时按说话速度，没有时一次送完），追加 `tail_silence` 秒静音，之后 `read()` 返回 `None`。仿真类 |
-| `wav_speaker` → `WavSpeaker(name, path, realtime=True, sample_rate=16000)` | 把播放的所有内容录进一个 WAV 文件，在 `close()` 时写出。有 `realtime` 时，`play` 耗时与音频时长相同，`stop()` 会截断它。仿真类 |
-| `null_speaker` → `NullSpeaker(name, realtime=True, sample_rate=16000)` | 什么都不播放；有 `realtime` 时耗时与音频时长相同。仿真类 |
+| `wav_speaker` → `WavSpeaker(name, path, realtime=True, sample_rate=16000)` | 把播放的所有内容录进一个 WAV 文件，在 `close()` 时写出。有 `realtime` 时，`play` 耗时与音频时长相同，`stop()` 会截断它。音量是软件增益，作用在录下的音频上（初始 100）。仿真类 |
+| `null_speaker` → `NullSpeaker(name, realtime=True, sample_rate=16000)` | 什么都不播放；有 `realtime` 时耗时与音频时长相同。有软件音量（只记录音量值）。仿真类 |
 | `sounddevice_mic` → `SoundDeviceMicrophone(name, sample_rate=16000, chunk_ms=20, device=None)` | 计算机的输入设备。需要 `audio` extra。仿真类（可与仿真器一起使用） |
-| `sounddevice_speaker` → `SoundDeviceSpeaker(name, device=None, block_ms=50)` | 计算机的输出设备，按 `block_ms` 分块写入，让 `stop()` 能及时生效。需要 `audio` extra。仿真类 |
+| `sounddevice_speaker` → `SoundDeviceSpeaker(name, device=None, block_ms=50)` | 计算机的输出设备，按 `block_ms` 分块写入，让 `stop()` 能及时生效。音量是每块的软件增益（初始 100，不改系统混音器）。需要 `audio` extra。仿真类 |
 | `build_audio(microphones, speakers, network_interface=None, sim_only=False) -> (mics, speakers)` | 为带 `driver:` 的设备构建驱动，规则与 `build_cameras` 相同 |
 | `read_wav(path) -> (pcm, rate)`, `wav_bytes(pcm, rate)` | `hirobot.drivers.audio` 中的 16-bit WAV 辅助函数（单声道；多声道文件取第一个声道） |

@@ -1,0 +1,11 @@
+# The built-in UR5e (a simulated arm, no MuJoCo needed) served to an AI agent over MCP.
+#
+# The action tools are on, a send_actions call takes up to 10 actions, and the
+# MCP lease's envelope refuses any joint target more than 0.05 rad from the last
+# one. Serve it with: hirobot mcp examples/mcp/ur5e_sim.yaml
+
+defaults: [ur_ur5e]
+mcp:
+  tools: [observe, act]
+  max_steps: 10
+  envelope: {max_joint_step: 0.05}

@@ -53,7 +53,7 @@
 | Fourier GR2 | 29 | — | — | fourier_aurora_client | — | 11 月 20 日前 |
 | AgiBot G1 | 18 | `agibot_g1` | `agibot_gdk` | GDK topics (cosine_bus) | [agibot_g1.zh-CN.md](setup/agibot_g1.zh-CN.md) | ✅ |
 | AgiBot G2 | 22 | — | — | agibot_gdk (GDK 2.1) | — | 11 月 20 日前 |
-| AgiBot X1 | 29 | `agibot_x1` | `agibot_aimrt` | 到 AimRT 的 ROS2 桥接 | [agibot_x1.zh-CN.md](setup/agibot_x1.zh-CN.md) | 11 月 20 日前 |
+| AgiBot X1 | 29 | `agibot_x1` | `ros2` | ROS 2 连到 AimRT | [agibot_x1.zh-CN.md](setup/agibot_x1.zh-CN.md) | 11 月 20 日前 |
 | AgileX ALOHA | 12 | — | — | pyAgxArm | — | 11 月 12 日前 |
 | AgileX PiPER | 6 | `agilex_piper` | `agilex_piper_sdk` | piper_sdk | [agilex_piper.zh-CN.md](setup/agilex_piper.zh-CN.md) | ✅ |
 | Franka FR3 | 7 | `franka_fr3_droid` | `franka_droid` | zerorpc 连 DROID 机器人服务 | [franka.zh-CN.md](setup/franka.zh-CN.md) | ✅ |
@@ -114,10 +114,35 @@ MuJoCo 机器人运行与真机相同的 `Robot` 接口、安全门和 `layers:`
 
 | 用法 | 方式 | 真机 |
 | --- | --- | --- |
-| 单独运行 | 一份 `*_mujoco` 配置（`unitree_g1_mujoco`、`unitree_g1_mujoco_standing`、`unitree_g1_dex3_mujoco`），或你的配置加一个 `sim/mujoco/...` 覆盖层 | 无 |
+| 单独运行 | 一份 `*_mujoco` 配置（`unitree_g1_mujoco`、`unitree_g1_mujoco_standing`、`unitree_g1_dex3_mujoco`、`ur_ur5e_mujoco`、`agilex_piper_mujoco`、`trossen_wx250s_mujoco`），或你的配置加一个 `sim/mujoco/...` 覆盖层 | 无 |
 | 预演 | [`examples/rehearse_in_sim.py`](../examples/rehearse_in_sim.py)：读取一次真机姿态，用 `set_state` 让一个 `*_mujoco` 机器人从这个姿态起步，动作发出之前先在那里运行 | 只读 |
 
-模型不随包发布；G1 的 MJCF 从 Unitree 的
-[unitree_ros](https://github.com/unitreerobotics/unitree_ros/tree/master/robots/g1_description)
-获取（[命令](setup/unitree.zh-CN.md#5-mujocog1可选)）。无依赖的 `toy` 驱动是所有随附配置的默认驱动，
+模型不随 hiRobot 发布。`hirobot assets fetch NAME`（`pip install 'hirobot[assets]'`）从
+Hugging Face 数据集 `humanoidintelligence/hirobot-assets` 把它们连同许可证下载到
+`~/.cache/hirobot/assets`，内置配置就在那里找。`hirobot assets list` 列出每一项以及是否已下载：
+
+| 来源 | 名字 | 模型 |
+| --- | --- | --- |
+| [unitree_ros](https://github.com/unitreerobotics/unitree_ros)、[unitree_mujoco](https://github.com/unitreerobotics/unitree_mujoco) | `unitree_g1`、`unitree_h1`、`unitree_h1_2`、`unitree_h2`、`unitree_dex3` | G1（带 Dex3-1 和 Inspire 手）、H1、H1-2、H2、Dex3-1 |
+| [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie) | `menagerie_<目录名>` | `unitree_g1`、`unitree_h1`、`agilex_piper`、`aloha`、`franka_fr3`、`franka_fr3_v2`、`universal_robots_ur5e`、`trossen_wx250s`、`robotiq_2f85`、`robotiq_2f85_v4`、`realsense_d435i` |
+| [Wiki-GRx-Models](https://github.com/FFTAI/Wiki-GRx-Models) | `fourier_gr1`、`fourier_gr2` | Fourier GR1T1、GR1T2、GR2（GPL-3.0） |
+| Inspire | `inspire_rh56dfx` | RH56DFX 灵巧手（URDF） |
+| 相机厂商 | `camera_zed`、`camera_realsense`、`camera_orbbec` | 相机网格 |
+
+除 AgiBot 外，每个内置 body 都在设备文件里写了模型（`model:`），下载后
+`hirobot.model_path` 就能找到：
+
+| Body | 模型 | `*_mujoco` 配置 |
+| --- | --- | --- |
+| Unitree G1 | unitree_ros `g1_29dof_rev_1_0.xml` | `unitree_g1_mujoco` 等（[配置方法](setup/unitree.zh-CN.md#5-mujocog1可选)） |
+| Unitree H1、H1-2 | unitree_ros 的 MJCF，腰关节改名为 `waist_yaw_joint` 的副本（`*_hirobot.xml`） | 暂无 |
+| Unitree H2 | unitree_mujoco `h2_mujoco.xml` | 暂无 |
+| UR5e、AgileX PiPER、WidowX 250 S | MuJoCo Menagerie | `ur_ur5e_mujoco`、`agilex_piper_mujoco`、`trossen_wx250s_mujoco` |
+| Franka FR3 | MuJoCo Menagerie `franka_fr3`，关节改名为 `joint1`…`joint7` 的副本（`fr3_hirobot.xml`） | 暂无 |
+| Fourier GR1T1、GR1T2 | Fourier 的 URDF（没有 MJCF） | 无：仿真需要 MJCF |
+| AgiBot G1、X1 | 无：没有许可证允许转载的模型 | 无 |
+
+其他人形机器人没有 `*_mujoco` 配置，因为没有哪个来源给出能让它们站住的增益。机械臂配置里夹爪不会动：
+仿真不驱动夹爪关节。
+无依赖的 `toy` 驱动是所有随附配置的默认驱动，
 它在进程内对关节目标做积分，用于测试。

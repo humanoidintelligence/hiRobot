@@ -64,6 +64,61 @@ def test_speaker_leaves_volume_alone_by_default(monkeypatch):
     assert voice.volume == 42 and not any(c[0] == "SetVolume" for c in voice.calls)
 
 
+def test_speaker_volume_reads_the_robot(monkeypatch):
+    voice = _FakeVoice(volume=42).install(monkeypatch)
+    spk = UnitreeG1Speaker("head")
+    assert spk.supports_volume and spk.volume is None  # not open
+    spk.open()
+    assert spk.volume == 42
+    voice.volume = 55  # changed on the robot, e.g. by its app
+    assert spk.volume == 55
+    voice.code = 3102
+    assert spk.volume is None
+    spk.close()
+
+
+def test_set_volume_is_restored_on_close(monkeypatch):
+    voice = _FakeVoice(volume=42).install(monkeypatch)
+    spk = UnitreeG1Speaker("head")
+    spk.open()
+    spk.set_volume(70)
+    assert voice.volume == 70 and spk.volume == 70
+    spk.close()
+    assert voice.volume == 42
+
+
+def test_set_volume_needs_open_and_a_valid_level(monkeypatch):
+    voice = _FakeVoice().install(monkeypatch)
+    spk = UnitreeG1Speaker("head")
+    with pytest.raises(RuntimeError, match="not open"):
+        spk.set_volume(50)
+    spk.open()
+    with pytest.raises(ValueError, match="0-100"):
+        spk.set_volume(101)
+    voice.code = 3102
+    with pytest.raises(RuntimeError, match="SetVolume failed"):
+        spk.set_volume(50)
+    voice.code = 0
+    spk.close()
+
+
+def test_set_volume_during_play(monkeypatch):
+    voice = _FakeVoice(volume=42).install(monkeypatch)
+    spk = UnitreeG1Speaker("head", chunk_s=0.05, lead_s=0.05)
+    spk.open()
+    result = {}
+    t = threading.Thread(target=lambda: result.update(played=spk.play(_tone(0.4))))
+    t.start()
+    time.sleep(0.1)
+    for level in (10, 20, 30):
+        spk.set_volume(level)
+    t.join(timeout=2.0)
+    assert not t.is_alive() and result["played"] == pytest.approx(0.4, abs=0.05)
+    assert voice.volume == 30
+    spk.close()
+    assert voice.volume == 42
+
+
 def test_speaker_rejects_bad_volume():
     with pytest.raises(ValueError, match="0-100"):
         UnitreeG1Speaker("head", volume=150)

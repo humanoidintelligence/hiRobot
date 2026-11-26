@@ -135,3 +135,77 @@ def test_no_gl_context_runs_without_images(tmp_path, monkeypatch, caplog):
     robot.connect()
     assert calls == [1] and robot.get_observation().images == {}
     robot.disconnect()
+
+
+# ---------------------------------------------------------------- frame rate
+
+
+def _hold(robot, ticks):
+    """``ticks`` control periods holding still, an observation after each."""
+    from hirobot import Action
+
+    out = []
+    for _ in range(ticks):
+        robot.send_action(Action(joint_target=np.zeros(1)))
+        out.append(robot.get_observation())
+    return out
+
+
+def test_camera_renders_at_its_fps_and_repeats_the_frame_in_between(tmp_path):
+    robot = _robot(tmp_path, [{"name": "head", "width": 32, "height": 24, "fps": 30,
+                               "mount": {"body": "head", "quat": FORWARD}}])
+    obs = [_connect(robot)] + _hold(robot, 49)   # 50 Hz for 1 s: t = 0, 0.02, ..., 0.98
+    seqs = [o.stamps["head"].seq for o in obs]
+    assert len(set(seqs)) == 30                   # frames due at k / 30 s, k = 0..29
+    # A new frame on the ticks where t passed the next k / 30: t = 0, 0.04, 0.08, 0.1, ...
+    assert seqs[:8] == [1, 1, 2, 2, 3, 4, 4, 5]
+    for prev, cur in zip(obs, obs[1:]):
+        if cur.stamps["head"].seq == prev.stamps["head"].seq:
+            # A repeat: the same image object and stamp, like a real camera's last frame.
+            assert cur.images["head"] is prev.images["head"]
+            assert cur.stamps["head"] == prev.stamps["head"]
+            assert cur.stamps["body"].t > cur.stamps["head"].t
+        else:
+            # A new frame is rendered from the state of this observation.
+            assert cur.stamps["head"].t == cur.stamps["body"].t
+    robot.disconnect()
+
+
+def test_camera_fps_none_renders_every_observation(tmp_path):
+    robot = _robot(tmp_path, [{"name": "head", "width": 32, "height": 24,
+                               "mount": {"body": "head", "quat": FORWARD}}], camera_fps=None)
+    obs = [_connect(robot)] + _hold(robot, 9)
+    assert [o.stamps["head"].seq for o in obs] == list(range(1, 11))
+    assert all(o.stamps["head"].t == o.stamps["body"].t for o in obs)
+    robot.disconnect()
+
+
+def test_camera_without_fps_takes_the_sim_default(tmp_path):
+    from hirobot.sim.sim_world import SIM_CAMERA_FPS
+
+    robot = _robot(tmp_path, [{"name": "head", "width": 32, "height": 24,
+                               "mount": {"body": "head", "quat": FORWARD}}])
+    obs = [_connect(robot)] + _hold(robot, 49)
+    assert len({o.stamps["head"].seq for o in obs}) == int(SIM_CAMERA_FPS)
+    robot.disconnect()
+
+
+def test_reset_and_set_state_render_a_new_frame(tmp_path):
+    robot = _robot(tmp_path, [{"name": "head", "width": 32, "height": 24, "fps": 1,
+                               "mount": {"body": "head", "quat": FORWARD}}])
+    first = _connect(robot)
+    assert {o.stamps["head"].seq for o in _hold(robot, 5)} == {1}   # 1 fps: none new in 0.1 s
+    robot.reset()
+    obs = robot.get_observation()
+    assert obs.stamps["head"].seq == 2 and obs.images["head"] is not first.images["head"]
+    assert obs.stamps["head"].t == obs.stamps["body"].t
+    assert robot.get_observation().stamps["head"].seq == 2
+    robot.set_state(np.array([np.pi / 2]))
+    obs = robot.get_observation()
+    assert obs.stamps["head"].seq == 3 and _dominant(obs.images["head"][12, 16]) == "g"
+    robot.disconnect()
+
+
+def test_bad_camera_fps_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="camera_fps must be a positive number or null"):
+        _robot(tmp_path, [], camera_fps=0)

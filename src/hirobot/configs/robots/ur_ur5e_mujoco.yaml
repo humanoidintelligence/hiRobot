@@ -1,0 +1,15 @@
+# Universal Robots UR5e (6 DoF) in MuJoCo, no hardware needed.
+#
+# The whole robot ur_ur5e in the shared simulation (sim:): the arm from its
+# device file's model: (body/ur/ur5e.yaml: the MuJoCo Menagerie MJCF, its gains
+# and home pose). Fetch the model first:
+#
+#   hirobot assets fetch menagerie_universal_robots_ur5e
+#
+# make_robot("ur_ur5e_mujoco", sim=False) builds the real robot instead.
+
+defaults: [robots/ur_ur5e]
+
+sim:
+  viewer: false            # set true to open the MuJoCo window
+  ramp_seconds: 1.0

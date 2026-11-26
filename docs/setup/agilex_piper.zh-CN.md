@@ -104,6 +104,16 @@ robot.send_action(Action(mode=ControlMode.POSITION, joint_target=obs.joint_pos,
 robot.disconnect()
 ```
 
+没有真机时，可以先用内置的 `agilex_piper_mujoco` 配置在 MuJoCo 里试这个循环
+（MuJoCo Menagerie 的 PiPER 模型；夹爪在仿真里不动）。
+`hirobot sim` 保持初始姿态 3 s 并报告漂移；加 `--viewer` 可以看画面，也可以把配置名传给上面循环里的 `make_robot`：
+
+```bash
+pip install 'hirobot[sim,assets]'
+hirobot assets fetch menagerie_agilex_piper
+hirobot sim agilex_piper_mujoco
+```
+
 ## 6. Orbbec 相机
 
 驱动：`orbbec_pyorbbecsdk`（`src/hirobot/drivers/camera/orbbec/pyorbbecsdk/`），配置 `camera/orbbec/dabai_dc1`。

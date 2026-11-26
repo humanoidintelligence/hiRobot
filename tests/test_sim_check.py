@@ -160,7 +160,7 @@ def test_make_robot_refuses_sim_check_in_sim_a_body_without_a_model_and_model_ke
     with pytest.raises(ValueError, match="already is MuJoCo"):
         make_robot({**load_config("unitree_g1_mujoco"), "safety": {"sim_check": True}})
     with pytest.raises(ValueError, match=r"\['body'\] have no model"):
-        make_robot({**load_config("ur_ur5e"), "safety": {"sim_check": True}})
+        make_robot({**load_config("agibot_x1"), "safety": {"sim_check": True}})
     with pytest.raises(ValueError, match="model is gone"):
         make_robot({**load_config("unitree_g1"),
                     "safety": {"sim_check": {"model": "unitree_g1_mujoco"}}})

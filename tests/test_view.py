@@ -88,7 +88,8 @@ def test_opens_read_only_and_refuses_what_it_cannot(fake_real):
 def test_default_model_is_the_builtin_mujoco_config():
     assert view.default_model("unitree_g1") == "unitree_g1_mujoco"
     assert view.default_model("robots/unitree_g1") == "unitree_g1_mujoco"
-    assert view.default_model("ur_ur5e") is None
+    assert view.default_model("ur_ur5e") == "ur_ur5e_mujoco"
+    assert view.default_model("agibot_x1") is None
     assert view.default_model({"assembly": {"parts": {}}}) is None
 
 

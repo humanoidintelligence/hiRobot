@@ -1,7 +1,7 @@
 """The shared MuJoCo world (hirobot.sim.sim_world): several bodies in one model.
 
 Uses the UR5e MJCF from MuJoCo Menagerie (universal_robots_ur5e/ur5e.xml) at
-$HIROBOT_UR5E_MJCF, default ~/.cache/hirobot/mujoco_menagerie/; skipped when it or
+$HIROBOT_UR5E_MJCF, default ~/.cache/hirobot/assets/menagerie/; skipped when it or
 mujoco is missing.
 """
 
@@ -17,7 +17,7 @@ from hirobot import Action, ControlMode, make_robot
 
 mujoco = pytest.importorskip("mujoco")
 
-UR5E = Path(os.environ.get("HIROBOT_UR5E_MJCF", Path.home() / ".cache/hirobot/mujoco_menagerie"
+UR5E = Path(os.environ.get("HIROBOT_UR5E_MJCF", Path.home() / ".cache/hirobot/assets/menagerie"
                            "/universal_robots_ur5e/ur5e.xml")).expanduser()
 pytestmark = pytest.mark.skipif(not UR5E.is_file(), reason=f"UR5e MJCF not found at {UR5E}")
 
@@ -173,5 +173,39 @@ def test_scene_camera_sees_both_arms():
         background = image[0, 0].astype(int)
         diff = np.abs(image.astype(int) - background).sum(axis=2) > 30
         assert diff[:, :70].any() and diff[:, 90:].any()
+    finally:
+        robot.disconnect()
+
+
+def test_cameras_in_one_world_keep_their_own_frame_rates():
+    # Two scene cameras in the shared world: "slow" declares 10 fps, "every" has none
+    # and sim.camera_fps: null renders it on every observation. A reset re-renders both.
+    cams = {"slow": {"device": "camera", "width": 32, "height": 24, "fps": 10},
+            "every": {"device": "camera", "width": 32, "height": 24}}
+    cfg = {"defaults": ["robots/ur5e_dual"],
+           "sim": {"realtime": False, "ramp_seconds": 0.2, "camera_fps": None},
+           "assembly": {"parts": {"left": {"overrides": {"body": MODEL}},
+                                  "right": {"overrides": {"body": MODEL}}, **cams},
+                        "placement": {"slow": {"pose": [1.5, 0, 0.5, 0, 0, 0, 1]},
+                                      "every": {"pose": [0, 1.5, 0.5, 0, 0, 0, 1]}}}}
+    robot = make_robot(cfg)
+    robot.connect()
+    try:
+        obs = robot.get_observation()
+        if "slow" not in obs.images:
+            pytest.skip("no OpenGL context for MuJoCo rendering on this machine")
+        hold = Action(joint_target=obs.joint_pos.copy())
+        seen = [obs]
+        assert robot.embodiment.control_hz == 30
+        for _ in range(8):   # 30 Hz, 0.27 s: "slow" is due at 0, 0.1 and 0.2 s
+            robot.send_action(hold)
+            seen.append(robot.get_observation())
+        slow = [o.stamps["slow"].seq for o in seen]
+        every = [o.stamps["every"].seq for o in seen]
+        assert slow == [1] * 3 + [2] * 3 + [3] * 3 and every == list(range(1, 10))
+        assert seen[1].images["slow"] is seen[0].images["slow"]
+        robot.reset()
+        obs = robot.get_observation()
+        assert obs.stamps["slow"].seq == 4 and obs.stamps["slow"].t == robot.now()
     finally:
         robot.disconnect()

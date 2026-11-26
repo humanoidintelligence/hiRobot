@@ -407,8 +407,15 @@ class UnitreeRobot(Robot):
         if self._skills is None:
             from hirobot.drivers.body.unitree.sdk2.g1_skills import G1Skills
 
-            self._skills = G1Skills()
+            self._skills = G1Skills(yaw=self._imu_yaw)
         return self._skills
+
+    def _imu_yaw(self, max_age: float = 0.2) -> Optional[float]:
+        """Body yaw from ``rt/lowstate`` (radians), or ``None`` if the last reading is stale."""
+        state, stamp = self._low_state, self._low_state_stamp
+        if state is None or stamp is None or time.monotonic() - stamp.t > max_age:
+            return None
+        return float(state.imu_state.rpy[2])
 
     @property
     def has_onboard_skills(self) -> bool:
@@ -422,11 +429,11 @@ class UnitreeRobot(Robot):
 
         return [s.model_copy(deep=True) for s in SKILLS]
 
-    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
+    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> Optional[float]:
         backend = self._skill_backend()
         if backend is None:
             raise RobotSkillError("connect() the robot before running an onboard skill")
-        backend.run(spec, args)
+        return backend.run(spec, args)
 
     def stop_onboard_skill(self) -> None:
         backend = self._skill_backend()

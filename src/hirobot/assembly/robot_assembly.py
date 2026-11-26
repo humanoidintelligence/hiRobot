@@ -640,13 +640,13 @@ class RobotAssembly(Robot):
             return Robot.run_onboard_skill(self, name, args)
         return self.body.run_onboard_skill(name, args)
 
-    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> None:
+    def _run_onboard_skill(self, spec: RobotSkillSpec, args: Dict[str, Any]) -> Optional[float]:
         from hirobot.core.robot_skills import RobotSkillError
 
         if self.fault is not None:
             raise RobotSkillError(f"assembly is in a fault state ({self.fault}); reset() first")
         m, local = self._node.owner_of(spec.name, "onboard skill")  # type: ignore[union-attr]
-        self._node.robots[m].run_onboard_skill(local, args)  # type: ignore[union-attr]
+        return self._node.robots[m].run_onboard_skill(local, args).duration_s  # type: ignore[union-attr]
 
     def stop_onboard_skill(self) -> None:
         if self._node is not None:

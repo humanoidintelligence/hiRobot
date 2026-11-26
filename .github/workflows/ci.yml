@@ -37,7 +37,7 @@ jobs:
         os: [ubuntu-latest]
         extras: [core]
         include:
-          # Optional extras (MuJoCo, OpenCV, PyAV, sounddevice) on the oldest and newest Python.
+          # Optional extras (MuJoCo, OpenCV, PyAV, sounddevice, pyarrow) on the oldest and newest Python.
           - {python: "3.9", os: ubuntu-latest, extras: all}
           - {python: "3.13", os: ubuntu-latest, extras: all}
           # The core is pure Python; check it imports and runs on macOS too.
@@ -59,7 +59,7 @@ jobs:
           python -m pip install --upgrade pip
           case "${{ matrix.extras }}" in
             core)    pip install -e ".[dev]" ;;
-            all)     pip install -e ".[dev,sim,camera,video,audio]" ;;
+            all)     pip install -e ".[dev,sim,camera,video,audio,ik,record]" ;;
             minimum) pip install "numpy==1.21.*" "pydantic==2.0.*" "pyyaml==6.0.*" \
                        && pip install -e ".[dev]" ;;
           esac

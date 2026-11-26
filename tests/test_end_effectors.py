@@ -184,7 +184,7 @@ def test_disconnect_damps_both_hands(monkeypatch):
 # ---------------------------------------------------------------- MuJoCo with hands
 
 MJ_CFG = "unitree_g1_dex3_mujoco"
-_MODEL = "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml"
+_MODEL = "~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml"
 
 
 def _mujoco_or_skip():

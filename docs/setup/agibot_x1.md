@@ -2,13 +2,15 @@
 
 English | [简体中文](./agibot_x1.zh-CN.md)
 
-Driver: `agibot_aimrt` (`src/hirobot/drivers/body/agibot/aimrt/`).
+Driver: the generic `ros2` driver (`src/hirobot/drivers/body/generic/ros2/`, see
+[ROS 2 robots](ros2.md)); X1 is one config of it.
 
 **Unlike the other vendors, AgiBot X1 has no Python API.**
 [agibot_x1_infer](https://github.com/AgibotTech/agibot_x1_infer)
 (xyber_x1_infer) is a pure C++ / AimRT stack. The practical way to drive X1
 from hiRobot is a ROS2 node that talks to it through AimRT's `ros2` channel
-backend. The driver is exactly such an **rclpy bridge**:
+backend. The `ros2` driver is such a node; the X1 body file sets its topics and
+message fields:
 
 - It subscribes to `/joint_states` (`sensor_msgs/JointState`) and `/imu/data`
   (`sensor_msgs/Imu`) for observations.
@@ -32,8 +34,7 @@ backend. The driver is exactly such an **rclpy bridge**:
    `colcon build` and sourced, so Python can
    `from my_ros2_proto.msg import JointCommand`.
 
-Once these three hold, the driver works; the observation / action mapping
-itself is complete.
+Once these three hold, the driver works. It has not been run on a real X1 yet.
 
 ## 1. Prerequisites
 
@@ -55,14 +56,35 @@ itself is complete.
 
 `agibot_x1`:
 
+The built-in robot config runs on the toy body. The body file
+`body/agibot/x1` has the real driver section:
+
 ```yaml
-body:
-  driver: agibot_aimrt
-  # node_name: hirobot_agibot_x1
-  # default_kp: 100.0        # fallback stiffness
-  # default_kd: 2.0          # fallback damping
-  # spin_timeout: 5.0        # seconds to wait for the first /joint_states
+driver:
+  type: ros2
+  node_name: hirobot_agibot_x1
+  default_kp: 100.0              # stiffness when an action carries no kp
+  default_kd: 2.0                # damping when an action carries no kd
+  state:
+    - {type: joint_state, topic: /joint_states}
+    - {type: imu, topic: /imu/data}
+  command:
+    - type: message              # my_ros2_proto, built from agibot_x1_infer
+      topic: /joint_cmd
+      msg: my_ros2_proto/msg/JointCommand
+      modes: [position, pd]
+      fields:
+        name: $joint_names
+        position: $joint_target
+        stiffness: $kp
+        damping: $kd
+        velocity: []
+        effort: []
 ```
+
+A local config takes it with `body: {from: body/agibot/x1}` instead of the
+robot config's toy override. `connect_timeout_s` (default 5) is how long
+`connect()` waits for the first message on each state topic.
 
 The joint order follows the 29-joint `joint_list` of the ControlModule in
 `rl_x1.yaml` (waist 3 + arms 14 + legs 12). If you drive the DCU layer directly
@@ -88,17 +110,17 @@ robot.hold()
 robot.disconnect()
 ```
 
-What the driver does: `connect()` starts an rclpy node, creates the publisher
-and subscribers, and spins until the first `/joint_states` arrives (on timeout
-after `spin_timeout` it raises an error pointing to this guide).
-`get_observation()` assembles the cached JointState (position / velocity /
-effort) and Imu. `send_action()` (POSITION / PD) publishes a JointCommand with
-`stiffness/damping` set from kp/kd.
+What the driver does: `connect()` starts an rclpy node and waits until each
+state topic has sent a message and `/joint_states` carries every joint (on
+timeout after `connect_timeout_s` it raises an error naming the topic or the
+missing joints). `get_observation()` reads the latest JointState (position /
+velocity / effort, matched by name) and Imu. `send_action()` (POSITION / PD)
+publishes a JointCommand with `stiffness` / `damping` set from kp / kd.
 
 ## 5. Common pitfalls
 
-- **`connect` raises ImportError:** rclpy / sensor_msgs is missing, or
-  `my_ros2_proto` has not been built or sourced.
+- **`connect` raises ImportError:** rclpy / sensor_msgs is missing (source the
+  ROS 2 install), or `my_ros2_proto` has not been built or sourced.
 - **Timeout waiting for /joint_states:** the AimRT process is not running, or
   the low-level driver module is not publishing state.
 - **Commands are sent but the robot does not move:** most likely prerequisite 1
@@ -109,5 +131,7 @@ effort) and Imu. `send_action()` (POSITION / PD) publishes a JointCommand with
   only walks with the built-in RL policy and is not joint-level VLA control.
   Joint-level control requires bypassing ControlModule and talking directly to
   DcuDriverModule / SimModule.
-- **Joint name mismatch:** `/joint_cmd` matches by name; misspelled joint names
-  in the config are ignored.
+- **Joint name mismatch:** `/joint_states` and `/joint_cmd` match by name.
+  `connect()` fails and lists the joints `/joint_states` lacks; the AimRT side
+  ignores names in `/joint_cmd` it does not know. Rename with `ros_names`
+  (see [ROS 2 robots](ros2.md)).

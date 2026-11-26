@@ -6,7 +6,7 @@
 
 [OpenMOSS Group](https://openmoss.ai) / [Shanghai Innovation Institute](https://www.sii.edu.cn/) / [Fudan University](https://www.fudan.edu.cn/en/)
 
-**English** | [简体中文](./README.zh-CN.md) · **Docs:** [Supported robots](docs/supported_robots.md) · [Setup guides](docs/setup/README.md) · [API reference](docs/api.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+**English** | [简体中文](./README.zh-CN.md) · **Docs:** [Supported robots](docs/supported_robots.md) · [Setup guides](docs/setup/README.md) · [API reference](docs/api.md) · [MCP](docs/mcp.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 <!-- hardware-gallery:start -->
 
@@ -28,10 +28,12 @@
 
 - [Introduction](#introduction)
 - [Supported robots](#supported-robots)
+- [Robot at a glance](#robot-at-a-glance)
 - [Quick start](#quick-start)
   - [Simulation](#simulation)
   - [Real robot: Unitree G1](#real-robot-unitree-g1)
   - [Several robots as one](#several-robots-as-one)
+  - [Control a robot from an AI agent (MCP)](#control-a-robot-from-an-ai-agent-mcp)
 - [Architecture](#architecture)
 - [Repository structure](#repository-structure)
 - [Add a new robot](#add-a-new-robot)
@@ -121,15 +123,37 @@ The real robots (bodies, mobile bases, end effectors, cameras), with their
 configs, drivers, vendor SDKs, setup guides and hardware checks, and the sim
 robots are listed in [docs/supported_robots.md](docs/supported_robots.md).
 
+## Robot at a glance
+
+Everything a `Robot` has, by what it is for. Drivers, simulators, assemblies and layers all
+have every member below; signatures, arguments and failure modes are in
+[docs/api.md](docs/api.md#robot).
+
+| For | Members | See |
+|---|---|---|
+| What the robot is | `embodiment`, `action_modes`, `motion_spaces`, `direct_joints`, `cartesian_targets`, `accepts_parts`, `simulated` | [Embodiment](docs/api.md#embodiment), [ControlMode](docs/api.md#controlmode) |
+| Attached devices | `cameras`, `microphones`, `speakers` (by name) | [Extension points](docs/api.md#extension-points-cameras-end-effectors-and-audio) |
+| Connect and reset | `connect()`, `reset(seed=None)`, `disconnect()` | [Robot](docs/api.md#robot) |
+| Read | `get_observation() -> Observation`, `get_status() -> RobotStatus`, `now()`, `fault` | [Observation](docs/api.md#observation), [RobotStatus](docs/api.md#robotstatus) |
+| Command | `send_action(action)`, `check_action(action) -> Action`, `hold()`, `set_gains(kp, kd)`, `command_timeout_s` | [Action](docs/api.md#action) |
+| Stop | `estop()` | [Robot](docs/api.md#robot) |
+| Share the command stream | `claim(name, ...) -> CommandLease`, `command_events()` | [Command arbiter](docs/api.md#command-arbiter) |
+| Skills | `list_robot_skills()`, `run_robot_skill(name, args=None)`, `stop_robot_skill()`, `robot_skill_running` | [Skills](docs/api.md#skills) |
+| Skills by kind | Onboard skills: `has_onboard_skills`, `list_onboard_skills()`, `run_onboard_skill(name, args=None)`, `stop_onboard_skill()`. Layer skills: `list_layer_skills()`, `run_layer_skill(name, args=None)`, `stop_layer_skill()`, `layer_skill_running` | [Onboard skills](docs/api.md#onboard-skills), [Layers](docs/api.md#layers) |
+| Safety and episode outcome | `safety` (the attached `SafetyGate`), `success`, `done`, `reward` | [SafetyGate](docs/api.md#safetygate), [Control loops](docs/api.md#control-loops) |
+
 ## Quick start
 
-The core install is light (numpy, pydantic, pyyaml); extras add what a given
-driver needs:
+`.[all]` installs every optional feature (about 1 GB, no GPU libraries). For a
+smaller install, take the core (numpy, pydantic, pyyaml; about 70 MB) and only
+the extras you need:
 
 ```bash
 git clone https://github.com/humanoidintelligence/hiRobot.git && cd hiRobot
-pip install -e .                 # core: interface, toy driver, safety gate
-# extras: sim (MuJoCo robot) · camera · video · audio · dev
+pip install -e '.[all]'          # everything below
+# or: pip install -e .           # core: interface, toy driver, safety gate
+# extras: sim (MuJoCo robot) · assets (sim models) · record (LeRobot datasets) · ik (mink_ik layer)
+#         · camera · video · audio · mcp (MCP server) · dev
 ```
 
 Inspect the embodiment a config describes (no robot, no GPU):
@@ -146,7 +170,8 @@ model ([commands](docs/setup/unitree.md#5-mujoco-g1-optional)), then open it in
 the viewer:
 
 ```bash
-pip install -e '.[sim]'
+pip install -e '.[sim,assets]'
+hirobot assets fetch unitree_g1
 hirobot sim unitree_g1_mujoco --viewer
 ```
 
@@ -173,6 +198,10 @@ robot.disconnect()
 A simulator steps once per `send_action`, so the loop needs no timer; on a real
 robot, pace it at `robot.embodiment.control_hz`. The same code runs on the real
 G1 once the config changes.
+
+The UR5e, AgileX PiPER and WidowX 250 S arms have MuJoCo configs too
+(`ur_ur5e_mujoco`, `agilex_piper_mujoco`, `trossen_wx250s_mujoco`); see
+[Sim robots](docs/supported_robots.md#sim-robots) for which models each robot has.
 
 ### Real robot: Unitree G1
 
@@ -226,7 +255,7 @@ ends in damping. `restore` hands control back to the built-in service.
 Other robots follow their own
 guides: [overview](docs/setup/README.md) ·
 [Fourier GR1](docs/setup/fourier.md) ·
-[AgiBot G1](docs/setup/agibot_g1.md) · [AgiBot X1](docs/setup/agibot_x1.md) · [Franka FR3](docs/setup/franka.md) ·
+[AgiBot G1](docs/setup/agibot_g1.md) · [AgiBot X1](docs/setup/agibot_x1.md) · [ROS 2 robots](docs/setup/ros2.md) · [Franka FR3](docs/setup/franka.md) ·
 [Universal Robots UR5e](docs/setup/ur.md) · [AgileX PiPER](docs/setup/agilex_piper.md).
 
 ### Several robots as one
@@ -256,6 +285,24 @@ For hardware, each arm gets its driver and address as overrides of its body
 Every piece of an action is checked before anything is sent, and a part that
 fails puts the whole robot on hold. Flat actions, placement, world frames and
 naming rules are in [docs/api.md](docs/api.md#robotassembly).
+
+### Control a robot from an AI agent (MCP)
+
+`hirobot mcp` serves a robot as an [MCP](https://modelcontextprotocol.io) server,
+so an LLM agent such as Claude Code can read it and move it; every command
+still goes through `send_action`, the `SafetyGate` and a command lease. It
+needs Python 3.10+ and the `mcp` extra:
+
+```bash
+pip install -e '.[mcp]'
+hirobot mcp ur_ur5e        # observe only; the client normally starts this
+claude mcp add hirobot -- hirobot mcp ur_ur5e --tools observe act
+```
+
+Only the observe tools are on by default; motion needs `--tools observe act`.
+`python examples/mcp/client.py` tries the tools without an LLM. Other clients,
+HTTP, a walkthrough in simulation and safety on a real robot are in
+[docs/mcp.md](docs/mcp.md); the example files are in [`examples/mcp/`](examples/mcp/).
 
 ## Architecture
 
@@ -310,11 +357,15 @@ Core concepts:
 
 ## Repository structure
 
+<details>
+<summary><b>Show the tree</b></summary>
+
 ```
 hiRobot/
 ├── src/hirobot/
 │   ├── __init__.py          # the public API: make_robot, Robot, Observation, Action, ...
-│   ├── cli.py               # `hirobot info`, `configs`, `sim`, `view`
+│   ├── cli.py               # `hirobot info`, `configs`, `sim`, `view`, `check`, `assets`, `scan`, `init`, `mcp`
+│   ├── assets.py            # `hirobot assets`: download the simulation models
 │   ├── testing.py           # assert_layer_uses_public_api, for layer packages
 │   ├── core/                # embodiment, types, robot + robot_skills, dof, stamps
 │   ├── devices/             # end_effector, camera, audio: contracts and registries
@@ -323,17 +374,21 @@ hiRobot/
 │   ├── assembly/            # RobotAssembly + parts, node, part_layers
 │   ├── control/             # safety (gate), arbiter, layer, watchdog
 │   ├── sim/                 # sim_world, sim_check, check_sim, view
+│   ├── layers/              # mink_ik: end-effector targets to joint positions by IK
+│   ├── record/              # Recorder: episodes as LeRobot v3.0 datasets
+│   ├── mcp/                 # MCP server: a robot's tools for AI agents
+│   ├── scan/                # `hirobot scan` / `init`: read-only host and robot-network scan
 │   ├── configs/             # built-in configs (installed with the package)
 │   │   ├── body/ end_effector/ camera/ microphone/ speaker/   # one device file per model, by vendor
 │   │   └── robots/          # whole robots and multi-robot assemblies (franka_ur5e_dual); *_mujoco add sim:
 │   └── drivers/             # <part>/<SDK vendor>/<SDK or protocol>/{driver.py, manifest.yaml}
-│       ├── body/            # unitree/sdk2, fourier/grx, agibot/aimrt, franka/droid, ur/rtde, agilex/piper_sdk
-│       ├── end_effector/    # hands: unitree/sdk2_handcmd (Dex3-1), unitree/sdk2_motorcmds, inspire/sdkpy
-│       ├── camera/          # unitree/sdk2_videohub, unitree/image_server; generic/{video_file,array}
+│       ├── body/            # unitree/sdk2, fourier/grx, agibot/gdk, franka/droid, ur/rtde, agilex/piper_sdk, trossen/dynamixel, generic/ros2
+│       ├── end_effector/    # hands: unitree/sdk2_handcmd (Dex3-1), unitree/sdk2_motorcmds, inspire/sdkpy, robotiq/urcap
+│       ├── camera/          # unitree/{sdk2_videohub,image_server}, intel/realsense, orbbec/pyorbbecsdk, stereolabs/zed, agibot/cosine; generic/{video_file,array}
 │       ├── audio/           # unitree/sdk2_voice; generic/{wav,sounddevice}
 │       ├── sim/             # toy/ (`toy`), mujoco/ (`mujoco`)
 │       └── _sdk/            # code shared inside one SDK (Unitree DDS init, once per process)
-├── examples/                # configs to copy: real robot, read_only, multi-robot; rehearse_in_sim.py
+├── examples/                # configs to copy: real robot, read_only, multi-robot; rehearse_in_sim.py, mink_ik_g1.py, record_g1.py, mcp/
 ├── scripts/
 │   ├── unitree_setup.py          # status / hold / move / restore on a Unitree robot
 │   ├── unitree_estop.py          # software e-stop (damping on Ctrl-C)
@@ -351,6 +406,8 @@ hiRobot/
 ├── assets/                  # README and docs images; hardware/: robot photos
 └── CHANGELOG.md             # changes in each release (CHANGELOG.zh-CN.md: Chinese)
 ```
+
+</details>
 
 What changed in each release is in [CHANGELOG.md](CHANGELOG.md).
 

@@ -72,6 +72,28 @@
    }
   }
  },
+ "robots/agilex_piper_mujoco": {
+  "assembly": {
+   "name": "agilex-piper",
+   "parts": {
+    "body": {
+     "from": "body/agilex/piper",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "scene": {
+     "from": "camera/orbbec/dabai_dc1"
+    }
+   }
+  },
+  "sim": {
+   "viewer": false,
+   "ramp_seconds": 1.0
+  }
+ },
  "robots/fourier_gr1t1": {
   "assembly": {
    "name": "fourier-gr1t1",
@@ -211,6 +233,31 @@
    }
   }
  },
+ "robots/trossen_wx250s_mujoco": {
+  "assembly": {
+   "name": "trossen-wx250s",
+   "parts": {
+    "body": {
+     "from": "body/trossen/wx250s",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "wrist": {
+     "from": "camera/intel/d435i_realsense"
+    },
+    "scene": {
+     "from": "camera/intel/d435i_realsense"
+    }
+   }
+  },
+  "sim": {
+   "viewer": false,
+   "ramp_seconds": 1.0
+  }
+ },
  "robots/unitree_g1": {
   "assembly": {
    "name": "unitree-g1",
@@ -249,6 +296,144 @@
      "overrides": {
       "driver": {
        "type": "toy"
+      },
+      "model": {
+       "mjcf": "~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml",
+       "armature": [
+        0.0103,
+        0.0251,
+        0.0103,
+        0.0251,
+        0.003597,
+        0.003597,
+        0.0103,
+        0.0251,
+        0.0103,
+        0.0251,
+        0.003597,
+        0.003597,
+        0.0103,
+        0.0103,
+        0.0103,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.003597,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001,
+        0.001
+       ],
+       "kp": [
+        100,
+        100,
+        100,
+        150,
+        40,
+        40,
+        100,
+        100,
+        100,
+        150,
+        40,
+        40,
+        200,
+        200,
+        200,
+        40,
+        40,
+        40,
+        40,
+        20,
+        20,
+        20,
+        40,
+        40,
+        40,
+        40,
+        20,
+        20,
+        20,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5
+       ],
+       "kd": [
+        5,
+        5,
+        5,
+        5,
+        2,
+        2,
+        5,
+        5,
+        5,
+        5,
+        2,
+        2,
+        6,
+        6,
+        6,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2
+       ]
       }
      }
     },
@@ -292,7 +477,7 @@
        "type": "toy"
       },
       "model": {
-       "mjcf": "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml",
+       "mjcf": "~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_with_hand_rev_1_0.xml",
        "armature": [
         0.0103,
         0.0251,
@@ -697,6 +882,25 @@
      }
     }
    }
+  }
+ },
+ "robots/ur_ur5e_mujoco": {
+  "assembly": {
+   "name": "ur5e",
+   "parts": {
+    "body": {
+     "from": "body/ur/ur5e",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    }
+   }
+  },
+  "sim": {
+   "viewer": false,
+   "ramp_seconds": 1.0
   }
  },
  "robots/ur_ur5e_robotiq": {

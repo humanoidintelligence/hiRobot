@@ -5,6 +5,116 @@ User-facing changes in each hiRobot release, newest first. The format follows
 release may change the API incompatibly; such changes are listed under
 "Removed" or "Changed" and marked **breaking**.
 
+## [0.0.7] - 2026-11-26
+
+Episode recording as LeRobot datasets, an IK layer for end-effector targets, an
+MCP server, a generic ROS 2 body driver, camera intrinsics, and simulation
+models for every built-in body except AgiBot, downloaded with
+`hirobot assets fetch`. Arms (UR5e, PiPER, WidowX 250S) can now run in MuJoCo.
+
+### Added
+
+- **Recording** (`hirobot.record`, `pip install 'hirobot[record]'`):
+  `Recorder(robot, root)` records episodes (`start(task)` / `stop()` /
+  `cancel()`) and writes each one as a LeRobot v3.0 dataset (parquet + H.264
+  video) without importing `lerobot`. State, commands and images are aligned to
+  a frame grid; save-time quality flags go to `meta/qc.jsonl`, and
+  `append_verdict()` adds a human verdict. Episodes are saved in a child
+  process, so the control loop is barely slowed while one saves. Example:
+  `examples/record_g1.py` on the MuJoCo G1.
+- **Listeners**: `robot.add_listener(on_observation=..., on_command=...)`
+  reports every top-level `get_observation()` and every top-level
+  `send_action` / `hold` as a `CommandRecord`, refusals included, without
+  sitting in the command path. `hirobot.core.features` (`observation_features`,
+  `flatten_observation`, `action_features`, `flatten_action`,
+  `image_features`) flattens `Observation` / `Action` into named vectors in the
+  LeRobot layout.
+- **`mink_ik` layer** (`pip install 'hirobot[ik]'`, Python 3.11+): turns
+  `CARTESIAN` / `CARTESIAN_DELTA` end-effector targets in the base frame into
+  one `POSITION` action, solved by mink IK on a MuJoCo model (the
+  simulation's own, an MJCF, or a config name). The floating base stays
+  frozen; a solver failure resends the previous target. Example:
+  `examples/mink_ik_g1.py`.
+- **MCP server** (`pip install 'hirobot[mcp]'`, the server needs Python 3.10+):
+  `hirobot mcp <config>` or `serve_mcp(robot)` serves a robot's tools
+  (describe, observe, status, act, hold, stop, skills, reset) over stdio or streamable HTTP, set up
+  by the config's `mcp:` section. HTTP listens on 127.0.0.1 by default.
+  Example: `examples/mcp/`; guide: `docs/mcp.md`.
+- **Generic ROS 2 body driver** (`ros2`): a ROS 2 robot is driven from its
+  config alone. State components (`joint_state`, `imu`, `odometry`) and command
+  components (`joint_trajectory`, `float_array`, or a custom message filled
+  from a field map) list the topics; joints are matched by name. Guide:
+  `docs/setup/ros2.md`.
+- **Camera intrinsics and extrinsics**: `Robot.camera_info(name)` returns a
+  `CameraInfo` (`CameraIntrinsics`, where they came from, the mount pose,
+  depth). Intrinsics come from the camera file's `intrinsics:`, else the
+  driver (RealSense, Orbbec and ZED read them from the device), else an ideal
+  pinhole from the mount's `fovy`, rescaled to the declared image size.
+- **Speaker volume**: speakers may support `volume` / `set_volume(level)`
+  (0-100), shown by `supports_volume`. The Unitree G1 speaker sets the
+  hardware volume and restores it on close; the WAV, null and sounddevice
+  speakers apply a software gain.
+- **Simulation models** (`pip install 'hirobot[assets]'`):
+  `hirobot assets list` and `hirobot assets fetch NAME | --all` download the
+  MJCF / URDF models from the `humanoidintelligence/hirobot-assets` dataset on
+  Hugging Face into `~/.cache/hirobot/assets`. `HIROBOT_ASSETS_REPO` picks
+  another dataset with the same layout.
+- Every built-in body except the AgiBot G1 and X1 now has a `model:`: UR5e,
+  PiPER and WidowX 250S (MuJoCo Menagerie), Unitree H1, H1-2 and H2, Franka
+  FR3, and Fourier GR1T1 / GR1T2 (URDF only). New configs `ur_ur5e_mujoco`,
+  `agilex_piper_mujoco` and `trossen_wx250s_mujoco` run those arms in MuJoCo
+  (`hirobot sim <config>`); the gripper does not move in simulation.
+  `docs/supported_robots.md` lists where each model comes from.
+- An `all` extra: `pip install 'hirobot[all]'` installs every optional feature
+  (about 1 GB). The README's install line uses it; the core install is
+  unchanged.
+- **Model paths**: `Embodiment.model` (a `ModelRef`: `kind` mjcf / urdf,
+  `path`, `package_roots`) and `hirobot.model_path(config)` give a body's model
+  file without building the robot; `hirobot.available_configs(group)` lists the
+  built-in config names. A device file's `model:` may give a `urdf:` (with
+  `package_roots`) instead of an `mjcf:`. `hirobot info` prints the model path.
+- **`hirobot scan` and `hirobot init`**: `scan` looks at this computer and the
+  robot network read-only (network cards, the Unitree subnet, installed driver
+  SDKs, ROS 2, cameras, audio) and prints a report with suggestions. `init`
+  scans, writes a local config for a Unitree robot and checks it read-only.
+- **Per-model health thresholds**: `Joint.temperature_limit` and
+  `Embodiment.battery_soc_limit`, each an optional `(warn, shutdown)` pair. When
+  `safety:` sets no `max_joint_temperature` / `min_battery_soc`, the
+  `SafetyGate` takes the shutdown value from the embodiment.
+- **Unitree G1 `turn` skill**: turns on the spot by an angle, closed-loop on
+  the IMU yaw. `walk` and `turn` now report the expected duration of each run
+  in `duration_s`. Not yet tried on a real G1.
+
+### Changed
+
+- **Breaking**: the AgiBot X1 now uses the `ros2` driver; `agibot_aimrt` and
+  `AgibotX1Robot` are removed. `/joint_states` is matched by joint name
+  instead of message order, and `spin_timeout` is now `connect_timeout_s`.
+- **Breaking**: the Unitree G1 model moved from
+  `~/.cache/hirobot/unitree_ros/...` to `~/.cache/hirobot/assets/unitree_ros/...`
+  (`hirobot assets fetch unitree_g1`). Local configs that point at the old
+  path need updating.
+- Simulated cameras render at their own frame rate (`Camera.fps`, else
+  `sim.camera_fps`, default 30) and repeat the last image in between, as a real
+  camera does. A camera's `stamps[...].seq` counts its own frames.
+  `camera_fps: null` renders on every observation, as before.
+- `sim_check` refuses a body whose `model:` has only a `urdf`, when the robot
+  is built.
+- The `mink_ik` layer's `model:` may name a config (`.yaml`) as well as an MJCF.
+- The H1 setup guide no longer asks you to edit the MJCF by hand: the dataset
+  ships `h1_hirobot.xml` with the waist joint renamed.
+
+### Fixed
+
+- The MuJoCo and toy simulators fill `base_linear_acceleration` as an IMU
+  reads it (specific force in the base frame, gravity included); it was
+  missing.
+- Unitree G1 gestures longer than 3 s (such as `high_wave`) no longer report
+  "refused (RPC code 3104)" while the robot performs them.
+- `unitree_g1_dex3` now carries the G1 model with both Dex3-1 hands. It had
+  the bare 29-DoF model, so the 3D view drew no hands and
+  `make_robot(..., sim=True)` failed on the 43 joints.
+
 ## [0.0.6] - 2026-11-15
 
 Trossen WidowX 250S support, with its gripper and RealSense D435i cameras. The
@@ -319,6 +429,7 @@ once against `Observation` / `Action` and run on any robot with a driver.
   GRx, AgiBot X1, Franka FR3 and UR5e are included but not yet checked on
   hardware.
 
+[0.0.7]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4

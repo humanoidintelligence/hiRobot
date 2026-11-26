@@ -103,6 +103,16 @@ RTDE 报告的 TCP 是 `[x,y,z,Rx,Ry,Rz]`（米 + 轴角 rad）；驱动把它�
 存入 `ee_poses["tcp"]`。POSITION / PD 用 `servoJ`，VELOCITY 用 `speedJ`，CARTESIAN 用 `servoL`
 （读取 7 维向量 `ee_targets["tcp"]` 并转换回轴角）。
 
+没有真机时，可以先用内置的 `ur_ur5e_mujoco` 配置在 MuJoCo 里试这个循环
+（MuJoCo Menagerie 的 UR5e 模型）。
+`hirobot sim` 保持初始姿态 3 s 并报告漂移；加 `--viewer` 可以看画面，也可以把配置名传给上面循环里的 `make_robot`：
+
+```bash
+pip install 'hirobot[sim,assets]'
+hirobot assets fetch menagerie_universal_robots_ur5e
+hirobot sim ur_ur5e_mujoco
+```
+
 ## 6. 常见问题
 
 - **Remote Control 模式**：机器人不在远程模式时，RTDE 控制接口无法连接或接管。

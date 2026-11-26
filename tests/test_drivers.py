@@ -9,6 +9,7 @@ covered manually during setup.
 from __future__ import annotations
 
 import importlib.util
+import os
 
 import numpy as np
 import pytest
@@ -28,22 +29,38 @@ from hirobot.loading.tree import DeviceSpec, load_robot
 CONFIGS = available_configs("robots")
 # Configs whose driver runs without an SDK install (toy bodies). A `sim:` section
 # puts them into a shared MuJoCo world, so those need mujoco and skip without it.
+# They also need every body's MJCF (`hirobot assets fetch`) and skip without it.
 _NO_MUJOCO = pytest.mark.skipif(importlib.util.find_spec("mujoco") is None, reason="mujoco not installed")
-SIM_CONFIGS = [pytest.param(c, marks=_NO_MUJOCO) if load_robot(c).sim is not None else c
+
+
+def _bodies(cfg):
+    return [d for _, d in load_robot(cfg).root.walk()
+            if isinstance(d, DeviceSpec) and d.kind == "body"]
+
+
+def _sim_param(cfg):
+    missing = [os.path.expanduser(m) for d in _bodies(cfg)
+               if (m := (d.fields.get("model") or {}).get("mjcf"))
+               and not os.path.isfile(os.path.expanduser(m))]
+    marks = [_NO_MUJOCO]
+    if missing:
+        marks.append(pytest.mark.skip(reason=f"MJCF not found: {missing[0]}"))
+    return pytest.param(cfg, marks=marks)
+
+
+SIM_CONFIGS = [_sim_param(c) if load_robot(c).sim is not None else c
                for c in CONFIGS
-               if all((d.driver or {}).get("type", "toy") == "toy"
-                      for _, d in load_robot(c).root.walk()
-                      if isinstance(d, DeviceSpec) and d.kind == "body")]
+               if all((d.driver or {}).get("type", "toy") == "toy" for d in _bodies(c))]
 REAL_DRIVERS = {
     "unitree_sdk2": {"network_interface": "eth0"},
     "fourier_grx": {"server_ip": "localhost"},
     "ur_rtde": {"ip": "127.0.0.1"},
-    "agibot_aimrt": {},
+    "ros2": {"state": [{"type": "joint_state", "topic": "/joint_states"}]},
 }
 
 
 def test_expected_drivers_registered():
-    for name in ["toy", "mujoco", "unitree_sdk2", "fourier_grx", "ur_rtde", "franka_droid", "agibot_aimrt"]:
+    for name in ["toy", "mujoco", "unitree_sdk2", "fourier_grx", "ur_rtde", "franka_droid", "ros2"]:
         assert name in available_bodies()
 
 

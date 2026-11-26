@@ -36,6 +36,11 @@ The ZED cameras use the `stereolabs_zed` camera driver, on the computer they are
 plugged into (it needs the ZED SDK, its `pyzed` wheel and an NVIDIA GPU). A ZED
 can be open in only one process, so stop DROID's own camera reader first.
 
+The body names a model (`model:`): `fr3_hirobot.xml` from `hirobot assets fetch
+menagerie_franka_fr3`, MuJoCo Menagerie's FR3 arm with its joints renamed to
+`joint1`...`joint7` to match this config. `hirobot.model_path` returns it.
+There is no `*_mujoco` config for the FR3 yet.
+
 ## What the driver does
 
 | | `franka_droid` |

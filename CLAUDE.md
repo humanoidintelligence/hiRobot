@@ -25,6 +25,8 @@ Two sibling repos matter for context (all expected under `../`):
 ```bash
 pip install -e .            # core: numpy, pydantic, pyyaml
 pip install -e '.[sim]'     # + mujoco  (mujoco driver)
+pip install -e '.[record]'  # + pyarrow, av  (hirobot.record)
+pip install -e '.[assets]'  # + huggingface_hub  (hirobot.assets)
 pip install -e '.[dev]'     # + pytest, ruff
 
 python -m pytest                              # full suite (no GPU/network needed)
@@ -34,6 +36,7 @@ python -m pytest tests/drivers/body/unitree     # one vendor's drivers (fake SDK
 ruff check .                                  # lint (line-length 100, target py39)
 
 hirobot info --config unitree_g1    # show the embodiment a config describes
+hirobot assets fetch unitree_g1     # download the G1 MJCF into ~/.cache/hirobot/assets
 ```
 
 Run pytest **from the repo root**; `testpaths` pins it to `tests/`.
@@ -50,6 +53,11 @@ Core pieces:
 
 - **`Embodiment` (`embodiment.py`)** — declarative robot I/O contract: joints by name,
   `floating_base`, end-effectors, cameras, `control_hz`. Drives DoF counts everywhere.
+  `Embodiment.model` (`ModelRef`: `kind` mjcf/urdf, absolute `path` with `~` expanded,
+  `package_roots`; frozen, hashable) is the one body's model file, `None` with several
+  bodies or no `model:`. `hirobot.model_path(config)` reads it without building and
+  raises `ValueError` for no body or several. A device file's `model:` takes `mjcf` or
+  `urdf` (+ `package_roots`); sim, `sim_check` and `mink_ik` need `mjcf`.
 - **`Observation` / `Action` (`types.py`)** — typed I/O. Joint space (universal) +
   optional base (humanoids) + optional task space (arms) + perception (VLA).
   `ControlMode` selects joint vs Cartesian, or (for a robot that moves itself
@@ -105,6 +113,20 @@ Core pieces:
   counts (`get_status().safety["audit"]`), not every command. A part of an assembly is a
   `Robot` with its own lease, claimed by path (`robot.claim(name, parts=["left"])`);
   overlapping paths conflict, disjoint ones don't.
+  `robot.add_listener(on_observation=None, on_command=None)` registers callbacks on the
+  arbiter (what a recorder hangs on): `on_command` gets a `CommandRecord` (`t`, `call`,
+  `action` as requested, `lease`, `priority`, `accepted`, `reason`, `parts`) per top-level
+  `send_action` / `hold`, refusals included; `on_observation` gets each top-level
+  `get_observation()`. Nested calls are not reported. Callbacks run on the caller's thread,
+  must be O(1), and their errors are logged, never raised. `features.py` flattens
+  `Observation` / `Action` into named vectors (LeRobot layout).
+- **Recorder (`record/`, `hirobot[record]` = pyarrow + av)** — `Recorder(robot, root)` hangs
+  on `add_listener`; `start(task, meta)` / `stop()` / `cancel()`, save events via
+  `subscribe(cb)` (`SaveEvent`). Listeners only append references (de-duplicated by
+  `stamps[src].seq`); after `stop()` one save thread aligns to a grid (row k = the state
+  reading and the first command sent after it), encodes H.264 and writes one LeRobot v3.0
+  dataset per episode, with save-time QC flags in `meta/qc.jsonl` (`append_verdict()` for
+  humans). Encoding holds the GIL: control ticks slow down while an episode saves.
 - **Command watchdog (`watchdog.py`)** — `Robot.command_timeout_s` (0.2 s default, `None`
   off): a `VELOCITY` / `BASE_VELOCITY` command not refreshed in time is stopped with
   `hold()`. Position targets are not watched.
@@ -117,7 +139,11 @@ Core pieces:
   cameras, audio), attaches the gate to it, then stacks the layers on top, so a layer
   sees every joint and device; with layers a second gate goes on top. A layer with
   `part: <path>` wraps only that part of an assembly (`part_layers.py`), sitting under the
-  whole-robot layers. hiRobot ships no layer.
+  whole-robot layers. hiRobot ships one layer, `mink_ik` (`layers/mink_ik.py`, `hirobot[ik]`,
+  registered in `load_drivers`): `CARTESIAN` / `CARTESIAN_DELTA` end-effector targets in the
+  base frame become one `POSITION` action through `inner.send_action`, solved by mink IK on
+  a MuJoCo model; the floating base stays frozen, deltas integrate against the last target,
+  and a solver failure resends the previous target. Whole-body controllers come from hiWBC.
   Layers are trusted code: `Layer.inner` is a proxy with the public API only (no `_` names,
   no `body` / `end_effectors`); `Layer.estop()` e-stops the bottom of the stack first, then
   each layer's `_estop()` (0.2 s each). `hirobot.testing.assert_layer_uses_public_api` checks
@@ -139,7 +165,7 @@ Core pieces:
   `parts.py` works out each part's frame and the merged `Embodiment` (names under the
   `<part>/` prefix). `defaults:` still merges whole configs; named lists (`joints`,
   `frames`, `mounts`, device lists) merge by `name`. `make_robot` / `load_embodiment`
-  take a name, path or dict. The old `embodiment:` + `body:` single-robot format still
+  take a name, path or dict. `hirobot.available_configs(group)` lists the built-in names. The old `embodiment:` + `body:` single-robot format still
   loads through `legacy.py` with a `DeprecationWarning`; `group:` is rejected.
   `tests/data/expanded_configs.json` pins the expanded result.
 - **`DofMap` (`dof.py`)** — reorder joint vectors by name, so one policy drives robots

@@ -48,6 +48,14 @@ refused commands, busy refusals; :meth:`CommandArbiter.events`, each with the
 lease's parts) and per-lease counts of accepted and refused commands.
 ``get_status().safety["audit"]`` has the counts, the holders (part path ->
 lease name, ``""`` for a whole-tree lease) and the last refusal.
+
+**Listeners.** :meth:`Robot.add_listener <hirobot.core.robot.Robot.add_listener>`
+registers callbacks on the arbiter: ``on_command`` gets a
+:class:`CommandRecord` for every top-level ``send_action`` / ``hold`` (on the
+robot or a lease, accepted or not), ``on_observation`` every top-level
+``get_observation()`` result. Nested calls (``hold()`` sending an action,
+reading the pose inside an admitted command) are not reported. Callbacks run
+on the caller's thread; an error in one is logged and never reaches the caller.
 """
 
 from __future__ import annotations
@@ -76,6 +84,12 @@ AUDIT_SIZE = 256
 
 #: Lease names the per-lease counts keep; the oldest is dropped past this.
 MAX_LEASE_COUNTS = 64
+
+#: Calls reported to ``on_command`` listeners.
+RECORDED_CALLS = ("send_action", "hold")
+
+#: Seconds between two log lines about the same failing listener.
+LISTENER_LOG_INTERVAL_S = 10.0
 
 
 class Priority(enum.IntEnum):
@@ -120,6 +134,78 @@ class CommandEvent:
     call: Optional[str] = None
     detail: str = ""
     parts: Optional[List[str]] = None
+
+
+@dataclass(frozen=True)
+class CommandRecord:
+    """What an ``on_command`` listener gets for one top-level command.
+
+    Attributes:
+        t: The robot's clock (:meth:`~hirobot.core.robot.Robot.now`) when the
+            call started.
+        call: ``send_action`` or ``hold``.
+        action: The :class:`~hirobot.core.types.Action` as the caller passed it
+            (the caller's object, before an envelope or the gate clamps it);
+            ``None`` for ``hold``.
+        lease: Lease name, or ``None`` for a direct call.
+        priority: The lease's :class:`Priority`, or ``None`` for a direct call.
+        accepted: Whether the call returned without raising.
+        reason: Why not: the message of the ``SafetyError`` (gate or envelope),
+            ``RobotBusyError``, ``RobotFaultError`` or driver error; ``None``
+            when accepted.
+        parts: The lease's part paths, or ``None`` for the whole tree (and for
+            a direct call).
+    """
+
+    t: float
+    call: str
+    action: Any
+    lease: Optional[str]
+    priority: Optional[Priority]
+    accepted: bool
+    reason: Optional[str] = None
+    parts: Optional[Tuple[str, ...]] = None
+
+
+class ListenerHandle:
+    """Returned by :meth:`Robot.add_listener <hirobot.core.robot.Robot.add_listener>`;
+    :meth:`remove` stops the callbacks."""
+
+    def __init__(self, arbiter: "CommandArbiter",
+                 on_observation: Optional[Callable[[Any], None]],
+                 on_command: Optional[Callable[[CommandRecord], None]]) -> None:
+        self._arbiter = arbiter
+        self.on_observation = on_observation
+        self.on_command = on_command
+        #: Errors the callbacks raised (each one logged, rate-limited).
+        self.errors = 0
+        self._last_log = float("-inf")
+        self._unlogged = 0
+
+    @property
+    def active(self) -> bool:
+        return self._arbiter._has_listener(self)
+
+    def remove(self) -> None:
+        """Stop calling this listener. Safe to call twice, from any thread."""
+        self._arbiter._remove_listener(self)
+
+    def _fire(self, callback: Callable[[Any], None], value: Any) -> None:
+        try:
+            callback(value)
+        except Exception:  # noqa: BLE001 - a listener never breaks the control loop
+            self.errors += 1
+            now = time.monotonic()
+            if now - self._last_log >= LISTENER_LOG_INTERVAL_S:
+                skipped, self._unlogged, self._last_log = self._unlogged, 0, now
+                logger.exception("%s listener %r failed%s", type(self._arbiter.robot).__name__,
+                                 callback, f" ({skipped} more since the last report)"
+                                 if skipped else "")
+            else:
+                self._unlogged += 1
+
+    def __repr__(self) -> str:
+        return f"ListenerHandle({'active' if self.active else 'removed'})"
 
 
 @dataclass
@@ -185,7 +271,7 @@ class CommandLease:
         """
         arbiter = self.arbiter
         with arbiter._admit(self, "send_action", touched=lambda: _touched(
-                self.robot, "send_action", (action,))):
+                self.robot, "send_action", (action,)), action=action):
             with arbiter._send_lock:  # check, send and commit as one, between leases
                 if self._envelope_gate is not None:
                     action = self._check_envelope(action)
@@ -308,6 +394,10 @@ class CommandArbiter:
         # so the gate's step reference sees each command whole.
         self._send_lock = threading.RLock()
         self._local = threading.local()
+        # Listeners, copied on write: a call reads the tuple once, without a lock.
+        self._listeners_lock = threading.Lock()
+        self._observation_listeners: Tuple[ListenerHandle, ...] = ()
+        self._command_listeners: Tuple[ListenerHandle, ...] = ()
 
     @property
     def holder(self) -> Optional[CommandLease]:
@@ -453,6 +543,84 @@ class CommandArbiter:
         if first and held:
             self._record("release", lease)
 
+    # ------------------------------------------------------------ listeners
+
+    def add_listener(self, on_observation: Optional[Callable[[Any], None]] = None,
+                     on_command: Optional[Callable[[CommandRecord], None]] = None
+                     ) -> ListenerHandle:
+        """Register callbacks; see :meth:`Robot.add_listener <hirobot.core.robot.Robot.add_listener>`."""
+        if on_observation is None and on_command is None:
+            raise TypeError("add_listener() needs on_observation, on_command or both")
+        for name, cb in (("on_observation", on_observation), ("on_command", on_command)):
+            if cb is not None and not callable(cb):
+                raise TypeError(f"add_listener({name}=...) must be callable, got {cb!r}")
+        handle = ListenerHandle(self, on_observation, on_command)
+        with self._listeners_lock:
+            if on_observation is not None:
+                self._observation_listeners = self._observation_listeners + (handle,)
+            if on_command is not None:
+                self._command_listeners = self._command_listeners + (handle,)
+        return handle
+
+    def _remove_listener(self, handle: ListenerHandle) -> None:
+        with self._listeners_lock:
+            self._observation_listeners = tuple(
+                h for h in self._observation_listeners if h is not handle)
+            self._command_listeners = tuple(h for h in self._command_listeners if h is not handle)
+
+    def _has_listener(self, handle: ListenerHandle) -> bool:
+        return handle in self._observation_listeners or handle in self._command_listeners
+
+    def _observed(self, read: Callable[[], Any]) -> Any:
+        """Run a ``get_observation`` and pass its result to the listeners, if it is top-level.
+
+        Nested reads are not passed on: one inside an admitted command on this
+        thread (``hold()`` reading the pose), and a driver's ``super().get_observation()``.
+        """
+        local = self._local
+        if getattr(local, "depth", 0) or getattr(local, "reading", False):
+            return read()
+        local.reading = True
+        try:
+            obs = read()
+        finally:
+            local.reading = False
+        for handle in self._observation_listeners:
+            handle._fire(handle.on_observation, obs)
+        return obs
+
+    @contextmanager
+    def _reported(self, lease: Optional[CommandLease], what: str, action: Any) -> Iterator[None]:
+        """Tell the ``on_command`` listeners how a top-level call ended."""
+        listeners = self._command_listeners if what in RECORDED_CALLS else ()
+        if not listeners:
+            yield
+            return
+        t = self._now()
+        try:
+            yield
+        except Exception as exc:
+            self._report(listeners, t, what, action, lease, str(exc) or type(exc).__name__)
+            raise
+        self._report(listeners, t, what, action, lease, None)
+
+    def _report(self, listeners: Sequence[ListenerHandle], t: float, what: str, action: Any,
+                lease: Optional[CommandLease], reason: Optional[str]) -> None:
+        record = CommandRecord(
+            t=t, call=what, action=None if what == "hold" else action,
+            lease=None if lease is None else lease.name,
+            priority=None if lease is None else lease.priority,
+            accepted=reason is None, reason=reason,
+            parts=None if lease is None or lease.parts is None else tuple(lease.parts))
+        for handle in listeners:
+            handle._fire(handle.on_command, record)
+
+    def _now(self) -> float:
+        try:
+            return float(self.robot.now())
+        except Exception:  # noqa: BLE001 - the audit must not break a call
+            return time.monotonic()
+
     # ---------------------------------------------------------------- audit
 
     def events(self) -> List[CommandEvent]:
@@ -518,14 +686,17 @@ class CommandArbiter:
 
     @contextmanager
     def _admit(self, lease: Optional[CommandLease], what: str, lock: bool = True,
-               touched: Optional[Callable[[], Optional[set]]] = None) -> Iterator[None]:
+               touched: Optional[Callable[[], Optional[set]]] = None,
+               action: Any = None) -> Iterator[None]:
         """Let a call through, or raise. ``lease`` is ``None`` for a direct call.
 
         ``touched`` gives the nodes the call commands (``None``: the whole
         robot); a lease on some parts may only touch those, and a direct call
         may not touch a held part. A top-level call is audited: a refusal by
         the gate or the envelope (``SafetyError``) is recorded, and
-        ``send_action`` is counted.
+        ``send_action`` is counted. A top-level ``send_action`` / ``hold`` is
+        also reported to the ``on_command`` listeners (``action``: what the
+        caller passed), busy refusals included.
         """
         local = self._local
         if getattr(local, "depth", 0):
@@ -535,6 +706,19 @@ class CommandArbiter:
                 raise self._lost(current, what)
             yield
             return
+        if self._command_listeners and what in RECORDED_CALLS:
+            with self._reported(lease, what, action):
+                with self._admit_top(lease, what, lock, touched):
+                    yield
+        else:
+            with self._admit_top(lease, what, lock, touched):
+                yield
+
+    @contextmanager
+    def _admit_top(self, lease: Optional[CommandLease], what: str, lock: bool,
+                   touched: Optional[Callable[[], Optional[set]]]) -> Iterator[None]:
+        """:meth:`_admit` for a call not nested in another one on this thread."""
+        local = self._local
         nodes = self._touched_nodes(touched, lease, what)
         if lease is None:
             busy = [h for h in self._leases if nodes is None or h._scope is None
@@ -657,5 +841,6 @@ def _where(parts: Optional[List[str]]) -> str:
     return "" if parts is None else f" (parts {parts})"
 
 
-__all__ = ["AUDIT_SIZE", "CommandArbiter", "CommandEvent", "CommandLease",
-           "PREEMPT_LOCK_TIMEOUT_S", "PreemptedError", "Priority", "RobotBusyError"]
+__all__ = ["AUDIT_SIZE", "CommandArbiter", "CommandEvent", "CommandLease", "CommandRecord",
+           "ListenerHandle", "PREEMPT_LOCK_TIMEOUT_S", "PreemptedError", "Priority",
+           "RECORDED_CALLS", "RobotBusyError"]

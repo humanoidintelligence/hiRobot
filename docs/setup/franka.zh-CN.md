@@ -30,6 +30,10 @@ assembly:
 ZED 相机用 `stereolabs_zed` 相机驱动，跑在插着相机的那台计算机上（要 ZED SDK、它的 `pyzed` wheel 和 NVIDIA GPU）。
 一台 ZED 同一时间只能被一个进程打开，先停掉 DROID 自己的相机读取。
 
+这个 body 写了模型（`model:`）：`hirobot assets fetch menagerie_franka_fr3` 下载的 `fr3_hirobot.xml`，
+即 MuJoCo Menagerie 的 FR3 机械臂，关节改名为 `joint1`…`joint7` 以对上本配置。`hirobot.model_path`
+返回它。FR3 还没有 `*_mujoco` 配置。
+
 ## 驱动做了什么
 
 | | `franka_droid` |

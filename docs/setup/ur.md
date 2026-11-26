@@ -124,6 +124,17 @@ the TCP as `[x,y,z,Rx,Ry,Rz]` (meters + axis-angle rad); the driver stores it in
 `servoJ`, VELOCITY uses `speedJ`, and CARTESIAN uses `servoL` (reading the
 7-vector `ee_targets["tcp"]` and converting it back to axis-angle).
 
+Without the arm, try the loop in MuJoCo with the built-in `ur_ur5e_mujoco` config
+(MuJoCo Menagerie's UR5e model).
+`hirobot sim` holds the home pose for 3 s and reports the drift; add `--viewer`
+to watch it, or pass the config name to `make_robot` in the loop above:
+
+```bash
+pip install 'hirobot[sim,assets]'
+hirobot assets fetch menagerie_universal_robots_ur5e
+hirobot sim ur_ur5e_mujoco
+```
+
 ## 6. Common pitfalls
 
 - **Remote Control mode:** if the robot is not in remote mode, the RTDE control

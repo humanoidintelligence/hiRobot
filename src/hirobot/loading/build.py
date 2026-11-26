@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 import numpy as np
 
 from hirobot.core.embodiment import Embodiment, EmbodimentKind
-from hirobot.loading.layout import NodeLayout, node_layout
+from hirobot.loading.layout import NodeLayout, model_ref, node_layout
 from hirobot.geometry.transforms import IDENTITY_POSE, pose_compose
 from hirobot.loading.tree import SEP, DeviceSpec, NodeSpec, RobotSpec, joint_safety
 
@@ -63,6 +63,7 @@ def build_tree(spec: RobotSpec, sim: bool = False) -> Tuple["Robot", Embodiment]
     if sim:
         from hirobot.sim.sim_world import build_world, sim_options
 
+        _check_mjcf(spec)
         world = build_world(spec, layout, sim_options(spec.sim))
     sim_only = world is not None or all(_body_class(b).simulated for _, b in _bodies(spec.root))
     robot = _build_node(spec.root, layout, sim_only, "", world)
@@ -79,6 +80,7 @@ def world_views(spec: RobotSpec, options: Mapping[str, Any]) -> Tuple[Any, List[
     from hirobot.drivers.sim.mujoco.driver import MujocoView
     from hirobot.sim.sim_world import build_world
 
+    _check_mjcf(spec)
     layout = node_layout(spec.root)
     tree = build_world(spec, layout, options)
     tree.world.cameras = []  # nothing renders in the check (set before connect builds it)
@@ -155,6 +157,15 @@ def tree_safety(spec: RobotSpec, embodiment: Embodiment) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------- building
+
+
+def _check_mjcf(spec: RobotSpec) -> None:
+    """Refuse a body whose ``model:`` has a urdf but no mjcf: the simulation needs an MJCF."""
+    for path, dev in _bodies(spec.root):
+        model = dev.fields.get("model")
+        if model and not model.get("mjcf"):
+            raise ValueError(f"{path}: its model: has only a urdf; the simulation (MuJoCo) "
+                             "needs an mjcf. Add model: {mjcf: ...} to its device file")
 
 
 def _bodies(node: NodeSpec) -> List[Tuple[str, DeviceSpec]]:
@@ -242,7 +253,9 @@ def _own_embodiment(node: NodeSpec, emb: Embodiment, children: set) -> Embodimen
         end_effectors=[e for e in emb.end_effectors if own(e.name)],
         cameras=[c for c in emb.cameras if own(c.name)],
         microphones=[m for m in emb.microphones if own(m.name)],
-        speakers=[s for s in emb.speakers if own(s.name)])
+        speakers=[s for s in emb.speakers if own(s.name)],
+        battery_soc_limit=emb.battery_soc_limit,
+        model=model_ref(body) if body is not None else None)
 
 
 def _without_devices(emb: Embodiment) -> Embodiment:
@@ -269,7 +282,11 @@ def body_driver_kwargs(dev: DeviceSpec) -> Dict[str, Any]:
     kwargs = dict(dev.driver or {"type": "toy"})
     if kwargs.pop("type") == "mujoco" and dev.fields.get("model"):
         model = dev.fields["model"]
-        kwargs.setdefault("model_path", model["mjcf"])
+        if model.get("mjcf"):
+            kwargs.setdefault("model_path", model["mjcf"])
+        elif "model_path" not in kwargs:
+            raise ValueError("a mujoco body needs an MJCF; its model: has only a urdf. Add "
+                             "model: {mjcf: ...} or driver: {model_path: ...}")
         for key, arg in (("kp", "default_kp"), ("kd", "default_kd"), ("armature", "armature"),
                          ("home", "initial_joint_pos")):
             if model.get(key) is not None:

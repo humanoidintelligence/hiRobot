@@ -4,6 +4,70 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。0.1.0 之前任何版本都可能有不兼容的接口改动，
 这类改动列在"移除"或"变更"下，并标 **不兼容**。
 
+## [0.0.7] - 2026-11-26
+
+录制成 LeRobot 数据集、末端目标的 IK 层、MCP 服务器、通用 ROS 2 本体驱动、相机内参，以及除 AgiBot 外每个内置本体的仿真模型，
+用 `hirobot assets fetch` 下载。机械臂（UR5e、PiPER、WidowX 250S）现在也能在 MuJoCo 里跑。
+
+### 新增
+
+- **录制**（`hirobot.record`，`pip install 'hirobot[record]'`）：`Recorder(robot, root)` 按回合录制（`start(task)` / `stop()` /
+  `cancel()`），每个回合写成一个 LeRobot v3.0 数据集（parquet + H.264 视频），不需要导入 `lerobot`。状态、命令和图像对齐到帧网格；
+  保存时的质量标记写进 `meta/qc.jsonl`，`append_verdict()` 追加人工判定。回合在子进程里保存，保存时控制循环几乎不受影响。
+  示例：`examples/record_g1.py`（MuJoCo G1）。
+- **监听器**：`robot.add_listener(on_observation=..., on_command=...)` 报告每次顶层 `get_observation()`，以及每次顶层
+  `send_action` / `hold`（一条 `CommandRecord`，被拒绝的也报），不在命令路径上。`hirobot.core.features`（`observation_features`、
+  `flatten_observation`、`action_features`、`flatten_action`、`image_features`）把 `Observation` / `Action` 拍平成按 LeRobot
+  布局命名的向量。
+- **`mink_ik` 层**（`pip install 'hirobot[ik]'`，Python 3.11+）：把基座坐标系里的 `CARTESIAN` / `CARTESIAN_DELTA` 末端目标
+  变成一个 `POSITION` 动作，在 MuJoCo 模型（仿真自己的、一个 MJCF 或一个配置名）上用 mink IK 求解。浮动基座保持不动；
+  求解失败时重发上一个目标。示例：`examples/mink_ik_g1.py`。
+- **MCP 服务器**（`pip install 'hirobot[mcp]'`，服务器需要 Python 3.10+）：`hirobot mcp <config>` 或 `serve_mcp(robot)`
+  通过 stdio 或 streamable HTTP 提供机器人的工具（描述、观测、状态、动作、保持、停止、技能、重置），由配置的 `mcp:` 一节设置。
+  HTTP 默认只监听 127.0.0.1。示例：`examples/mcp/`；指南：`docs/mcp.md`。
+- **通用 ROS 2 本体驱动**（`ros2`）：只靠配置就能驱动一台 ROS 2 机器人。状态组件（`joint_state`、`imu`、`odometry`）和命令组件
+  （`joint_trajectory`、`float_array`，或按字段映射填的自定义消息）列出话题；关节按名字匹配。指南：`docs/setup/ros2.md`。
+- **相机内参和外参**：`Robot.camera_info(name)` 返回 `CameraInfo`（`CameraIntrinsics`、内参来源、安装位姿、是否有深度）。
+  内参依次取相机文件的 `intrinsics:`、驱动（RealSense、Orbbec、ZED 从设备读）、安装位姿 `fovy` 推出的理想针孔，
+  并缩放到声明的图像尺寸。
+- **扬声器音量**：扬声器可以支持 `volume` / `set_volume(level)`（0-100），由 `supports_volume` 表明。Unitree G1 的扬声器设置
+  硬件音量，关闭时恢复；WAV、null 和 sounddevice 扬声器用软件增益。
+- **仿真模型**（`pip install 'hirobot[assets]'`）：`hirobot assets list` 和 `hirobot assets fetch NAME | --all` 从
+  Hugging Face 上的 `humanoidintelligence/hirobot-assets` 数据集把 MJCF / URDF 模型下载到 `~/.cache/hirobot/assets`。
+  `HIROBOT_ASSETS_REPO` 可以换一个目录结构相同的数据集。
+- 除 AgiBot G1 和 X1 外，每个内置本体现在都有 `model:`：UR5e、PiPER 和 WidowX 250S（MuJoCo Menagerie），Unitree H1、H1-2 和 H2，
+  Franka FR3，以及 Fourier GR1T1 / GR1T2（只有 URDF）。新配置 `ur_ur5e_mujoco`、`agilex_piper_mujoco` 和
+  `trossen_wx250s_mujoco` 在 MuJoCo 里跑这几台机械臂（`hirobot sim <config>`）；夹爪在仿真里不动。
+  `docs/supported_robots.md` 列出每个模型的来源。
+- `all` extra：`pip install 'hirobot[all]'` 装上所有可选功能（约 1 GB）。README 的安装命令改用它；核心安装不变。
+- **模型路径**：`Embodiment.model`（一个 `ModelRef`：`kind` 为 mjcf / urdf、`path`、`package_roots`）和
+  `hirobot.model_path(config)` 不建机器人就给出本体的模型文件；`hirobot.available_configs(group)` 列出内置配置名。设备文件的
+  `model:` 可以写 `urdf:`（带 `package_roots`）代替 `mjcf:`。`hirobot info` 打印模型路径。
+- **`hirobot scan` 和 `hirobot init`**：`scan` 只读地查看本机和机器人网络（网卡、Unitree 网段、已装的驱动 SDK、ROS 2、相机、
+  音频），打印报告和建议。`init` 先扫描，再为 Unitree 机器人写一份本地配置，并只读地检查它。
+- **按机型的健康阈值**：`Joint.temperature_limit` 和 `Embodiment.battery_soc_limit`，都是可选的 `(warn, shutdown)` 两档。
+  `safety:` 没写 `max_joint_temperature` / `min_battery_soc` 时，`SafetyGate` 从本体取停机档。
+- **Unitree G1 `turn` 技能**：原地转一个角度，用 IMU 偏航角闭环。`walk` 和 `turn` 现在在 `duration_s` 里给出本次运行的预计时长。
+  还没在真机 G1 上试过。
+
+### 变更
+
+- **不兼容**：AgiBot X1 改用 `ros2` 驱动；删掉了 `agibot_aimrt` 和 `AgibotX1Robot`。`/joint_states` 按关节名匹配，不再按消息
+  顺序；`spin_timeout` 改名为 `connect_timeout_s`。
+- **不兼容**：Unitree G1 模型从 `~/.cache/hirobot/unitree_ros/...` 移到 `~/.cache/hirobot/assets/unitree_ros/...`
+  （`hirobot assets fetch unitree_g1`）。指向旧路径的本地配置要改。
+- 仿真相机按自己的帧率渲染（`Camera.fps`，没有就用 `sim.camera_fps`，默认 30），中间重复上一帧，和真相机一样。相机的
+  `stamps[...].seq` 数自己的帧。`camera_fps: null` 和以前一样每次观测都渲染。
+- `sim_check` 在建机器人时就拒绝 `model:` 只有 `urdf` 的本体。
+- `mink_ik` 层的 `model:` 除了 MJCF 也可以写一个配置（`.yaml`）。
+- H1 设置指南不再要求手动改 MJCF：数据集里带了改好腰关节名的 `h1_hirobot.xml`。
+
+### 修复
+
+- MuJoCo 和 toy 仿真器按 IMU 的读法填 `base_linear_acceleration`（基座坐标系里的比力，含重力）；以前没有填。
+- Unitree G1 超过 3 秒的手势（比如 `high_wave`）在机器人做动作时不再报 "refused (RPC code 3104)"。
+- `unitree_g1_dex3` 改用带两只 Dex3-1 手的 G1 模型。以前用的是不带手的 29 自由度模型，3D 视图里没有手，`make_robot(..., sim=True)` 也因为 43 个关节对不上而失败。
+
 ## [0.0.6] - 2026-11-15
 
 支持 Trossen WidowX 250S，带它的夹爪和 RealSense D435i 相机。项目副标题缩短。
@@ -205,6 +269,7 @@
   和底盘，以及它的头部（RealSense D457）和腕部（RealSense D405）相机；Unitree G1 和 H1 上的 RealSense D435i 头部相机。
   Fourier GRx、AgiBot X1、Franka FR3 和 UR5e 的驱动已包含，还没在真机上验证。
 
+[0.0.7]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.3...v0.0.4

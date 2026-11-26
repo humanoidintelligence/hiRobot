@@ -31,7 +31,7 @@ file's other driver options.
 
 :func:`load_robot` returns a :class:`RobotSpec`: the root :class:`NodeSpec` and
 the sections only the root may have (``safety``, ``layers``, ``arbiter``,
-``sim``). Where each part sits, and the :class:`~hirobot.core.embodiment.Embodiment`
+``sim``, ``mcp``). Where each part sits, and the :class:`~hirobot.core.embodiment.Embodiment`
 that follows, is worked out by :mod:`hirobot.assembly.parts`.
 """
 
@@ -53,10 +53,10 @@ DEVICE_KINDS = ("body", "end_effector", "camera", "microphone", "speaker")
 
 #: Keys each kind of device file takes (besides ``device``).
 DEVICE_FIELDS: Dict[str, Tuple[str, ...]] = {
-    "body": ("control_hz", "floating_base", "joints", "frames", "mounts", "grippers", "model",
-             "driver"),
+    "body": ("control_hz", "floating_base", "battery_soc_limit", "joints", "frames", "mounts",
+             "grippers", "model", "driver"),
     "end_effector": ("interface", "joints", "tcp", "mounts", "model", "driver"),
-    "camera": ("width", "height", "fps", "depth", "fovy", "driver"),
+    "camera": ("width", "height", "fps", "depth", "fovy", "intrinsics", "driver"),
     "microphone": ("driver",),
     "speaker": ("driver",),
 }
@@ -64,8 +64,8 @@ NODE_KEYS = ("name", "control_hz", "parts", "placement", "collision")
 #: Keys of a part that references a file.
 REF_KEYS = ("from", "overrides", "safety")
 #: Top-level keys of a robot config used as the root (``defaults:`` is expanded first).
-ROOT_KEYS = ("assembly", "safety", "layers", "arbiter", "sim")
-MODEL_KEYS = ("mjcf", "kp", "kd", "armature", "home")
+ROOT_KEYS = ("assembly", "safety", "layers", "arbiter", "sim", "mcp")
+MODEL_KEYS = ("mjcf", "urdf", "package_roots", "kp", "kd", "armature", "home")
 #: ``safety:`` keys that only the root config may set.
 ROOT_ONLY_SAFETY = ("sim_check",)
 #: Every ``safety:`` key (the gate's arguments, ``sim_check``).
@@ -167,6 +167,7 @@ class RobotSpec:
     layers: List[Dict[str, Any]] = field(default_factory=list)
     arbiter: Dict[str, Any] = field(default_factory=dict)
     sim: Optional[Dict[str, Any]] = None
+    mcp: Optional[Dict[str, Any]] = None
     source: Optional[Path] = None
 
 
@@ -275,8 +276,14 @@ def load_robot(config: Union[ConfigRef, Mapping[str, Any]],
     sim = data.get("sim")
     if sim is not None and not isinstance(sim, Mapping):
         raise ValueError(f"sim: must be a mapping, got {sim!r}")
+    mcp = data.get("mcp")
+    if mcp is not None:
+        from hirobot.mcp.config import parse_mcp_config
+
+        parse_mcp_config(mcp)  # check it here, so a bad section fails at load
     return RobotSpec(root=root, safety=safety, layers=[dict(s) for s in layers],
-                     arbiter=dict(arbiter), sim=None if sim is None else dict(sim), source=source)
+                     arbiter=dict(arbiter), sim=None if sim is None else dict(sim),
+                     mcp=None if mcp is None else dict(mcp), source=source)
 
 
 def _expand_dict_defaults(defaults: Any, data: Dict[str, Any], base: Path) -> Dict[str, Any]:
@@ -408,11 +415,11 @@ def _part(part: Any, base: Path, above: Mapping[str, Any],
 
 def _check_referenced(data: Mapping[str, Any], path: Path) -> None:
     """A robot config used as a part: only ``assembly`` and ``safety`` (no root-only sections)."""
-    for key in ("layers", "arbiter", "sim"):
+    for key in ("layers", "arbiter", "sim", "mcp"):
         if data.get(key):
             raise ValueError(f"{path}: {key}: is only for the root config; this file is used as "
                              "a part (put it in the config that references this one)")
-    unknown = sorted(set(data) - {"assembly", "safety"} - {"layers", "arbiter", "sim"})
+    unknown = sorted(set(data) - {"assembly", "safety"} - {"layers", "arbiter", "sim", "mcp"})
     if unknown:
         raise ValueError(f"{path}: unknown top-level key(s) {unknown}")
 
@@ -436,6 +443,7 @@ def _device(data: Mapping[str, Any], source: Optional[Path], base: Path, where: 
     if kind == "body":
         out["control_hz"] = _positive_int(data.get("control_hz", 30), f"{where}: control_hz")
         out["floating_base"] = _bool(data.get("floating_base", False), f"{where}: floating_base")
+        out["battery_soc_limit"] = data.get("battery_soc_limit")  # pydantic Embodiment validates
         out["joints"] = _joints(data.get("joints") or [], where)
         out["frames"] = _frames(data.get("frames") or [], where)
         out["mounts"] = _mounts(data.get("mounts") or {}, where)
@@ -469,6 +477,7 @@ def _device(data: Mapping[str, Any], source: Optional[Path], base: Path, where: 
                                                                            f"{where}: fps")
         out["depth"] = _bool(data.get("depth", False), f"{where}: depth")
         out["fovy"] = _positive_float(data.get("fovy", 45.0), f"{where}: fovy")
+        out["intrinsics"] = _intrinsics(data.get("intrinsics"), out, f"{where}: intrinsics")
     if "model" in data and data["model"] is not None:
         out["model"] = _model(data["model"], base, f"{where}: model")
     return DeviceSpec(kind=kind, fields=out, source=source)
@@ -489,8 +498,9 @@ def _joints(value: Any, where: str) -> List[Dict[str, Any]]:
     for j in value:
         if not isinstance(j, Mapping) or "name" not in j:
             raise ValueError(f"{where}: every joint is {{name, position_limit, torque_limit, "
-                             f"axis, parent_link}}, got {j!r}")
-        unknown = sorted(set(j) - {"name", "position_limit", "torque_limit", "axis", "parent_link"})
+                             f"temperature_limit, axis, parent_link}}, got {j!r}")
+        unknown = sorted(set(j) - {"name", "position_limit", "torque_limit", "temperature_limit",
+                                   "axis", "parent_link"})
         if unknown:
             raise ValueError(f"{where}: joint {j['name']!r}: unknown key(s) {unknown}")
         out.append(dict(j))
@@ -538,13 +548,25 @@ def _mounts(value: Any, where: str) -> Dict[str, Dict[str, Any]]:
 
 
 def _model(value: Any, base: Path, where: str) -> Dict[str, Any]:
-    if not isinstance(value, Mapping) or not value.get("mjcf"):
-        raise ValueError(f"{where} must be a mapping with mjcf (and kp, kd, armature, home)")
+    if not isinstance(value, Mapping) or not (value.get("mjcf") or value.get("urdf")):
+        raise ValueError(f"{where} must be a mapping with mjcf or urdf (and package_roots, kp, "
+                         "kd, armature, home)")
     unknown = sorted(set(value) - set(MODEL_KEYS))
     if unknown:
         raise ValueError(f"{where}: unknown key(s) {unknown}; it takes {list(MODEL_KEYS)}")
     out = dict(value)
-    out["mjcf"] = _path_from(str(out["mjcf"]), base)
+    for key in ("mjcf", "urdf"):
+        if out.get(key):
+            out[key] = _path_from(str(out[key]), base)
+    roots = out.get("package_roots")
+    if roots is not None:
+        if not out.get("urdf"):
+            raise ValueError(f"{where}: package_roots is for a urdf; this model has none")
+        if not isinstance(roots, Mapping) or not all(isinstance(v, str) and v
+                                                     for v in roots.values()):
+            raise ValueError(f"{where}: package_roots must map package names to directories, "
+                             f"got {roots!r}")
+        out["package_roots"] = {str(k): _path_from(v, base) for k, v in roots.items()}
     return out
 
 
@@ -630,6 +652,23 @@ def _positive_int(value: Any, where: str) -> int:
             or value <= 0:
         raise ValueError(f"{where} must be a positive integer, got {value!r}")
     return int(value)
+
+
+def _intrinsics(value: Any, camera: Dict[str, Any], where: str) -> Optional[Dict[str, Any]]:
+    """A camera's ``intrinsics:`` mapping, checked; its size defaults to the camera's."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{where} must be a mapping {{fx, fy, cx, cy, ...}}, got {value!r}")
+    from pydantic import ValidationError
+
+    from hirobot.core.embodiment import CameraIntrinsics
+
+    data = {"width": camera["width"], "height": camera["height"], **value}
+    try:
+        return CameraIntrinsics(**data).model_dump()
+    except (ValidationError, TypeError) as exc:
+        raise ValueError(f"{where}: {exc}") from None
 
 
 def _positive_float(value: Any, where: str) -> float:

@@ -1,7 +1,7 @@
 """MuJoCo driver, and rehearsing from a real robot's pose (examples/rehearse_in_sim.py).
 
-The physics tests need ``mujoco`` and the G1 MJCF from unitree_ros (see
-the built-in config unitree_g1_mujoco); they are skipped when either is absent.
+The physics tests need ``mujoco`` and the G1 MJCF from unitree_ros
+(``hirobot assets fetch unitree_g1``); they are skipped when either is absent.
 The rehearsal test uses a fake real driver, so it never touches hardware.
 """
 
@@ -292,6 +292,7 @@ def _inner_body(robot):
     return robot
 
 
+@needs_model
 def test_floating_base_quaternion_is_scalar_last():
     robot = _sim(fixed_base=False)
     robot.connect()
@@ -300,3 +301,145 @@ def test_floating_base_quaternion_is_scalar_last():
     robot.set_state(robot.get_observation().joint_pos, base_orientation=q)
     assert np.allclose(robot.get_observation().base_orientation, q)
     assert np.allclose(robot.data.qpos[3:7], [q[3], q[0], q[1], q[2]])  # MuJoCo is w first
+
+
+# ------------------------------------------------- IMU linear acceleration
+
+BOX_XML = """
+<mujoco>
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="5 5 0.1"/>
+    <body name="base" pos="0 0 {z}" quat="{quat}">
+      <freejoint/>
+      <site name="imu"/>
+      <geom type="box" size="0.1 0.1 0.1" mass="2"/>
+      <body name="arm" pos="0 0 0.1">
+        <joint name="j0" axis="0 0 1"/>
+        <geom type="capsule" fromto="0 0 0 0.1 0 0" size="0.02" mass="0.1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor joint="j0"/>
+  </actuator>
+  <sensor>
+    <accelerometer name="acc" site="imu"/>
+  </sensor>
+</mujoco>
+"""
+
+
+def _box(tmp_path, quat="1 0 0 0", z=0.1, fixed_base=False):
+    """A box with a free joint (or welded), one joint, and an accelerometer at its origin."""
+    from hirobot import Embodiment, get_body
+
+    path = tmp_path / "box.xml"
+    path.write_text(BOX_XML.format(quat=quat, z=z))
+    emb = Embodiment(name="box", floating_base=True, control_hz=50, joints=[{"name": "j0"}])
+    robot = get_body("mujoco")(emb, model_path=str(path), fixed_base=fixed_base,
+                               realtime=False)
+    robot.connect()
+    return robot
+
+
+@pytest.mark.parametrize("quat, expected", [
+    ("1 0 0 0", [0, 0, 9.81]),                    # upright
+    ("0.7071068 0.7071068 0 0", [0, 9.81, 0]),    # on its side: the body's y points up
+])
+def test_free_base_at_rest_reads_the_reaction_to_gravity_in_its_frame(tmp_path, quat, expected):
+    robot = _box(tmp_path, quat)
+    for _ in range(50):  # 1 s on the floor
+        robot._idle_step()
+    obs = robot.get_observation()
+    np.testing.assert_allclose(obs.base_linear_velocity, 0, atol=1e-3)
+    np.testing.assert_allclose(obs.base_linear_acceleration, expected, atol=0.05)
+    robot.disconnect()
+
+
+def test_free_base_matches_an_accelerometer_and_reads_zero_in_free_fall(tmp_path):
+    robot = _box(tmp_path, quat="0.9238795 0 0.3826834 0", z=0.3)  # tilted 45 degrees
+    adr = int(robot.model.sensor("acc").adr[0])
+    sensor = lambda: robot.data.sensordata[adr:adr + 3]  # noqa: E731
+    robot._idle_step()  # still in the air
+    np.testing.assert_allclose(robot.get_observation().base_linear_acceleration, 0, atol=1e-9)
+    from hirobot.geometry.transforms import quat_to_matrix
+
+    gravity = robot.model.opt.gravity
+    for k in range(60):  # lands, bounces, the arm spins
+        robot.send_action(Action(mode=ControlMode.TORQUE, joint_target=np.array([0.2])))
+        obs = robot.get_observation()
+        acc = obs.base_linear_acceleration
+        np.testing.assert_array_equal(robot.get_observation().base_linear_acceleration, acc)
+        # Turned back by the reported orientation, plus gravity: the base's acceleration.
+        np.testing.assert_allclose(quat_to_matrix(obs.base_orientation) @ acc + gravity,
+                                   robot.data.qacc[:3], atol=1e-9, err_msg=f"step {k}")
+        # MuJoCo's accelerometer reads the same vector in the orientation at the start
+        # of the last 2 ms physics step: the same length.
+        assert np.linalg.norm(acc) == pytest.approx(np.linalg.norm(sensor()), abs=1e-9)
+    robot.disconnect()
+
+
+def test_welded_base_reads_the_reaction_to_gravity(tmp_path):
+    robot = _box(tmp_path, fixed_base=True)
+    for _ in range(3):
+        np.testing.assert_allclose(robot.get_observation().base_linear_acceleration,
+                                   [0, 0, 9.81])
+        robot._idle_step()
+    robot.disconnect()
+
+
+@needs_model
+def test_recorded_g1_episode_has_no_nan_in_imu(tmp_path):
+    """The hung G1 recorded as in examples/record_g1.py: ``observation.imu`` is all numbers."""
+    pytest.importorskip("pyarrow")
+    pytest.importorskip("av")
+    import json
+
+    import pyarrow.parquet as pq
+
+    from hirobot.loading.config import load_config
+    from hirobot.record import Recorder
+
+    cfg = load_config(CFG)
+    cfg["sim"]["realtime"] = False
+    robot = make_robot(cfg)
+    robot.connect()
+    try:
+        pose = robot.get_observation().joint_pos.copy()
+        joint = robot.embodiment.joint_names.index("right_shoulder_pitch")
+        with Recorder(robot, tmp_path, robot_config=CFG) as rec:
+            events = []
+            rec.subscribe(events.append)
+            rec.start("wave the right arm")
+            for k in range(75):  # 1.5 s at 50 Hz
+                robot.get_observation()
+                target = pose.copy()
+                target[joint] += 0.4 * np.sin(2 * np.pi * 0.5 * k / 50)
+                robot.send_action(Action(mode=ControlMode.POSITION, joint_target=target))
+            rec.stop()
+            assert rec.wait(120)
+    finally:
+        robot.disconnect()
+    saved = [e for e in events if e.state == "saved"]
+    assert saved, [(e.state, e.error) for e in events]
+    root = tmp_path / saved[0].path.rsplit("/", 1)[-1]
+    imu = np.asarray(pq.read_table(root / "data/chunk-000/file-000.parquet")
+                     .column("observation.imu").to_pylist(), dtype=float)
+    assert imu.shape[1] == 10 and np.isfinite(imu).all()
+    np.testing.assert_allclose(imu[:, 7:], np.tile([0, 0, 9.81], (len(imu), 1)))
+    stats = json.loads((root / "meta/stats.json").read_text())["observation.imu"]
+    assert all(np.isfinite(v).all() for v in stats.values())
+
+
+@needs_model
+@pytest.mark.parametrize("fixed_base", [True, False])
+def test_shared_world_g1_reads_imu_acceleration(fixed_base):
+    robot = _sim(fixed_base=fixed_base)
+    robot.connect()
+    robot._idle_step()
+    acc = robot.get_observation().base_linear_acceleration
+    assert acc.shape == (3,) and np.isfinite(acc).all()
+    if fixed_base:
+        np.testing.assert_allclose(acc, [0, 0, 9.81])
+    robot.disconnect()

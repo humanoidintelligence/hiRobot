@@ -6,7 +6,7 @@
 
 [OpenMOSS Group](https://openmoss.ai) / [Shanghai Innovation Institute](https://www.sii.edu.cn/) / [Fudan University](https://www.fudan.edu.cn/en/)
 
-[English](./README.md) | **简体中文** · **文档：** [支持的机器人](docs/supported_robots.zh-CN.md) · [设置指南](docs/setup/README.zh-CN.md) · [API 参考](docs/api.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [贡献指南](CONTRIBUTING.md)
+[English](./README.md) | **简体中文** · **文档：** [支持的机器人](docs/supported_robots.zh-CN.md) · [设置指南](docs/setup/README.zh-CN.md) · [API 参考](docs/api.zh-CN.md) · [MCP](docs/mcp.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [贡献指南](CONTRIBUTING.md)
 
 <!-- hardware-gallery:start -->
 
@@ -28,10 +28,12 @@
 
 - [简介](#简介)
 - [支持的机器人](#支持的机器人)
+- [Robot 一览](#robot-一览)
 - [快速开始](#快速开始)
   - [仿真](#仿真)
   - [真机：Unitree G1](#真机unitree-g1)
   - [多台机器人作为一个](#多台机器人作为一个)
+  - [用 AI agent 控制机器人（MCP）](#用-ai-agent-控制机器人mcp)
 - [架构](#架构)
 - [仓库结构](#仓库结构)
 - [添加新机器人](#添加新机器人)
@@ -96,14 +98,35 @@ hiRobot 把这层胶水统一起来：
 真机（本体、移动底盘、末端执行器、摄像头）及其配置、驱动、厂商 SDK、设置指南和真机验证情况，
 以及仿真机器人，见 [docs/supported_robots.zh-CN.md](docs/supported_robots.zh-CN.md)。
 
+## Robot 一览
+
+`Robot` 的全部成员，按用途分组。驱动、仿真器、assembly 和 layer 都有下面每一个成员；签名、参数和出错情况见
+[docs/api.zh-CN.md](docs/api.zh-CN.md#robot)。
+
+| 用途 | 成员 | 见 |
+|---|---|---|
+| 机器人是什么 | `embodiment`、`action_modes`、`motion_spaces`、`direct_joints`、`cartesian_targets`、`accepts_parts`、`simulated` | [Embodiment](docs/api.zh-CN.md#embodiment)、[ControlMode](docs/api.zh-CN.md#controlmode) |
+| 挂载的设备 | `cameras`、`microphones`、`speakers`（按名字） | [扩展点](docs/api.zh-CN.md#扩展点相机末端执行器与音频) |
+| 连接和复位 | `connect()`、`reset(seed=None)`、`disconnect()` | [Robot](docs/api.zh-CN.md#robot) |
+| 读 | `get_observation() -> Observation`、`get_status() -> RobotStatus`、`now()`、`fault` | [Observation](docs/api.zh-CN.md#observation)、[RobotStatus](docs/api.zh-CN.md#robotstatus) |
+| 发命令 | `send_action(action)`、`check_action(action) -> Action`、`hold()`、`set_gains(kp, kd)`、`command_timeout_s` | [Action](docs/api.zh-CN.md#action) |
+| 急停 | `estop()` | [Robot](docs/api.zh-CN.md#robot) |
+| 共用命令流 | `claim(name, ...) -> CommandLease`、`command_events()` | [命令仲裁](docs/api.zh-CN.md#命令仲裁) |
+| 技能 | `list_robot_skills()`、`run_robot_skill(name, args=None)`、`stop_robot_skill()`、`robot_skill_running` | [技能](docs/api.zh-CN.md#技能) |
+| 按类别的技能 | 机载 skill：`has_onboard_skills`、`list_onboard_skills()`、`run_onboard_skill(name, args=None)`、`stop_onboard_skill()`。层技能：`list_layer_skills()`、`run_layer_skill(name, args=None)`、`stop_layer_skill()`、`layer_skill_running` | [机载 skill](docs/api.zh-CN.md#机载-skill)、[Layer](docs/api.zh-CN.md#layer) |
+| 安全和回合结果 | `safety`（挂上的 `SafetyGate`）、`success`、`done`、`reward` | [SafetyGate](docs/api.zh-CN.md#safetygate)、[控制循环](docs/api.zh-CN.md#控制循环) |
+
 ## 快速开始
 
-核心安装很轻（numpy、pydantic、pyyaml）；extras 补上特定驱动需要的依赖：
+`.[all]` 装上所有可选功能（约 1 GB，不含 GPU 库）。想装得小一些，就只装核心（numpy、pydantic、pyyaml，约 70 MB），
+再加需要的 extras：
 
 ```bash
 git clone https://github.com/humanoidintelligence/hiRobot.git && cd hiRobot
-pip install -e .                 # 核心：接口、toy 驱动、安全门
-# extras：sim（MuJoCo 机器人）· camera · video · audio · dev
+pip install -e '.[all]'          # 下面列的全部
+# 或者：pip install -e .         # 核心：接口、toy 驱动、安全门
+# extras：sim（MuJoCo 机器人）· assets（仿真模型）· record（LeRobot 数据集）· ik（mink_ik 层）
+#         · camera · video · audio · mcp（MCP 服务器）· dev
 ```
 
 查看一份配置描述的 embodiment（不需要机器人，不需要 GPU）：
@@ -119,7 +142,8 @@ hirobot info --config ur_ur5e      # 固定基座机械臂
 （[命令](docs/setup/unitree.zh-CN.md#5-mujocog1可选)），然后在查看器中打开：
 
 ```bash
-pip install -e '.[sim]'
+pip install -e '.[sim,assets]'
+hirobot assets fetch unitree_g1
 hirobot sim unitree_g1_mujoco --viewer
 ```
 
@@ -144,6 +168,9 @@ robot.disconnect()
 
 仿真器每次 `send_action` 推进一步，所以循环不需要计时器；在真机上，要按 `robot.embodiment.control_hz`
 控制节奏。只要换掉配置，同样的代码就能在真实的 G1 上运行。
+
+UR5e、AgileX PiPER 和 WidowX 250 S 机械臂也有 MuJoCo 配置（`ur_ur5e_mujoco`、`agilex_piper_mujoco`、
+`trossen_wx250s_mujoco`）；每款机器人有哪些模型，见[仿真机器人](docs/supported_robots.zh-CN.md#仿真机器人)。
 
 ### 真机：Unitree G1
 
@@ -190,7 +217,7 @@ python scripts/unitree_setup.py move --config my_g1.yaml --iface eth0 \
 
 其他机器人请参考各自的指南：[总览](docs/setup/README.zh-CN.md) ·
 [Fourier GR1](docs/setup/fourier.zh-CN.md) ·
-[AgiBot G1](docs/setup/agibot_g1.zh-CN.md) · [AgiBot X1](docs/setup/agibot_x1.zh-CN.md) · [Franka FR3](docs/setup/franka.zh-CN.md) ·
+[AgiBot G1](docs/setup/agibot_g1.zh-CN.md) · [AgiBot X1](docs/setup/agibot_x1.zh-CN.md) · [ROS 2 机器人](docs/setup/ros2.zh-CN.md) · [Franka FR3](docs/setup/franka.zh-CN.md) ·
 [Universal Robots UR5e](docs/setup/ur.zh-CN.md) · [AgileX PiPER](docs/setup/agilex_piper.zh-CN.md)。
 
 ### 多台机器人作为一个
@@ -216,6 +243,22 @@ robot.disconnect()
 （[`examples/franka_ur5e_dual_real.yaml`](examples/franka_ur5e_dual_real.yaml)）。
 动作的每个部分都先经安全门检查，全部通过后才发送；任何一个部件失败，整台机器人都会进入保持。
 扁平动作、部件摆放、世界坐标系和命名规则见 [docs/api.zh-CN.md](docs/api.zh-CN.md#robotassembly)。
+
+### 用 AI agent 控制机器人（MCP）
+
+`hirobot mcp` 把机器人作为一个 [MCP](https://modelcontextprotocol.io) 服务器提供出来，
+Claude Code 这样的 LLM agent 就能读取它、移动它；每条命令仍然经过 `send_action`、`SafetyGate` 和命令租约。
+它需要 Python 3.10+ 和 `mcp` extra：
+
+```bash
+pip install -e '.[mcp]'
+hirobot mcp ur_ur5e        # 只读观测；通常由客户端启动它
+claude mcp add hirobot -- hirobot mcp ur_ur5e --tools observe act
+```
+
+默认只开观测工具；要让机器人动，需要 `--tools observe act`。
+`python examples/mcp/client.py` 不用 LLM 就能试这些工具。其他客户端、HTTP、仿真里的完整演练和真机上的安全，
+见 [docs/mcp.zh-CN.md](docs/mcp.zh-CN.md)；示例文件在 [`examples/mcp/`](examples/mcp/)。
 
 ## 架构
 
@@ -257,11 +300,15 @@ hiRobot 负责机器人的输入输出。`make_robot` 读取一份配置（一�
 
 ## 仓库结构
 
+<details>
+<summary><b>显示目录树</b></summary>
+
 ```
 hiRobot/
 ├── src/hirobot/
 │   ├── __init__.py          # 公开 API：make_robot、Robot、Observation、Action……
-│   ├── cli.py               # `hirobot info`、`configs`、`sim`、`view`
+│   ├── cli.py               # `hirobot info`、`configs`、`sim`、`view`、`check`、`assets`、`scan`、`init`、`mcp`
+│   ├── assets.py            # `hirobot assets`：下载仿真模型
 │   ├── testing.py           # assert_layer_uses_public_api，给 layer 包用
 │   ├── core/                # embodiment、types、robot + robot_skills、dof、stamps
 │   ├── devices/             # end_effector、camera、audio：接口约定和注册表
@@ -270,17 +317,21 @@ hiRobot/
 │   ├── assembly/            # RobotAssembly + parts、node、part_layers
 │   ├── control/             # safety（安全门）、arbiter、layer、watchdog
 │   ├── sim/                 # sim_world、sim_check、check_sim、view
+│   ├── layers/              # mink_ik：用 IK 把末端目标变成关节位置
+│   ├── record/              # Recorder：把回合录成 LeRobot v3.0 数据集
+│   ├── mcp/                 # MCP 服务器：把机器人的工具交给 AI 智能体
+│   ├── scan/                # `hirobot scan` / `init`：只读地扫描本机和机器人网络
 │   ├── configs/             # 内置配置（随包安装）
 │   │   ├── body/ end_effector/ camera/ microphone/ speaker/   # 每个型号一份设备文件，按厂商分目录
 │   │   └── robots/          # 整台机器人和多机 assembly（franka_ur5e_dual）；*_mujoco 加 sim: 段
 │   └── drivers/             # <part>/<SDK vendor>/<SDK or protocol>/{driver.py, manifest.yaml}
-│       ├── body/            # unitree/sdk2, fourier/grx, agibot/aimrt, franka/droid, ur/rtde, agilex/piper_sdk
-│       ├── end_effector/    # 手：unitree/sdk2_handcmd (Dex3-1), unitree/sdk2_motorcmds, inspire/sdkpy
-│       ├── camera/          # unitree/sdk2_videohub, unitree/image_server; generic/{video_file,array}
+│       ├── body/            # unitree/sdk2, fourier/grx, agibot/gdk, franka/droid, ur/rtde, agilex/piper_sdk, trossen/dynamixel, generic/ros2
+│       ├── end_effector/    # 手：unitree/sdk2_handcmd (Dex3-1), unitree/sdk2_motorcmds, inspire/sdkpy, robotiq/urcap
+│       ├── camera/          # unitree/{sdk2_videohub,image_server}, intel/realsense, orbbec/pyorbbecsdk, stereolabs/zed, agibot/cosine; generic/{video_file,array}
 │       ├── audio/           # unitree/sdk2_voice; generic/{wav,sounddevice}
 │       ├── sim/             # toy/（`toy`）、mujoco/（`mujoco`）
 │       └── _sdk/            # 同一 SDK 内部共享的代码（Unitree DDS 初始化，每个进程一次）
-├── examples/                # 可复制的配置：真机、read_only、多机；rehearse_in_sim.py
+├── examples/                # 可复制的配置：真机、read_only、多机；rehearse_in_sim.py、mink_ik_g1.py、record_g1.py、mcp/
 ├── scripts/
 │   ├── unitree_setup.py          # Unitree 机器人上的 status / hold / move / restore
 │   ├── unitree_estop.py          # 软件急停（Ctrl-C 时进入阻尼）
@@ -298,6 +349,8 @@ hiRobot/
 ├── assets/                  # README 和文档图片；hardware/：机器人照片
 └── CHANGELOG.md             # 每个版本的变化（中文：CHANGELOG.zh-CN.md）
 ```
+
+</details>
 
 每个版本改了什么见 [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)。
 

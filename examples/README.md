@@ -19,6 +19,8 @@ robot = make_robot("examples/humanoid.yaml")
 | `unitree_g1_real.yaml` | A built-in robot on hardware: `defaults:` plus the body's driver and network card |
 | `unitree_g1_read_only.yaml` | Read the robot without commanding it: the driver's `read_only` |
 | `rehearse_in_sim.py` | Rehearse a motion in MuJoCo from the real robot's current pose; the real robot is only read |
+| `mink_ik_g1.py` | The `mink_ik` IK layer on the MuJoCo G1: `CARTESIAN_DELTA` moves the right hand (`hirobot[sim,ik]`) |
+| `record_g1.py` | Record a few seconds of the MuJoCo G1 with its head camera as a LeRobot v3.0 dataset and read it back (`hirobot[sim,record]`) |
 | `unitree_h1_inspire_camera.yaml` | Change one part (the head camera's address and size) with `overrides` |
 | `franka_ur5e_dual_real.yaml` | A built-in robot of two robots on hardware: `overrides` per arm |
 | `ur5e_dual_real.yaml` | Two UR5e arms, one config for real and `sim=True`: `overrides` per arm, a `sim:` section |
@@ -28,6 +30,7 @@ robot = make_robot("examples/humanoid.yaml")
 | `g1_ur5e_cell.yaml` | A workcell mixing a G1, a UR5e and a camera; the G1 placed with `origin:` as a moving part |
 | `mobile_ur5e.yaml` | A UR5e on a mobile base (a floating node); uses `devices/mobile_base.yaml` |
 | `devices/mobile_base.yaml` | An example device file referenced by `mobile_ur5e.yaml` (not a robot on its own) |
+| `mcp/` | A simulated UR5e served to an AI agent over MCP: config, Claude Code config, a Python client ([mcp/README.md](mcp/README.md)) |
 
 Values in `<...>` are placeholders for your setup. The `unitree_*` files are
 explained in [docs/setup/unitree.md](../docs/setup/unitree.md).

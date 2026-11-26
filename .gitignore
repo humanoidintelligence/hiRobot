@@ -69,6 +69,7 @@ cache/
 # Local scratch output (debug images, probes)
 tmp/
 
-# Claude Code: only the dev rules are tracked
+# Claude Code: only the dev rules and the leader's subagents are tracked
 .claude/*
 !.claude/rules/
+!.claude/agents/

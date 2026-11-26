@@ -360,6 +360,22 @@ def check_speaker(name: str, make: Callable[[], SpeakerDriver],
         if played:
             assert played() - before == pytest.approx(0.1, abs=0.02)
         spk.stop()
+        _check_volume(spk)
     finally:
         spk.close()
     spk.close()
+
+
+def _check_volume(spk: SpeakerDriver) -> None:
+    """The optional volume capability behaves as ``SpeakerDriver`` documents."""
+    for bad in (-1, 101, 50.0, True, "50"):
+        with pytest.raises(ValueError):
+            spk.set_volume(bad)
+    if not spk.supports_volume:
+        assert spk.volume is None
+        with pytest.raises(NotImplementedError):
+            spk.set_volume(50)
+        return
+    for level in (0, 37, 100):
+        spk.set_volume(level)
+        assert spk.volume == level

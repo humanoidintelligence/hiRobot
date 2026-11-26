@@ -23,4 +23,21 @@ frames:
   - {name: ee}
 grippers: [ee]
 
+# The MJCF comes from MuJoCo Menagerie (trossen_wx250s, BSD-3-Clause); it is not
+# shipped with hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch menagerie_trossen_wx250s
+#
+# which downloads it to ~/.cache/hirobot/assets/menagerie/trossen_wx250s. Gains are the
+# MJCF's position actuators: kp 50, and kd the damping MuJoCo compiles from their
+# dampratio 0.95. home is its home keyframe.
+# The gripper fingers are in the model but the simulation does not drive them:
+# Action.gripper has no effect in MuJoCo.
+model:
+  mjcf: ~/.cache/hirobot/assets/menagerie/trossen_wx250s/wx250s.xml
+  kp: [50, 50, 50, 50, 50, 50]
+  kd: [5.4, 6.1, 4.9, 4.3, 4.3, 4.3]
+  home: [0.0, -0.96, 1.16, 0.0, -0.3, 0.0]
+
 driver: {type: trossen_dynamixel, port: /dev/ttyDXL}

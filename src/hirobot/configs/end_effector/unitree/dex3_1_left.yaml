@@ -1,6 +1,7 @@
 # Unitree Dex3-1 three-finger hand, left: 7 joints in Dex3 motor order of
 # rt/dex3/left/cmd (thumb 0-2, middle 0-1, index 0-1). Names, position limits and
-# torque limits come from unitree_ros robots/g1_description/g1_29dof_with_hand_rev_1_0.urdf.
+# torque limits come from unitree_ros robots/g1_description/g1_29dof_with_hand_rev_1_0.urdf
+# (`hirobot assets fetch unitree_g1`).
 # The two hands are mirrored: the left fingers close towards negative angles.
 # Mounted on the G1's left_wrist, it takes the place of the body's left_hand frame.
 

@@ -136,6 +136,16 @@ robot.disconnect()
 
 第一次 `send_action` 会开力矩。只在臂有支撑、能自己保持位姿时再跑它。
 
+没有真机时，可以先用内置的 `trossen_wx250s_mujoco` 配置在 MuJoCo 里试这个循环
+（MuJoCo Menagerie 的 WidowX 250 S 模型；夹爪在仿真里不动）。
+`hirobot sim` 保持初始姿态 3 s 并报告漂移；加 `--viewer` 可以看画面，也可以把配置名传给上面循环里的 `make_robot`：
+
+```bash
+pip install 'hirobot[sim,assets]'
+hirobot assets fetch menagerie_trossen_wx250s
+hirobot sim trossen_wx250s_mujoco
+```
+
 ## 6. RealSense 相机
 
 驱动：`intel_realsense`（`src/hirobot/drivers/camera/intel/realsense/`），配置

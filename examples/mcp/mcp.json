@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hirobot": {
+      "type": "stdio",
+      "command": "hirobot",
+      "args": ["mcp", "examples/mcp/ur5e_sim.yaml"],
+      "env": {}
+    }
+  }
+}

@@ -47,4 +47,15 @@ frames:
   - {name: left_hand}
   - {name: right_hand}
 
+# The model is Fourier's URDF from FFTAI/Wiki-GRx-Models (GRX/GR1/gr1t2, GPL-3.0),
+# with the 6-DoF Fourier hands; the hand joints are not part of this body. Fourier
+# publishes no MJCF for GR1, so this body cannot be in the simulation (sim: needs an
+# mjcf); hirobot.model_path returns it for URDF tools outside hiRobot. It is not
+# shipped with hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch fourier_gr1
+model:
+  urdf: ~/.cache/hirobot/assets/fourier/Wiki-GRx-Models/GRX/GR1/gr1t2/urdf/gr1t2_fourier_hand_6dof.urdf
+
 driver: {type: fourier_grx}

@@ -1,0 +1,6 @@
+# Drivers registered here: ros2
+sdk:
+  - distribution: rclpy
+    install: source a ROS 2 install (rclpy comes with it), plus the workspace of any custom message
+verified: []
+maintainers: []

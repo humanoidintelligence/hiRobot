@@ -163,6 +163,17 @@ robot.disconnect()
 The first `send_action` enables torque. Run it only when the arm is supported and
 free to hold its pose.
 
+Without the arm, try the loop in MuJoCo with the built-in
+`trossen_wx250s_mujoco` config (MuJoCo Menagerie's WidowX 250 S model; the gripper does not move there).
+`hirobot sim` holds the home pose for 3 s and reports the drift; add `--viewer`
+to watch it, or pass the config name to `make_robot` in the loop above:
+
+```bash
+pip install 'hirobot[sim,assets]'
+hirobot assets fetch menagerie_trossen_wx250s
+hirobot sim trossen_wx250s_mujoco
+```
+
 ## 6. RealSense cameras
 
 Driver: `intel_realsense` (`src/hirobot/drivers/camera/intel/realsense/`), config

@@ -8,7 +8,7 @@ what each kind of change needs so it can be reviewed quickly.
 
 ```bash
 git clone https://github.com/humanoidintelligence/hiRobot.git && cd hiRobot
-pip install -e '.[dev]'          # add '.[sim]' for the MuJoCo driver
+pip install -e '.[dev,all]'      # '.[dev]' alone for the core tests
 python -m pytest                 # run from the repo root; no GPU, robot or SDK needed
 ruff check .                     # what CI enforces (rules in pyproject.toml)
 ```

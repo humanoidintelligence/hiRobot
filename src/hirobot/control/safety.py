@@ -155,7 +155,27 @@ class SafetyGate:
 
     @classmethod
     def from_embodiment(cls, embodiment: Any, **kwargs: Any) -> "SafetyGate":
-        """Build a gate whose joint-count check matches the embodiment."""
+        """Build a gate whose joint-count check matches the embodiment.
+
+        When ``safety:`` leaves ``max_joint_temperature`` / ``min_battery_soc``
+        unset, the gate falls back to the embodiment's own **shutdown** tier:
+        the smallest ``Joint.temperature_limit[1]`` over the joints that carry
+        one (``None`` when none do), and ``Embodiment.battery_soc_limit[1]``. An
+        explicit value always wins (priority: ``safety:`` value > type default).
+        The warning tier ``[0]`` is not used by the gate; it is only a threshold
+        source for monitoring callers.
+        """
+        if kwargs.get("max_joint_temperature") is None:
+            shutdowns = [limit[1] for limit in
+                         (getattr(j, "temperature_limit", None)
+                          for j in getattr(embodiment, "joints", None) or [])
+                         if limit is not None]
+            if shutdowns:
+                kwargs["max_joint_temperature"] = min(shutdowns)
+        if kwargs.get("min_battery_soc") is None:
+            battery = getattr(embodiment, "battery_soc_limit", None)
+            if battery is not None:
+                kwargs["min_battery_soc"] = battery[1]
         return cls(num_dofs=getattr(embodiment, "num_dofs", None), **kwargs)
 
     def check(self, action: Any, embodiment: Any = None) -> SafetyVerdict:

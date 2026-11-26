@@ -14,6 +14,13 @@ sends to every part (or idles it), so each command steps the world once and
 every part shares one clock (``now()`` is ``data.time``). A view's ``reset``
 ramp steps the world itself; a hold only sets the command.
 
+**Cameras.** A camera renders a new frame when simulated time reaches its
+next frame time, every ``1 / fps`` (:class:`FrameClock`): its ``Camera.fps``,
+else ``sim.camera_fps`` (:data:`SIM_CAMERA_FPS`, 30); ``camera_fps: null``
+renders on every observation. In between an observation gets the same image
+object with the same stamp, as from a real camera. The first observation after
+connect, a ``reset`` or a ``set_state`` renders.
+
 **Actuators.** Each joint is driven by a torque (the view's PD). An actuator
 the MJCF declares as a position or velocity servo (MuJoCo Menagerie arms) is
 turned into a motor with the same force range.
@@ -26,11 +33,12 @@ from __future__ import annotations
 
 import atexit
 import logging
+import math
 import os
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -51,7 +59,66 @@ _OPTICAL_TO_MUJOCO = np.array([1.0, 0.0, 0.0, 0.0])
 WORLD = "world"
 #: Keys of the ``sim:`` section.
 SIM_KEYS = ("backend", "scene", "timestep", "realtime", "viewer", "fixed_base", "ramp_seconds",
-            "damping_kd", "start_from")
+            "damping_kd", "start_from", "camera_fps")
+#: Frame rate of a simulated camera whose ``Camera.fps`` is not set (``sim.camera_fps``,
+#: the ``mujoco`` driver's ``camera_fps``); ``None`` there renders every observation.
+SIM_CAMERA_FPS = 30.0
+
+
+def camera_fps_option(value: Any, where: str = "camera_fps") -> Optional[float]:
+    """``value`` checked as the ``camera_fps`` option: a positive number, or ``None``."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0 \
+            or not math.isfinite(value):
+        raise ValueError(f"{where} must be a positive number or null (every observation), "
+                         f"got {value!r}")
+    return float(value)
+
+
+class FrameClock:
+    """When a simulated camera renders: every ``1 / fps`` of simulated time.
+
+    :meth:`frame` renders when the first frame is due, when simulated time
+    reaches the next frame time (on a grid of ``1 / fps`` from the first
+    frame), or when time went back; otherwise it returns the last frame, the
+    same image object and stamp. :meth:`restart` makes the next call render
+    and starts a new grid (after a reset or a jump of the state).
+
+    Args:
+        fps: Frames per second of simulated time; ``None`` renders on every call.
+    """
+
+    def __init__(self, fps: Optional[float]) -> None:
+        self.period = None if fps is None else 1.0 / float(fps)
+        #: Frames rendered (the ``seq`` of the last frame's stamp).
+        self.seq = 0
+        self._frame: Optional[Tuple[np.ndarray, Stamp]] = None
+        self._t0: Optional[float] = None
+        self._next = 0.0
+
+    def restart(self) -> None:
+        """Render on the next :meth:`frame`; frame numbers go on."""
+        self._t0 = None
+
+    def frame(self, t: float, render: Callable[[], Optional[np.ndarray]]
+              ) -> Optional[Tuple[np.ndarray, Stamp]]:
+        """The frame at simulated time ``t``: ``render()``'s image if one is due, else the last."""
+        last = self._frame
+        if last is not None and self._t0 is not None and self.period is not None \
+                and last[1].t <= t < self._next - 1e-9:
+            return last
+        image = render()
+        if image is None:
+            return None
+        self.seq += 1
+        self._frame = (image, Stamp(float(t), self.seq))
+        if self.period is not None:
+            if self._t0 is None or t < self._t0:
+                self._t0 = float(t)
+            k = math.floor((t - self._t0) / self.period + 1e-6) + 1
+            self._next = self._t0 + k * self.period
+        return self._frame
 
 
 @dataclass
@@ -118,11 +185,14 @@ class SimWorld:
         control_hz: Steps of :meth:`step` per second (the root's loop rate).
         viewer: Open the MuJoCo viewer on :meth:`connect`.
         realtime: The views' ``reset`` ramps sleep to play at wall-clock speed.
+        camera_fps: Frame rate of a camera without ``fps`` of its own (simulated
+            time); ``None`` renders it on every observation.
     """
 
     def __init__(self, bodies: Sequence[WorldBody], cameras: Sequence["Camera"] = (),
                  scene: Optional[str] = None, timestep: Optional[float] = None,
-                 control_hz: float = 50.0, viewer: bool = False, realtime: bool = True) -> None:
+                 control_hz: float = 50.0, viewer: bool = False, realtime: bool = True,
+                 camera_fps: Optional[float] = SIM_CAMERA_FPS) -> None:
         if not bodies:
             raise ValueError("a simulation world needs at least one body with a model")
         self.bodies = list(bodies)
@@ -143,6 +213,8 @@ class SimWorld:
         self._pending: set = set()
         self._users = 0
         self._renderers: Dict[str, Any] = {}
+        self.camera_fps = camera_fps_option(camera_fps)
+        self._clocks: Dict[str, FrameClock] = {}
         self._viewer: Any = None
         self._last_sync = 0.0
 
@@ -164,9 +236,10 @@ class SimWorld:
         mj = self.mj
         for b in self.bodies:
             if not os.path.isfile(b.mjcf):
+                from hirobot.assets import fetch_hint
+
                 raise FileNotFoundError(
-                    f"MJCF model of {b.path} not found: {b.mjcf}. For the Unitree G1 see "
-                    "docs/setup/unitree.md (fetch unitree_ros robots/g1_description).")
+                    f"MJCF model of {b.path} not found: {b.mjcf}. {fetch_hint(b.mjcf)}")
         alone = self.scene is None and len(self.bodies) == 1 and not self.bodies[0].prefix \
             and self.bodies[0].anchor == WORLD and np.array_equal(self.bodies[0].pose,
                                                                    IDENTITY_POSE)
@@ -279,6 +352,8 @@ class SimWorld:
         self.mj.mj_forward(self.model, self.data)
         for view in self._views:
             view._hold_here()
+        self._clocks = {c.name: FrameClock(c.fps if c.fps else self.camera_fps)
+                        for c in self.cameras}
         self._open_renderers()
         if self.use_viewer:
             import mujoco.viewer
@@ -366,6 +441,23 @@ class SimWorld:
             r.update_scene(self.data, camera=f"hirobot/{name}")
             return r.render()
 
+    def camera_frame(self, name: str) -> Optional[Tuple[np.ndarray, Stamp]]:
+        """Camera ``name``'s frame now: a new one if due at its fps, else the last one.
+
+        ``None`` without a renderer. The stamp is the simulated time it was
+        rendered at and the camera's own frame count.
+        """
+        clock = self._clocks.get(name)
+        if clock is None or name not in self._renderers:
+            return None
+        with self.lock:
+            return clock.frame(self.now(), lambda: self.render_camera(name))
+
+    def restart_cameras(self) -> None:
+        """Every camera renders on its next frame (the state jumped: a reset, ``set_state``)."""
+        for clock in self._clocks.values():
+            clock.restart()
+
     def render(self, force: bool = False) -> None:
         """Push the current state to the viewer, at most ``_VIEWER_HZ``."""
         v = self._viewer
@@ -404,9 +496,10 @@ class SimWorld:
 class WorldCamera:
     """A camera rendered by a :class:`SimWorld` from the current state (``simulated``).
 
-    Built in place of the camera's real driver; :meth:`latest` renders on
-    request, so a frame matches the joints of the same observation. Its stamp
-    is the world's (simulated time, control periods stepped).
+    Built in place of the camera's real driver; :meth:`latest` renders when a
+    new frame is due at the camera's fps (:meth:`SimWorld.camera_frame`), from
+    the state at that moment. Its stamp is the simulated time of the frame and
+    the camera's frame count.
     """
 
     simulated = True
@@ -421,8 +514,7 @@ class WorldCamera:
     def latest(self) -> Optional[Tuple[np.ndarray, Stamp]]:
         if self.world.model is None:
             return None
-        image = self.world.render_camera(self.name)
-        return None if image is None else (image, self.world.stamp())
+        return self.world.camera_frame(self.name)
 
     def latest_rgbd(self) -> Optional[Tuple[np.ndarray, Optional[np.ndarray], Stamp]]:
         frame = self.latest()
@@ -483,7 +575,9 @@ def sim_options(sim: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
             "fixed_base": [str(p).strip("/") for p in fixed],
             "base_height": {str(k).strip("/"): float(v) for k, v in height.items()},
             "ramp_seconds": float(sim.get("ramp_seconds", 2.0)),
-            "damping_kd": float(sim.get("damping_kd", 8.0))}
+            "damping_kd": float(sim.get("damping_kd", 8.0)),
+            "camera_fps": camera_fps_option(sim.get("camera_fps", SIM_CAMERA_FPS),
+                                            "sim.camera_fps")}
 
 
 @dataclass
@@ -581,7 +675,8 @@ def build_world(spec: Any, layout: Any, options: Mapping[str, Any]) -> TreeWorld
     mounted = [c for c in emb.cameras if c.mount is not None and c.name in rendered]
     world = SimWorld(bodies, cameras=mounted, scene=options["scene"],
                      timestep=options["timestep"], control_hz=emb.control_hz,
-                     viewer=options["viewer"], realtime=options["realtime"])
+                     viewer=options["viewer"], realtime=options["realtime"],
+                     camera_fps=options.get("camera_fps", SIM_CAMERA_FPS))
     for kw in views.values():
         kw["world"] = world
     return TreeWorld(world=world, views=views,

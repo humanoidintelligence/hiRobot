@@ -103,6 +103,45 @@ class _Status:
         return self.status
 
 
+class _Joint:
+    """Duck-typed stand-in for core.embodiment.Joint (step 1 adds the field)."""
+
+    def __init__(self, temperature_limit=None):
+        self.temperature_limit = temperature_limit
+
+
+class _Emb:
+    """Duck-typed embodiment carrying the new health-limit fields."""
+
+    def __init__(self, joints, battery_soc_limit=None, num_dofs=None):
+        self.joints = list(joints)
+        self.battery_soc_limit = battery_soc_limit
+        self.num_dofs = len(self.joints) if num_dofs is None else num_dofs
+
+
+def test_gate_defaults_shutdown_thresholds_from_the_embodiment():
+    emb = _Emb([_Joint((60.0, 80.0)), _Joint(None), _Joint((55.0, 70.0))],
+               battery_soc_limit=(30.0, 15.0))
+    gate = SafetyGate.from_embodiment(emb)
+    assert gate.num_dofs == 3
+    assert gate.max_joint_temperature == 70.0  # smallest shutdown over joints that set one
+    assert gate.min_battery_soc == 15.0         # battery shutdown tier
+
+
+def test_gate_has_no_health_thresholds_when_the_embodiment_sets_none():
+    emb = _Emb([_Joint(None), _Joint(None)], battery_soc_limit=None)
+    gate = SafetyGate.from_embodiment(emb)
+    assert gate.max_joint_temperature is None
+    assert gate.min_battery_soc is None
+
+
+def test_explicit_safety_overrides_the_embodiment_default():
+    emb = _Emb([_Joint((60.0, 70.0))], battery_soc_limit=(30.0, 20.0))
+    gate = SafetyGate.from_embodiment(emb, max_joint_temperature=90.0, min_battery_soc=5.0)
+    assert gate.max_joint_temperature == 90.0
+    assert gate.min_battery_soc == 5.0
+
+
 def test_low_battery_and_hot_joints_refuse_commands_but_not_hold(monkeypatch):
     import hirobot.control.safety as safety
 
@@ -119,6 +158,31 @@ def test_low_battery_and_hot_joints_refuse_commands_but_not_hold(monkeypatch):
     temps[2] = 75.0
     status.status = RobotStatus(battery=BatteryState(soc=80), joint_temperature=temps)
     with pytest.raises(SafetyError, match="joint 'elbow' at 75 degC"):
+        robot.send_action(_pos(0, 0, 0, 0, 0, 0))
+    robot.hold()
+
+
+def test_embodiment_default_thresholds_refuse_commands_but_not_hold(monkeypatch):
+    import hirobot.control.safety as safety
+
+    monkeypatch.setattr(safety, "STATUS_PERIOD_S", 0.0)
+    # safety: silent; the shutdown tier comes from the type fields.
+    emb = _Emb([_Joint((60.0, 70.0))] * N, battery_soc_limit=(30.0, 20.0))
+    robot = get_body("toy")(load_embodiment("ur_ur5e"))
+    robot._set_safety(SafetyGate.from_embodiment(emb))
+    robot.connect()
+    assert robot.safety.min_battery_soc == 20.0 and robot.safety.max_joint_temperature == 70.0
+    status = _Status(robot)
+    robot.get_status = status
+    robot.send_action(_pos(0, 0, 0, 0, 0, 0))  # no readings: nothing to refuse on
+    status.status = RobotStatus(battery=BatteryState(soc=15))
+    with pytest.raises(SafetyError, match="below min_battery_soc 20 %"):
+        robot.send_action(_pos(0, 0, 0, 0, 0, 0))
+    robot.hold()  # a hold is never refused
+    temps = np.full(N, 40.0)
+    temps[2] = 75.0
+    status.status = RobotStatus(battery=BatteryState(soc=80), joint_temperature=temps)
+    with pytest.raises(SafetyError, match="above max_joint_temperature 70 degC"):
         robot.send_action(_pos(0, 0, 0, 0, 0, 0))
     robot.hold()
 

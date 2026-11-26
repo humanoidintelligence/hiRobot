@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hirobot"
-version = "0.0.6"
+version = "0.0.7"
 description = "A unified interface layer for controlling diverse robots."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -45,6 +45,20 @@ camera = ["opencv-python>=4.5", "pyzmq>=22"]
 video = ["av>=12.0"]
 # The computer's own microphone and speaker (drivers/audio/generic/sounddevice/).
 audio = ["sounddevice>=0.4"]
+# The MCP server (hirobot/mcp/, `hirobot mcp`). The mcp SDK needs Python 3.10+;
+# the tools (hirobot.mcp.tools) work without it.
+mcp = ["mcp>=2.3,<3; python_version >= '3.10'", "Pillow>=9.0"]
+# The mink_ik layer (hirobot/layers/mink_ik.py): differential IK with mink. mink
+# needs Python 3.11+ and mujoco 3.10+ (no mujoco 3.10 wheel exists for Python 3.9).
+ik = ["mink>=1.4; python_version >= '3.11'", "mujoco>=3.10; python_version >= '3.11'"]
+# Recording episodes as LeRobot v3.0 datasets (hirobot/record/): parquet + H.264 mp4.
+record = ["pyarrow>=12", "av>=12.0"]
+# Downloading the simulation models (hirobot/assets.py, `hirobot assets fetch`).
+assets = ["huggingface_hub>=0.23"]
+# Every extra above (not dev): what the README's install line uses. About 1 GB
+# installed (opencv, pyarrow, PyAV and scipy are most of it); pick single extras
+# for a smaller install.
+all = ["hirobot[sim,camera,video,audio,mcp,ik,record,assets]"]
 dev = ["pytest>=7.0", "ruff>=0.4"]
 
 [project.scripts]

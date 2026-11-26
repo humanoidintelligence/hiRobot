@@ -45,7 +45,7 @@ FIXED = """
 </mujoco>
 """
 
-G1 = "~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml"
+G1 = "~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml"
 
 
 def _write(tmp_path, text, name="m.xml"):

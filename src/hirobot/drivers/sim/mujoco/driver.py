@@ -13,18 +13,29 @@ are clamped by the model's ``actuatorfrcrange``.
 
 Embodiment cameras with a ``mount`` are added to the model on :meth:`connect`
 (fixed to ``mount.body``) and rendered offscreen in :meth:`get_observation`,
-from the same state as the joints, into ``Observation.images``. Each rendered
-camera's stamp in ``Observation.stamps`` equals the body's: the simulated time
-(``data.time``, also :meth:`now`) and the count of control periods stepped, so
-a frame belongs to the same simulated instant as the joints.
-Images are the camera's full resolution, unprocessed.
+from the state at that moment, into ``Observation.images``. A camera renders a
+new frame when simulated time reaches its next frame time, every ``1 / fps``:
+its ``Camera.fps``, else ``camera_fps`` (30; ``None`` renders every
+observation). In between an observation carries the same image object and
+stamp, as a real camera delivers at its own rate. A frame's stamp in
+``Observation.stamps`` is the simulated time it was rendered at (``data.time``,
+also :meth:`now`) and the camera's frame count; when it is new it matches the
+body's time. The first observation after :meth:`connect`, :meth:`reset` or
+:meth:`set_state` renders. Images are the camera's full resolution,
+unprocessed; treat them as read-only, since a repeated frame is the same array.
 
 End-effectors with a ``frame`` get ``Observation.ee_poses``: the pose of
 ``frame.body`` (plus the frame's offset) in the robot's base frame, the root
 body of the model (the pelvis of a humanoid, the base link of an arm), as
 ``[x, y, z, qx, qy, qz, qw]``. Base frame, like the CARTESIAN targets a
 whole-body controller takes; with a floating base, compose with
-``base_position`` / ``base_orientation`` for the world pose. The rendering backend
+``base_position`` / ``base_orientation`` for the world pose.
+
+With a floating base, ``base_linear_acceleration`` is what the real robot's IMU
+accelerometer reports: specific force (acceleration minus gravity) in the base
+frame, m/s^2, so a body at rest upright reads about ``[0, 0, 9.81]``. With a free
+joint it comes from the joint's acceleration in the last physics step; a welded
+base reads the reaction to gravity, ``-model.opt.gravity``. The rendering backend
 follows ``MUJOCO_GL`` (``glfw`` needs a display; ``egl`` / ``osmesa`` run headless);
 without a working one the robot runs without images and logs a warning.
 
@@ -52,8 +63,10 @@ from hirobot.loading.registry import register_body
 from hirobot.core.robot import Robot
 from hirobot.loading.sdk import require_sdk
 from hirobot.core.stamps import Stamp
-from hirobot.geometry.transforms import pose_compose, pose_inverse, quat_multiply
+from hirobot.geometry.transforms import (pose_compose, pose_inverse, quat_multiply,
+                                         quat_to_matrix)
 from hirobot.core.types import Action, ControlMode, Observation
+from hirobot.sim.sim_world import SIM_CAMERA_FPS, FrameClock, camera_fps_option
 from hirobot.control.watchdog import DEFAULT_COMMAND_TIMEOUT_S, CommandWatchdog
 
 logger = logging.getLogger(__name__)
@@ -93,6 +106,8 @@ class MujocoRobot(Robot):
         command_timeout_s: Simulated seconds without a new ``VELOCITY``
             command before the held velocity is dropped (the joints then hold
             where they are, damped); ``None`` turns it off.
+        camera_fps: Frame rate (simulated time) of a mounted camera without
+            ``fps`` of its own; ``None`` renders it on every observation.
     """
 
     simulated = True
@@ -114,8 +129,10 @@ class MujocoRobot(Robot):
         initial_joint_pos: Optional[Sequence[float]] = None,
         armature: Union[None, float, Sequence[float]] = None,
         command_timeout_s: Optional[float] = DEFAULT_COMMAND_TIMEOUT_S,
+        camera_fps: Optional[float] = SIM_CAMERA_FPS,
     ) -> None:
         self._embodiment = embodiment
+        self._camera_fps = camera_fps_option(camera_fps)
         self._n = embodiment.num_dofs
         self._model_path = os.path.expanduser(model_path)
         self._fixed_base = fixed_base
@@ -152,6 +169,7 @@ class MujocoRobot(Robot):
         self._connected = False
         self._cameras: list = []
         self._renderers: dict = {}
+        self._clocks: dict = {}      # camera name -> FrameClock
         self._ee_frames: list = []   # (name, body id, offset pose) per end-effector with a frame
         self._root = 0
 
@@ -178,10 +196,10 @@ class MujocoRobot(Robot):
     def _build_model(self):
         mj = self._mj
         if not os.path.isfile(self._model_path):
+            from hirobot.assets import fetch_hint
+
             raise FileNotFoundError(
-                f"MJCF model not found: {self._model_path}. For the Unitree G1 see "
-                "docs/setup/unitree.md (fetch unitree_ros robots/g1_description)."
-            )
+                f"MJCF model not found: {self._model_path}. {fetch_hint(self._model_path)}")
         spec = mj.MjSpec.from_file(self._model_path)
         free = [j for j in spec.joints if j.type == mj.mjtJoint.mjJNT_FREE]
         root = free[0].parent if free else None
@@ -247,11 +265,23 @@ class MujocoRobot(Robot):
         for r in renderers.values():
             r.close()
 
+    def _render(self, name: str):
+        r = self._renderers[name]
+        r.update_scene(self.data, camera=f"hirobot_{name}")
+        return r.render()
+
     def _render_images(self, obs: Observation) -> None:
-        """Render every mounted camera from the current state (caller holds the lock)."""
-        for name, r in self._renderers.items():
-            r.update_scene(self.data, camera=f"hirobot_{name}")
-            obs.images[name] = r.render()
+        """Every mounted camera's frame, new when due at its fps (caller holds the lock)."""
+        t = float(self.data.time)
+        for name in self._renderers:
+            frame = self._clocks[name].frame(t, lambda: self._render(name))
+            if frame is not None:
+                obs.images[name], obs.stamps[name] = frame
+
+    def _restart_cameras(self) -> None:
+        """The state jumped (reset, set_state): every camera renders on its next frame."""
+        for clock in self._clocks.values():
+            clock.restart()
 
     def _map_joints(self) -> None:
         m, mj = self.model, self._mj
@@ -329,6 +359,8 @@ class MujocoRobot(Robot):
         self._mj.mj_forward(self.model, self.data)
         self._ticks = 0
         self._cmd_q = self.data.qpos[self._qadr].copy()
+        self._clocks = {c.name: FrameClock(c.fps if c.fps else self._camera_fps)
+                        for c in self._cameras}
         self._open_renderers()
         if self._use_viewer:
             import mujoco.viewer
@@ -348,6 +380,7 @@ class MujocoRobot(Robot):
         (:class:`~hirobot.core.robot.RobotStoppedError`), damped.
         """
         token = self._stop_token()
+        self._restart_cameras()
         start = self.data.qpos[self._qadr].copy()
         steps = max(1, int(self._ramp_seconds / self.control_period))
         for s in range(steps + 1):
@@ -431,6 +464,7 @@ class MujocoRobot(Robot):
                 joint_torque=d.actuator_force[self._act].copy(),
             )
             if self._embodiment.floating_base:
+                gravity = np.asarray(self.model.opt.gravity, dtype=float)
                 if self._has_free:
                     # MuJoCo stores [w, x, y, z]; Observation is [x, y, z, w].
                     fq, fv = self._fq, self._fv
@@ -438,19 +472,27 @@ class MujocoRobot(Robot):
                     obs.base_angular_velocity = d.qvel[fv + 3:fv + 6].copy()
                     obs.base_position = d.qpos[fq:fq + 3].copy()
                     obs.base_linear_velocity = d.qvel[fv:fv + 3].copy()
+                    # What an IMU's accelerometer reads: specific force (acceleration
+                    # minus gravity) in the base frame. qacc of the free joint is the
+                    # world-frame acceleration of its body's origin in the last physics
+                    # step (mj_step / mj_forward computed it; no extra pass). It is
+                    # rotated by the orientation this observation reports, so repeated
+                    # calls agree. MuJoCo's accelerometer sensor uses the orientation
+                    # at the start of that step: same length, one step of turn apart.
+                    rot = quat_to_matrix(obs.base_orientation)
+                    obs.base_linear_acceleration = rot.T @ (d.qacc[fv:fv + 3] - gravity)
                 else:
                     obs.base_orientation = np.array([0.0, 0.0, 0.0, 1.0])
                     obs.base_angular_velocity = np.zeros(3)
+                    # Welded in place: the reaction to gravity, [0, 0, 9.81] upright.
+                    obs.base_linear_acceleration = -gravity
             if self._ee_frames:
                 # mj_step leaves body poses one physics step behind qpos; bring them level
                 # so ee_poses match joint_pos (mj_kinematics only touches derived positions).
                 self._mj.mj_kinematics(self.model, d)
                 obs.ee_poses = self._ee_poses()
+            obs.stamps["body"] = Stamp(float(d.time), self._ticks + 1)
             self._render_images(obs)
-            stamp = Stamp(float(d.time), self._ticks + 1)
-            obs.stamps["body"] = stamp
-            for name in obs.images:
-                obs.stamps[name] = stamp
         return obs
 
     def now(self) -> float:
@@ -492,6 +534,7 @@ class MujocoRobot(Robot):
                 if norm > 0:
                     d.qpos[self._fq + 3:self._fq + 7] = q[[3, 0, 1, 2]] / norm  # MuJoCo [w,x,y,z]
             mj.mj_forward(self.model, d)
+        self._restart_cameras()
         z = np.zeros(self._n)
         self._set_command(np.asarray(joint_pos, dtype=float), z, z, None, None)
         self.render()
@@ -659,6 +702,7 @@ class MujocoView(MujocoRobot):
         simulated time passes with this one's).
         """
         token = self._stop_token()
+        self._restart_cameras()
         start = self.data.qpos[self._qadr].copy()
         steps = max(1, int(self._ramp_seconds / self.control_period))
         for s in range(steps + 1):
@@ -676,10 +720,14 @@ class MujocoView(MujocoRobot):
         """Nothing: the world closes its renderers."""
 
     def _render_images(self, obs: Observation) -> None:
-        """The mounted cameras of this body's node, rendered by the world (caller holds the lock)."""
+        """The mounted cameras of this body's node, from the world (caller holds the lock)."""
         for cam in self._embodiment.cameras:
             if cam.mount is None:
                 continue
-            image = self.world.render_camera(self._prefix + cam.name)
-            if image is not None:
-                obs.images[cam.name] = image
+            frame = self.world.camera_frame(self._prefix + cam.name)
+            if frame is not None:
+                obs.images[cam.name], obs.stamps[cam.name] = frame
+
+    def _restart_cameras(self) -> None:
+        """The world's state jumped: every camera in it renders on its next frame."""
+        self.world.restart_cameras()

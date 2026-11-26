@@ -24,7 +24,9 @@ from typing import List, Optional, Tuple
 from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     QueuedMicrophone,
+    SoftwareVolume,
     SpeakerDriver,
+    apply_gain,
     register_audio,
     resample,
 )
@@ -111,8 +113,12 @@ class WavMicrophone(QueuedMicrophone):
         return chunk
 
 
-class _TimedSpeaker(SpeakerDriver):
-    """Shared part of the file and null speakers: take as long as the audio lasts."""
+class _TimedSpeaker(SoftwareVolume, SpeakerDriver):
+    """Shared part of the file and null speakers: take as long as the audio lasts.
+
+    Volume is a software gain (:class:`~hirobot.devices.audio.SoftwareVolume`):
+    the WAV speaker records the scaled audio; the null speaker only keeps the level.
+    """
 
     #: Not real hardware: ``make_robot`` attaches it to simulated drivers too.
     simulated = True
@@ -159,7 +165,7 @@ class WavSpeaker(_TimedSpeaker):
         self._pcm: List[bytes] = []
 
     def play(self, pcm: bytes, sample_rate: Optional[int] = None) -> float:
-        pcm = resample(pcm, sample_rate or self.sample_rate, self.sample_rate)
+        pcm = apply_gain(resample(pcm, sample_rate or self.sample_rate, self.sample_rate), self._level)
         duration = len(pcm) / (SAMPLE_WIDTH * self.sample_rate)
         played = self._played_seconds(duration)
         keep = SAMPLE_WIDTH * round(played * self.sample_rate)

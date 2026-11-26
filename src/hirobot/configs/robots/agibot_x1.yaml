@@ -1,4 +1,4 @@
-# AgiBot X1 humanoid, driven via a ROS2/AimRT bridge (agibot_aimrt).
+# AgiBot X1 humanoid, driven over AimRT's ros2 backend (the generic ros2 driver).
 #
 # Runs on the toy body by default; on hardware drop the toy override to use the
 # body file's driver.

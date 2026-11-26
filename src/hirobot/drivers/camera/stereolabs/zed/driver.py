@@ -15,12 +15,16 @@ imported lazily in ``_open``. Run on two ZED 2i and a ZED Mini at once (ZED SDK
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional, Tuple
 
 import numpy as np
 
+from hirobot.core.embodiment import CameraIntrinsics
 from hirobot.devices.camera import PollingCameraDriver, register_camera
 from hirobot.loading.sdk import require_sdk
+
+logger = logging.getLogger(__name__)
 
 # (width, height) of the SDK's named resolutions, per side.
 RESOLUTIONS = {
@@ -82,6 +86,7 @@ class ZedCamera(PollingCameraDriver):
         self._image: Any = None
         self._depth_mat: Any = None
         self._last_stamp: Optional[int] = None
+        self._intrinsics: Optional[CameraIntrinsics] = None
 
     def _open(self) -> None:
         require_sdk(__package__, "ZedCamera")
@@ -110,9 +115,28 @@ class ZedCamera(PollingCameraDriver):
             which = f"serial {self.serial}" if self.serial is not None else "the first ZED"
             raise RuntimeError(f"camera {self.name!r}: could not open {which}: {status}")
         self._cam = cam
+        self._intrinsics = self._read_intrinsics(cam)
         self._runtime = sl.RuntimeParameters()
         self._image = sl.Mat()
         self._depth_mat = sl.Mat()
+
+    def _read_intrinsics(self, cam: Any) -> Optional[CameraIntrinsics]:
+        # The image is the rectified left view, so the left camera's pinhole has no distortion.
+        try:
+            info = cam.get_camera_information()
+            conf = getattr(info, "camera_configuration", info)  # SDK 4 / SDK 3
+            left = conf.calibration_parameters.left_cam
+            size = left.image_size
+            return CameraIntrinsics(width=int(size.width), height=int(size.height),
+                                    fx=float(left.fx), fy=float(left.fy),
+                                    cx=float(left.cx), cy=float(left.cy))
+        except Exception as exc:  # noqa: BLE001 - frames still flow without intrinsics
+            logger.warning("camera %s: could not read the left intrinsics: %s", self.name, exc)
+            return None
+
+    def intrinsics(self) -> Optional[CameraIntrinsics]:
+        """The rectified left camera's intrinsics from the SDK, read on start (no distortion)."""
+        return self._intrinsics
 
     def _grab(self) -> Optional[Tuple[np.ndarray, Optional[np.ndarray]]]:
         sl = self._sl

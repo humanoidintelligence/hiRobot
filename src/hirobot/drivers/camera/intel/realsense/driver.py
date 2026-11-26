@@ -22,12 +22,16 @@ the IMU. Tested against a fake ``pyrealsense2`` in the contract test; see
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional, Tuple
 
 import numpy as np
 
+from hirobot.core.embodiment import CameraIntrinsics
 from hirobot.devices.camera import PollingCameraDriver, register_camera
 from hirobot.loading.sdk import require_sdk
+
+logger = logging.getLogger(__name__)
 
 
 @register_camera("intel_realsense")
@@ -80,6 +84,7 @@ class RealSenseCamera(PollingCameraDriver):
         self._align: Any = None
         self._depth_scale: float = 0.001
         self._last_frame_number: Optional[int] = None
+        self._intrinsics: Optional[CameraIntrinsics] = None
 
     def _open(self) -> None:
         require_sdk(__package__, "RealSenseCamera")
@@ -99,6 +104,8 @@ class RealSenseCamera(PollingCameraDriver):
                                  rs.format.z16, self.fps)
         self._pipeline = rs.pipeline()
         profile = self._pipeline.start(config)
+        # Depth is aligned to colour, so the colour stream's intrinsics hold for both.
+        self._intrinsics = _rs_intrinsics(self.name, profile, rs)
         if self.depth:
             # Align depth into the colour frame so the two images share a pixel grid.
             self._align = rs.align(rs.stream.color)
@@ -132,6 +139,10 @@ class RealSenseCamera(PollingCameraDriver):
                 depth = raw.astype(np.float32) * np.float32(self._depth_scale)
         return image, depth
 
+    def intrinsics(self) -> Optional[CameraIntrinsics]:
+        """The colour stream's intrinsics from the SDK (``get_intrinsics``), read on start."""
+        return self._intrinsics
+
     def _close(self) -> None:
         if self._pipeline is not None:
             try:
@@ -142,3 +153,30 @@ class RealSenseCamera(PollingCameraDriver):
         self._align = None
         self._last_frame_number = None
 
+
+#: RealSense distortion model -> ours, and how many coefficients it uses.
+_RS_MODELS = {"none": ("none", 0), "brown_conrady": ("brown_conrady", 5),
+              "inverse_brown_conrady": ("inverse_brown_conrady", 5),
+              "kannala_brandt4": ("kannala_brandt", 4)}
+
+
+def _rs_intrinsics(name: str, profile: Any, rs: Any) -> Optional[CameraIntrinsics]:
+    """The colour stream's intrinsics, or ``None`` (with a warning) if the SDK does not give them."""
+    try:
+        intr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+        coeffs = tuple(float(c) for c in intr.coeffs)
+        kind = str(intr.model).rsplit(".", 1)[-1].lower()
+    except Exception as exc:  # noqa: BLE001 - frames still flow without intrinsics
+        logger.warning("camera %s: could not read the colour intrinsics: %s", name, exc)
+        return None
+    model, n = _RS_MODELS.get(kind, (None, 0))
+    if not any(coeffs):
+        model, n = "none", 0
+    elif model is None:
+        logger.warning("camera %s: distortion model %r is not supported; "
+                       "reporting the pinhole without distortion", name, kind)
+        model, n = "none", 0
+    return CameraIntrinsics(width=int(intr.width), height=int(intr.height),
+                            fx=float(intr.fx), fy=float(intr.fy),
+                            cx=float(intr.ppx), cy=float(intr.ppy),
+                            model=model, coeffs=coeffs[:n])

@@ -32,6 +32,55 @@ pip install -e .
   `body.network_interface`。它就是
   `ChannelFactoryInitialize(0, <iface>)` 的第二个参数。不设置时由 SDK 自动检测。
 
+### 生成本地配置
+
+插好网线、机器人开机后，`hirobot scan` 显示本机和机器人网络上有什么，`hirobot init`
+为它看到的机器人写一份本地配置：
+
+```bash
+hirobot scan                    # summary; --json for the full report
+hirobot init -o my_g1.yaml      # asks for the model, then writes and checks the file
+```
+
+两者都是只读的。扫描订阅 `rt/lowstate` 和 `rt/dex3/{left,right}/state`，并向 motion
+switcher 查询一次 `CheckMode`。它不创建 publisher，不发命令，不改网络设置。需要 `sudo`
+的建议（给网卡配一个 `192.168.123.x` 的地址）只打印出来。
+
+在带 Dex3 手的 G1 上，摘要形如（示例）：
+
+```text
+Host: robot-pc (Linux 5.15.0-tegra, aarch64, Python 3.10.12), NVIDIA Jetson Orin NX
+Network cards:
+  eth0: up, 1000 Mb/s, 192.168.123.164/24  <- 192.168.123.x
+SDKs ok: cyclonedds 0.10.2, unitree_sdk2py 1.0.1
+SDKs missing or too old: pyrealsense2
+ROS 2: distro not sourced, rclpy not importable
+Cameras: none seen
+Audio (alsa): none seen
+Unitree: found on eth0
+  lowstate hg, 29 of 35 motor slots report, mode_machine 5, 500.0 Hz
+  motion service mode 'ai', owns rt/lowcmd: yes
+  hands: dex3_left yes, dex3_right yes
+  candidate robots/unitree_g1_dex3 (0.9): unitree_hg with 29 motors reporting: G1 29-DoF; rt/dex3/left/state and rt/dex3/right/state seen
+  candidate robots/unitree_g1 (0.85): unitree_hg with 29 motors reporting: G1 29-DoF
+  note: built-in motion service 'ai' owns rt/lowcmd; joint commands need it released (robot hung or supported)
+```
+
+确认 `init` 给出的型号：扫描根据看到的东西猜测，没看到不代表不存在。锁了腰的 G1 报告
+27 个电机，和 H1-2 一样，所以两者都会列出。关着或不在总线上的手显示为 not seen；如果装了
+手，仍然选 `robots/unitree_g1_dex3`。`--model robots/unitree_g1` 跳过这个问题，
+`--interface eth0` 指定网卡。
+
+没有在提示里回答“y”、没有 `--force`、answers 文件里也没有 `overwrite: true` 时，`init`
+从不替换已有文件；`--yes` 只是接受第一个候选型号。写出的文件继承内置配置，只设置真机本体
+驱动和每个部件的 `network_interface`，然后 `init` 只读打开它，打印哪些部件发来了数据
+（扬声器跳过：它的驱动没有只读模式）。手、相机或麦克风没有数据或连不上时，报告为没看到并略过；
+只有本体必须有数据。退出码 2 表示文件已写入但检查失败。参数、answers
+文件和报告的键见 [API 参考](../api.zh-CN.md#hirobot-scan-和-hirobot-init)。
+
+生成的文件沿用内置的增益和安全限位。第一次发命令让机器人动之前，按下面的步骤做；
+第 6 节给出 G1 要加的逐关节增益。
+
 ## 3. 上电与安全
 
 1. 机器人处于**吊起或有支撑**的状态，周围区域已清空。
@@ -408,7 +457,8 @@ unitree_sdk2_python（a035ade，2025-11-28）。`list_onboard_skills()` 不连�
 | Skill | 参数 | SDK 调用 |
 |---|---|---|
 | `start_locomotion` | | `LocoClient.SetFsmId(200)`：进入平衡控制器 |
-| `walk` | `vx`（±0.5 m/s），`vy`（±0.3 m/s），`vyaw`（±0.8 rad/s），`seconds`（0 到 10，默认 1） | `LocoClient.SetVelocity` |
+| `walk` | `vx`（±0.5 m/s），`vy`（±0.3 m/s），`vyaw`（±0.8 rad/s），`seconds`（0 到 10，默认 1） | `LocoClient.SetVelocity`；`duration_s` 就是 `seconds` |
+| `turn` | `degrees`（±180，默认 30；正值左转） | 按 IMU yaw 循环发 `LocoClient.SetVelocity`，到了就 `StopMove`；机器人转动时就返回，`duration_s` 是按角度估的上限（30° 约 2.7 s，90° 约 5.2 s） |
 | `high_stand` / `low_stand` | | `LocoClient.SetStandHeight` |
 | `sit` | | `SetFsmId(3)` |
 | `squat_stand` | | `SetFsmId(706)`：蹲下，或从蹲姿站起 |
@@ -436,21 +486,25 @@ unitree_sdk2_python（a035ade，2025-11-28）。`list_onboard_skills()` 不连�
 收录。hiRobot 也不检查手势自身的前置条件，所以控制器在当前状态下无法执行的
 手势会表现为一次拒绝。
 
-这些 skill 都还没有在机器人上运行过。先在机器人吊起的状态下
-尝试。
+`ExecuteAction` 要等手势做完才应答，有的手势（`high_wave`）超过 3 s。所以
+`run_onboard_skill` 只等 0.5 s 看有没有提前的应答：这段时间内返回错误码（7404、7400、
+3102）就报错，否则在手势还在做的时候就返回。之后才失败的手势只记一条 warning。
+
+在真机 G1 上试过：上面的 FSM 顺序、`walk`、`right_hand_up` 和 `high_wave`。其他
+skill 还没有在机器人上运行过，先在机器人吊起的状态下尝试。
 
 ## 5. MuJoCo（G1，可选）
 
 驱动真机不需要 MuJoCo。有了它，G1 可以单独在仿真中运行
 （完全不需要机器人），或者从真机姿态起步，在上真机之前预演一个动作。安装 MuJoCo 并
 从 [unitree_ros](https://github.com/unitreerobotics/unitree_ros) 获取 G1 模型
-（hiRobot 不附带）：
+（BSD-3-Clause，hiRobot 不附带）。`hirobot assets fetch` 从 Hugging Face 数据集
+`humanoidintelligence/hirobot-assets` 下载它（原样，未改动）；
+`hirobot assets list` 列出其他可下载的模型：
 
 ```bash
-pip install -e '.[sim]'          # mujoco
-git clone --depth 1 --filter=blob:none --sparse \
-    https://github.com/unitreerobotics/unitree_ros.git ~/.cache/hirobot/unitree_ros
-git -C ~/.cache/hirobot/unitree_ros sparse-checkout set robots/g1_description
+pip install -e '.[sim,assets]'   # mujoco、huggingface_hub
+hirobot assets fetch unitree_g1  # 下载到 ~/.cache/hirobot/assets/unitree_ros/robots/g1_description
 ```
 
 ### 仿真 G1（无机器人）
@@ -669,18 +723,12 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
                  1.5, 1.5, 1.5, 1.5]
   ```
 
-- **仿真模型：** 按第 5 节的方法从 unitree_ros 获取 `robots/h1_description`。
-  它的 `mjcf/h1.xml` 需要在本地副本中修改后，MuJoCo 才能
-  加载。模型把腰部命名为 `torso_joint`，而配置称之为
-  `waist_yaw`。一旦 `fixed_base` 去掉自由关节，它的 `home` 关键帧也
-  不再适用。由于副本放在别处，要把 `meshdir` 设为 `meshes/` 的绝对路径：
-
-  ```bash
-  M=~/.cache/hirobot/unitree_ros/robots/h1_description
-  sed -e "s|meshdir=\"../meshes\"|meshdir=\"$M/meshes\"|" \
-      -e 's/"torso_joint"/"waist_yaw_joint"/g' \
-      -e '/<keyframe>/,/<\/keyframe>/d' $M/mjcf/h1.xml > h1_sim.xml
-  ```
+- **仿真模型：** `hirobot assets fetch unitree_h1`（见第 5 节）。H1 设备文件的 `model:` 指向
+  `mjcf/h1_hirobot.xml`：hirobot-assets 数据集里 unitree_ros `mjcf/h1.xml` 的副本，改了两处：
+  腰关节从 `torso_joint` 改名为 `waist_yaw_joint`（配置里叫 `waist_yaw`）；删掉 `home` 关键帧
+  （`fixed_base` 去掉自由关节后它就不适用了）。H1-2（`h1_2_handless_hirobot.xml`，同样改名，
+  `hirobot assets fetch unitree_h1_2`）和 H2（unitree_mujoco 的 `h2_mujoco.xml`，
+  `hirobot assets fetch unitree_h2`）也写了 `model:`。这三款都还没有内置的 `*_mujoco` 配置。
 
   然后写一份本地仿真配置，比如 `my_h1_mujoco.yaml`，用
   `python examples/rehearse_in_sim.py my_h1.yaml my_h1_mujoco.yaml ...` 预演：
@@ -691,7 +739,7 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
     parts:
       body:
         overrides:
-          model: {mjcf: h1_sim.xml}   # kp / kd / armature：从真机配置照抄
+          model: {kp: [...], kd: [...]}   # 从真机配置的 default_kp / default_kd 照抄
   sim:
     fixed_base: [body]
     base_height: {body: 1.2}
@@ -770,4 +818,11 @@ python scripts/unitree_setup.py restore --config my_g1.yaml --iface eth0
   `videohub_pc4`，每 5 s 重启一次；启动失败 30 次后就不再重启，
   `/unitree/var/log/master_service/master_service.LOG` 里会反复出现
   `monitor start child service error. name:video_hub_pc4, ret:30008`。
-  重启 PC2 会清零这个计数。
+  重启 PC2 会清零这个计数。如果自己装了开机启动的相机服务（例如用 RealSense
+  的 systemd 服务），它会先占住相机，videohub 就会一直失败：用
+  `fuser /dev/video*` 查是谁占着，要用 videohub 就把那个服务关掉。
+  D435i 从 USB 上掉线又重新接上（`dmesg` 里有 `usb 2-3: USB disconnect`）时，
+  videohub 也会活着却不出图：彩色节点从 `/dev/video4` 换成别的编号，而
+  `videohub_pc4` 写死打开 `/dev/video4`，`master_service` 照样显示服务正常。用
+  `ls -l /dev/v4l/by-id/` 查（`video-index0` 应指向 `video4`）。重启 videohub
+  没用，重启 PC2 才行。运动控制在 PC1 上，重启 PC2 不影响机器人站立。

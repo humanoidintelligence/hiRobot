@@ -20,9 +20,25 @@ frames:
 
 # Tool flange, for mounting an end-effector (e.g. a Robotiq gripper, see
 # robots/ur_ur5e_robotiq). wrist_3_link is the last arm link in UR's URDF; the
-# flange frame sits on it. Nominal link name only (this body ships no MJCF);
-# put any measured gripper offset in the robot config's placement pose.
+# flange frame sits on it (also a body of the Menagerie MJCF below). Put any
+# measured gripper offset in the robot config's placement pose.
 mounts:
   flange: {link: wrist_3_link}
+
+# The MJCF comes from MuJoCo Menagerie (universal_robots_ur5e, BSD-3-Clause); it is
+# not shipped with hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch menagerie_universal_robots_ur5e
+#
+# which downloads it to ~/.cache/hirobot/assets/menagerie/universal_robots_ur5e.
+# Gains are the MJCF's position actuators (kp 2000 / kd 400 shoulder and elbow,
+# 500 / 100 wrist); home is its home keyframe. Its joints carry a _joint suffix
+# (shoulder_pan_joint), which hiRobot matches to shoulder_pan.
+model:
+  mjcf: ~/.cache/hirobot/assets/menagerie/universal_robots_ur5e/ur5e.xml
+  kp: [2000, 2000, 2000, 500, 500, 500]
+  kd: [400, 400, 400, 100, 100, 100]
+  home: [-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0]
 
 driver: {type: ur_rtde}

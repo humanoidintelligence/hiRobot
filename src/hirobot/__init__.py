@@ -20,15 +20,19 @@ from hirobot.core.dof import DofMap
 from hirobot.core.embodiment import (
     AudioDevice,
     Camera,
+    CameraInfo,
+    CameraIntrinsics,
     CameraMount,
     Embodiment,
     EmbodimentKind,
     EndEffector,
     EndEffectorFrame,
     Joint,
+    ModelRef,
 )
 from hirobot.control.layer import Layer
 from hirobot.devices.end_effector import available_end_effectors, get_end_effector, register_end_effector
+from hirobot.loading.config import available_configs
 from hirobot.loading.registry import (
     available_bodies,
     available_layers,
@@ -38,7 +42,21 @@ from hirobot.loading.registry import (
     register_body,
     register_layer,
 )
-from hirobot.control.arbiter import CommandLease, PreemptedError, Priority, RobotBusyError
+from hirobot.control.arbiter import (
+    CommandLease,
+    CommandRecord,
+    ListenerHandle,
+    PreemptedError,
+    Priority,
+    RobotBusyError,
+)
+from hirobot.core.features import (
+    action_features,
+    flatten_action,
+    flatten_observation,
+    image_features,
+    observation_features,
+)
 from hirobot.core.robot import Robot, RobotFaultError, RobotStoppedError
 from hirobot.core.robot_skills import RobotSkillError, RobotSkillResult, RobotSkillSpec
 from hirobot.control.safety import SafetyError, SafetyGate, SafetyVerdict
@@ -56,7 +74,7 @@ from hirobot.core.types import (
     RobotStatus,
 )
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 
 __all__ = [
     "Observation",
@@ -75,9 +93,17 @@ __all__ = [
     "EndEffector",
     "EndEffectorFrame",
     "Camera",
+    "CameraInfo",
+    "CameraIntrinsics",
     "CameraMount",
     "AudioDevice",
+    "ModelRef",
     "DofMap",
+    "observation_features",
+    "flatten_observation",
+    "action_features",
+    "flatten_action",
+    "image_features",
     "Robot",
     "RobotAssembly",
     "Layer",
@@ -86,6 +112,8 @@ __all__ = [
     "PreemptedError",
     "Priority",
     "CommandLease",
+    "CommandRecord",
+    "ListenerHandle",
     "RobotStoppedError",
     "RobotSkillSpec",
     "RobotSkillResult",
@@ -110,7 +138,9 @@ __all__ = [
     "get_layer",
     "available_layers",
     "require_sdk",
+    "available_configs",
     "load_embodiment",
+    "model_path",
     "make_robot",
     "__version__",
 ]
@@ -136,11 +166,16 @@ def _sim_check(cfg: Any, spec: Any, driver_name: str) -> Any:
                          "format has no model: per body)")
     from hirobot.loading.tree import DeviceSpec
 
-    missing = [p for p, d in spec.root.walk()
-               if isinstance(d, DeviceSpec) and d.kind == "body" and not d.fields.get("model")]
+    bodies = [(p, d.fields.get("model")) for p, d in spec.root.walk()
+              if isinstance(d, DeviceSpec) and d.kind == "body"]
+    missing = [p for p, m in bodies if not m]
     if missing:
         raise ValueError(f"safety.sim_check: body part(s) {missing} have no model: (their MJCF); "
                          "every body needs one, checking only some parts would miss collisions")
+    urdf_only = [p for p, m in bodies if not m.get("mjcf")]
+    if urdf_only:
+        raise ValueError(f"safety.sim_check needs an mjcf for every body; body part(s) "
+                         f"{urdf_only} have only a urdf in model:. Add an mjcf: next to it")
     check = SimCheck.from_config(cfg)
     check.model = spec
     return check
@@ -161,6 +196,32 @@ def load_embodiment(config: Union[str, "os.PathLike[str]", dict]) -> "Embodiment
     if is_legacy_config(loaded):  # deprecated, see hirobot.loading.legacy
         return legacy_embodiment(loaded)
     return node_layout(load_robot(loaded if isinstance(config, dict) else config).root).embodiment
+
+
+def model_path(config: Union[str, "os.PathLike[str]", dict]) -> Optional[ModelRef]:
+    """The model file of the one body of a config, without building the robot.
+
+    The same as ``load_embodiment(config).model``, except that a config with no
+    body or more than one raises ``ValueError`` (the message lists the body
+    paths) instead of giving ``None``. ``None`` means one body whose device file
+    has no ``model:``. The file is not checked to exist. A config that does not
+    load raises what :func:`load_embodiment` raises (``ValueError``,
+    ``FileNotFoundError``); to tell that apart from the body count, call
+    :func:`load_embodiment` first.
+    """
+    from hirobot.loading.build import only_body
+    from hirobot.loading.config import load_config
+    from hirobot.loading.layout import node_layout
+    from hirobot.loading.legacy import is_legacy_config, legacy_embodiment
+    from hirobot.loading.tree import load_robot
+
+    loaded = load_config(config)
+    if is_legacy_config(loaded):  # one body by construction
+        return legacy_embodiment(loaded).model
+    spec = load_robot(loaded if isinstance(config, dict) else config)
+    model = node_layout(spec.root).embodiment.model
+    only_body(spec, "model_path")
+    return model
 
 
 def _warn_slow_cameras(embodiment: Embodiment) -> None:
@@ -275,8 +336,11 @@ def _make_tree(ref: Any, overrides: Optional[Mapping[str, Any]], sim: Optional[b
     bodies = [d for _, d in spec.root.walk() if isinstance(d, DeviceSpec) and d.kind == "body"]
     driver_name = ("mujoco" if in_sim else (bodies[0].driver or {}).get("type", "toy")
                    if len(bodies) == 1 else "assembly")
-    return _finish(robot, embodiment, safety_cfg, sim_cfg, spec.layers, spec.arbiter, spec,
-                   driver_name)
+    robot = _finish(robot, embodiment, safety_cfg, sim_cfg, spec.layers, spec.arbiter, spec,
+                    driver_name)
+    # The config's mcp: section, for `hirobot mcp` / serve_mcp (hirobot.mcp).
+    robot.mcp_config = spec.mcp
+    return robot
 
 
 def _finish(robot: Robot, embodiment: Embodiment, safety_cfg: Any, sim_cfg: Any,

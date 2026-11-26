@@ -1,0 +1,17 @@
+# Trossen WidowX 250 S (6 DoF) in MuJoCo, no hardware needed.
+#
+# The whole robot trossen_wx250s in the shared simulation (sim:): the arm from
+# its device file's model: (body/trossen/wx250s.yaml: the MuJoCo Menagerie MJCF,
+# its gains and home pose), the wrist and scene cameras rendered from their
+# mounts. The gripper does not move: the simulation does not drive gripper
+# joints. Fetch the model first:
+#
+#   hirobot assets fetch menagerie_trossen_wx250s
+#
+# make_robot("trossen_wx250s_mujoco", sim=False) builds the real robot instead.
+
+defaults: [robots/trossen_wx250s]
+
+sim:
+  viewer: false            # set true to open the MuJoCo window
+  ramp_seconds: 1.0

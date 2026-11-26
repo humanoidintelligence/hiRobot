@@ -30,9 +30,13 @@ Conventions used throughout:
 - [RobotAssembly](#robotassembly)
 - [Control loops](#control-loops)
 - [DofMap](#dofmap)
+- [Features](#features)
+- [Recording](#recording)
 - [Kinematics](#kinematics)
+- [Simulation assets](#simulation-assets)
 - [Config file reference](#config-file-reference)
 - [CLI](#cli)
+- [MCP server](#mcp-server)
 - [Writing a driver or a layer (SPI)](#writing-a-driver-or-a-layer-spi)
 - [Extension points: cameras, end-effectors and audio](#extension-points-cameras-end-effectors-and-audio)
 
@@ -51,6 +55,7 @@ and layers all have every member below; signatures and behaviour are in
 | Command | `send_action(action)`, `check_action(action) -> Action`, `hold()`, `set_gains(kp, kd)`, `command_timeout_s` | [Action](#action) |
 | Stop | `estop()` | [Robot](#robot) |
 | Share the command stream | `claim(name, ...) -> CommandLease`, `command_events()` | [Command arbiter](#command-arbiter) |
+| Watch (record, monitor) | `add_listener(on_observation=None, on_command=None) -> ListenerHandle` | [Listeners](#listeners), [Features](#features) |
 | Skills | `list_robot_skills()`, `run_robot_skill(name, args=None)`, `stop_robot_skill()`, `robot_skill_running` | [Skills](#skills) |
 | Skills by kind | Onboard skills: `has_onboard_skills`, `list_onboard_skills()`, `run_onboard_skill(name, args=None)`, `stop_onboard_skill()`. Layer skills: `list_layer_skills()`, `run_layer_skill(name, args=None)`, `stop_layer_skill()`, `layer_skill_running` | [Onboard skills](#onboard-skills), [Layers](#layers) |
 | Safety and episode outcome | `safety` (the attached `SafetyGate`), `success`, `done`, `reward` | [SafetyGate](#safetygate), [Control loops](#control-loops) |
@@ -77,7 +82,7 @@ finally:
 
 | Name | Kind | Module | Purpose |
 |---|---|---|---|
-| `Embodiment`, `Joint`, `EndEffector`, `EndEffectorFrame`, `Camera`, `CameraMount`, `AudioDevice`, `EmbodimentKind` | pydantic models / enum | `hirobot.core.embodiment` | Declarative robot I/O contract |
+| `Embodiment`, `Joint`, `EndEffector`, `EndEffectorFrame`, `Camera`, `CameraMount`, `CameraIntrinsics`, `CameraInfo`, `AudioDevice`, `ModelRef`, `EmbodimentKind` | pydantic models / enum | `hirobot.core.embodiment` | Declarative robot I/O contract |
 | `Observation`, `Action`, `ActionChunk`, `ControlMode`, `MotionClip`, `JOINT_MODES`, `MOTION_SPACES` | pydantic models / enum / tuples | `hirobot.core.types` | Typed I/O between robot and policy |
 | `RobotStatus`, `BatteryState`, `CommandProgress` | pydantic models | `hirobot.core.types` | What `get_status()` returns (see [`RobotStatus`](#robotstatus)) |
 | `Robot` | abstract class | `hirobot.core.robot` | Driver contract |
@@ -88,10 +93,13 @@ finally:
 | `register_body`, `get_body`, `available_bodies` | functions | `hirobot.loading.registry` | Name-based driver registry |
 | `register_layer`, `get_layer`, `available_layers` | functions | `hirobot.loading.registry` | Registry of layers stacked by `layers:` (see [Layers](#layers)) |
 | `load_embodiment`, `make_robot` | functions | `hirobot` | Build an embodiment / robot from a config name, file or dict |
+| `model_path`, `available_configs` | functions | `hirobot` | The model file of a config's one body; the built-in config names |
 | `require_sdk` | function | `hirobot.loading.sdk` | Check a driver's vendor SDK against its `manifest.yaml` |
 | `RobotSkillSpec`, `RobotSkillResult`, `RobotSkillError` | pydantic models / exception | `hirobot.core.robot_skills` | Describe, start and refuse onboard skills (walk, gestures) |
 | `SafetyGate`, `SafetyVerdict`, `SafetyError` | class / dataclass / exception | `hirobot.control.safety` | Check every action before it reaches hardware |
 | `DofMap` | class | `hirobot.core.dof` | Reorder joint vectors by name |
+| `CommandRecord`, `ListenerHandle` | frozen dataclass / class | `hirobot.control.arbiter` | What an `on_command` listener gets; what `add_listener` returns (see [Listeners](#listeners)) |
+| `observation_features`, `flatten_observation`, `action_features`, `flatten_action`, `image_features` | functions | `hirobot.core.features` | `Observation` / `Action` as named vectors (see [Features](#features)) |
 | `pose_compose`, `pose_inverse`, `pose_from_matrix`, `pose_from_axis_angle`, ... | functions | `hirobot.geometry.transforms` | Pose math on 7-vector poses `[x, y, z, qx, qy, qz, qw]` (not re-exported from `hirobot`) |
 | `Kinematics`, `BodyPoses` | classes | `hirobot.geometry.kinematics` | Forward kinematics of an MJCF model (see [Kinematics](#kinematics); not re-exported from `hirobot`) |
 | `__version__` | str | `hirobot` | Package version |
@@ -111,6 +119,40 @@ a file path, or an already-loaded dict, after `defaults:` are expanded (see
 [Config file reference](#config-file-reference)). For an assembly with parts the
 embodiment is the merged tree, every part's names under its `<part>/` prefix.
 Nothing is connected or built. Raises `ValueError` if the config is neither.
+
+### `model_path(config) -> Optional[ModelRef]`
+
+The model file of the config's one body, without building the robot: the same
+as `load_embodiment(config).model`, except for the body count. A config with no
+body or more than one raises `ValueError` (the message lists the body paths).
+`None` means one body whose device file has no `model:`. The file is not checked
+to exist. A config that does not load raises what `load_embodiment` raises
+(`ValueError`, `FileNotFoundError`), so a caller that needs to tell those apart
+calls `load_embodiment` first:
+
+```python
+import os
+import hirobot
+
+try:
+    hirobot.load_embodiment(config)
+except Exception as e:                # the config does not load
+    ...
+try:
+    ref = hirobot.model_path(config)
+except ValueError as e:               # no body, or more than one
+    ...
+if ref is None:                       # one body without model:
+    ...
+elif ref.kind == "mjcf" and os.path.isfile(ref.path):
+    ...
+```
+
+### `available_configs(group=None) -> List[str]`
+
+Names of the built-in configs, sorted: `robots/unitree_g1`, `body/unitree/g1`, ...
+`group` (`robots`, `body`, `end_effector`, `camera`, `microphone`, `speaker`)
+limits the list to one directory. What `hirobot configs` prints.
 
 ### `make_robot(config, overrides=None, sim=None) -> Robot`
 
@@ -157,6 +199,15 @@ cameras rendered by the world, no real driver built. `sim=False` builds the real
 robot of a config that has a `sim:` section. `sim` may also be a mapping merged
 over the config's `sim:` (`{"realtime": False, "viewer": True}`).
 
+A simulated camera delivers at its frame rate, like a real one: it renders a new
+frame when simulated time reaches its next frame time, every `1 / fps` (its
+`Camera.fps`; without one, `sim.camera_fps`, default 30). In between an
+observation carries the same image object and the same stamp (`t`, `seq`), so
+treat images as read-only. `camera_fps: null` renders a camera without `fps` on
+every observation. The first observation after `connect`, `reset` or `set_state`
+always renders. A `mujoco` body on its own takes the same `camera_fps` driver
+option.
+
 To rehearse a motion in simulation before running it on hardware you can also
 open the real robot with `read_only: true`, build its `*_mujoco` config as a
 second robot, and start that one from the real pose with `MujocoRobot.set_state`
@@ -171,7 +222,8 @@ microphone (or the reverse). Raises `KeyError` for an unknown driver or layer na
 A layer is a `Robot` that wraps another robot and changes how it is commanded:
 a whole-body controller that takes `BASE_VELOCITY` / `MOTION_CLIP` / `CARTESIAN`
 and sends balanced joint targets to the robot underneath every tick. hiRobot
-ships none; plugin packages (hiWBC) register them.
+ships one, the IK layer [`mink_ik`](#mink_ik-built-in-ik-layer); plugin packages
+(hiWBC) register the others.
 
 ```python
 from hirobot import Layer, Robot, register_layer
@@ -219,6 +271,65 @@ a caller's lease is preempted, and direct commands raise `RobotBusyError` until
 the skill ends or `stop_layer_skill()` is called. A `TAKEOVER` preempts the
 skill (it is stopped). `estop()` ends it, so the caller can `reset()`.
 
+#### `mink_ik` (built-in IK layer)
+
+`mink_ik` (`hirobot.layers.MinkIkLayer`) takes end-effector targets and sends
+joint targets: each `CARTESIAN` or `CARTESIAN_DELTA` action runs a few steps of
+differential IK ([mink](https://github.com/kevinzakka/mink)) on a MuJoCo model of
+the robot and sends one `POSITION` action with every joint through
+`inner.send_action`, so the gate below checks it. Every other mode passes
+through unchanged. Install with `pip install 'hirobot[ik]'` (mink needs Python
+3.11+); without it `hirobot` still imports and the layer stays registered, and
+building it raises an `ImportError` that names the extra.
+
+```yaml
+layers:
+  - type: mink_ik
+    model: unitree_g1           # MJCF path, or a config whose body has model: mjcf:
+    frames:                     # optional; default: every end-effector with a frame
+      right_hand: {name: right_wrist_yaw_link, type: body}   # body | site | geom
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `model` | the simulation's model | MJCF path (`~` expanded), or the name / path of a config whose one body has `model: mjcf:`. Without it the layer uses the MuJoCo model of a simulated robot below, on `connect()`; a real robot needs it |
+| `frames` | every end-effector with a `frame` | End-effector name -> `{name, type}` of an MJCF body, site or geom |
+| `dt` | one control period | Seconds one `send_action` integrates |
+| `iterations` | `3` | QP steps per `send_action` |
+| `position_cost`, `orientation_cost` | `1.0`, `0.5` | Weights of the end-effector tasks |
+| `posture_cost` | `0.01` | Pulls every joint towards the pose at the last re-seed (keeps legs and waist still) |
+| `damping`, `lm_damping` | `0.001`, `0.001` | QP damping, Levenberg-Marquardt damping of the end-effector tasks |
+| `max_joint_velocity` | `3.0` | rad/s (or m/s) per joint; `null` turns the velocity limit off |
+| `joint_limits` | `true` | Keep the solution inside the model's joint ranges |
+| `solver` | `daqp` | QP solver name (qpsolvers) |
+
+- **Frame.** Targets and the `ee_poses` the layer reports are in the robot's
+  base frame: the root body of the tree the joints are on (a humanoid's pelvis,
+  an arm's base link), as the MuJoCo driver reports `ee_poses`. A floating
+  base's free joint is frozen in the QP, never solved for.
+- **Targets.** `CARTESIAN`: `ee_targets[name]` is `[x, y, z, qx, qy, qz, qw]`.
+  `CARTESIAN_DELTA`: `[dx, dy, dz, dax, day, daz]` per tick (position plus an
+  axis-angle rotation in the base frame), added to that end-effector's last
+  target, not to the measured pose. An end-effector the action leaves out keeps
+  its last target. Targets are re-seeded from the measured pose on first use,
+  after `reset()`, after `hold()` and after a passed-through command. An unknown
+  end-effector or a wrong-length target raises `SafetyError`.
+- **Other joints.** Joints of the robot that the IK model does not have (fingers)
+  are in `direct_joints`; set them with `Action.joint_names` / `joint_target`.
+  `gripper` is passed on.
+- **Failures.** A solver error or a non-finite result sends the previous joint
+  target again and logs a warning; it never raises. An unreachable target is
+  not an error: the IK moves as close as the limits allow.
+- **Introspection.** `layer.commanded_ee_poses` is the forward kinematics of the
+  last joint target (the difference to `ee_poses` is tracking error, e.g. an arm
+  sagging on PD); `layer.stats` has `count`, `mean_ms`, `max_ms`, `failures`.
+- **Joint targets.** `layer.commanded_joint_targets` is joint name -> the
+  `POSITION` target last sent down for an IK command, every joint of that action
+  (a recorder reads it after each command to store the IK's joint targets next to
+  the requested `CARTESIAN` action). After a solver failure it keeps the resent
+  previous target. It is `None` before the first IK command and after `reset()`,
+  `hold()` or a passed-through command. It returns a copy.
+
 ### Registry
 
 ```python
@@ -242,12 +353,12 @@ which first calls `require_sdk` (below).
 
 | Name | Class | Module | Target |
 |---|---|---|---|
-| `toy` | `ToyRobot` | `drivers/sim/toy/` | Toy kinematic integrator, no dependencies |
-| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo physics, a robot of its own; renders cameras that have a `mount`; `ee_poses` for end-effectors that have a `frame`; `set_state` starts it from a measured pose |
+| `toy` | `ToyRobot` | `drivers/sim/toy/` | Toy kinematic integrator, no dependencies. A floating-base toy reports `base_linear_acceleration` as an IMU does, `[0, 0, 9.81]` at rest |
+| `mujoco` | `MujocoRobot` | `drivers/sim/mujoco/` | MuJoCo physics, a robot of its own; renders cameras that have a `mount`, at their `fps` (`camera_fps`, default 30, for a camera without one; `None`: every observation); `ee_poses` for end-effectors that have a `frame`; `set_state` starts it from a measured pose. With a floating base, `base_linear_acceleration` is what an IMU accelerometer reads, as on the real Unitree G1: specific force (acceleration minus gravity) in the base frame, m/s², about `[0, 0, 9.81]` upright at rest; a welded base reads `[0, 0, 9.81]` |
 | `unitree_sdk2` | `UnitreeRobot` | `drivers/body/unitree/sdk2/` | Unitree G1 / H1 / H1-2 / H2 |
 | `fourier_grx` | `FourierRobot` | `drivers/body/fourier/grx/` | Fourier GR1T1 / GR1T2 |
 | `agibot_gdk` | `AgibotG1Robot` | `drivers/body/agibot/gdk/` | AgiBot G1 (精灵 G01): arms, waist, head and grippers over the GDK's DDS topics; chassis over its controller box |
-| `agibot_aimrt` | `AgibotX1Robot` | `drivers/body/agibot/aimrt/` | AgiBot X1 |
+| `ros2` | `Ros2Robot` | `drivers/body/generic/ros2/` | Any ROS 2 robot, set up by config: `JointState` / `Imu` / `Odometry` in; `JointTrajectory`, `Float64MultiArray` or a custom message (field map) out. AgiBot X1 is one config of it ([guide](setup/ros2.md)) |
 | `franka_droid` | `FrankaDroidRobot` | `drivers/body/franka/droid/` | Franka FR3 and its gripper behind a DROID robot server (zerorpc) |
 | `ur_rtde` | `URRobot` | `drivers/body/ur/rtde/` | Universal Robots UR5e |
 | `agilex_piper_sdk` | `PiperRobot` | `drivers/body/agilex/piper_sdk/` | AgileX PiPER and its gripper over SocketCAN (`piper_sdk`) |
@@ -302,15 +413,17 @@ promise that two threads sending at once get any particular order.
 | `send_action(action)` | concrete | `check_action`, then the driver's `_send_action` ([SPI](#writing-a-driver-or-a-layer-spi)). Raises `SafetyError` on refusal and nothing is sent, including when `action.joint_names` lists a joint outside `direct_joints`. Raises `RobotFaultError` in the fault state, and `RobotBusyError` (a `RuntimeError`) when someone else holds the robot's [command lease](#command-arbiter), e.g. it is a part of an assembly and the call does not come through the assembly |
 | `check_action(action) -> Action` | concrete | Every check `send_action` runs, without sending; returns the (possibly clamped) action. An assembly checks every part's piece before sending to any |
 | `fault` | property | Why the robot refuses commands, or `None`. Set when a driver or layer damped or stopped itself, and by `estop()`. Cleared when `reset()` returns, unless `estop()` ran meanwhile. A wrapper (`RobotAssembly`) reports its inner robot's too. Also `get_status().fault` |
-| `estop()` | concrete | Stop now; safe from any thread at any time, skips the safety gate and the [command arbiter](#command-arbiter). A long call on another thread (a `reset` ramp, a wait in `connect`) raises `RobotStoppedError` at its next step; the robot enters the fault state; a command already being sent finishes (at most `ESTOP_LOCK_TIMEOUT_S`, 0.2 s) and none goes out after; then the driver's own stop runs. Unitree and MuJoCo damp (Unitree with `builtin_skills` stops the skill), AgiBot G1 sends `MotionStop`, UR decelerates (`servoStop` / `speedStop` / `stopJ`), Franka stops its position controller; drivers without `damp()` (`toy`, `fourier_grx`, `agibot_aimrt`) only refuse further commands. `RobotAssembly` e-stops its body and every end-effector, or every part. On a layer, the robot at the bottom of the stack is e-stopped first, then each layer stops its own work, outermost first (see [Layer hooks](#layer-hooks); [Layers](#layers)) |
+| `estop()` | concrete | Stop now; safe from any thread at any time, skips the safety gate and the [command arbiter](#command-arbiter). A long call on another thread (a `reset` ramp, a wait in `connect`) raises `RobotStoppedError` at its next step; the robot enters the fault state; a command already being sent finishes (at most `ESTOP_LOCK_TIMEOUT_S`, 0.2 s) and none goes out after; then the driver's own stop runs. Unitree and MuJoCo damp (Unitree with `builtin_skills` stops the skill), AgiBot G1 sends `MotionStop`, UR decelerates (`servoStop` / `speedStop` / `stopJ`), Franka stops its position controller; drivers without `damp()` (`toy`, `fourier_grx`, `ros2`) only refuse further commands. `RobotAssembly` e-stops its body and every end-effector, or every part. On a layer, the robot at the bottom of the stack is e-stopped first, then each layer stops its own work, outermost first (see [Layer hooks](#layer-hooks); [Layers](#layers)) |
 | `claim(name, priority=Priority.CALLER, on_preempt=None, envelope=None, parts=None) -> CommandLease` | concrete | Take the robot's command stream. See [Command arbiter](#command-arbiter) |
 | `command_events() -> List[CommandEvent]` | concrete | The arbiter's audit events, oldest first; empty without an arbiter. See [Audit](#audit) |
+| `add_listener(on_observation=None, on_command=None) -> ListenerHandle` | concrete | Callbacks for every top-level `get_observation()` and `send_action` / `hold`. See [Listeners](#listeners) |
 | `command_timeout_s` | attribute | Seconds without a new `VELOCITY` / `BASE_VELOCITY` command before the driver stops the motion and logs a warning (`hirobot.control.watchdog.CommandWatchdog`); not a fault, the next command runs as usual. Default 0.2 s on `toy`, `mujoco` (simulated time), `unitree_sdk2` (zero velocity, kp 0) and `ur_rtde` (`speedStop`); `agibot_gdk` has its own `command_timeout` (0.3 s) for the chassis; `None` on the other drivers. Set `body.command_timeout_s: null` to turn it off. Position targets are not watched |
 | `action_modes` | class attribute | Modes the robot accepts. Callers that build actions read it |
 | `motion_spaces` | class attribute | `MotionClip.space` values the robot tracks under `MOTION_CLIP`. Empty by default |
 | `direct_joints` | class attribute | Joints a caller may command by name beside a non-joint mode. Empty by default |
 | `cartesian_targets` | property | End-effectors that take `CARTESIAN` pose targets: every end-effector when `CARTESIAN` is in `action_modes`, else none. Overridden by robots that track only some |
 | `cameras`, `microphones`, `speakers` | attributes | Attached devices by name: camera drivers, microphones and speakers. Empty on a bare driver; the assembly `make_robot` builds fills them, and every layer passes them up. See [Extension points](#extension-points-cameras-end-effectors-and-audio) |
+| `camera_info(name)` | method -> `CameraInfo` | Intrinsics and mount (extrinsics) of camera `name`, to turn `images[name]` and `depth[name]` (metres, registered to the colour image) into 3D. Intrinsics come from the first source that has them: the config's `intrinsics:`, the camera driver (after `connect()`; RealSense, Orbbec, ZED read them from the device), else an ideal pinhole from the mount's `fovy`. They are rescaled to the camera's declared `width` / `height`. `mount` is the pose of the optical frame in a robot link; for a head or wrist camera, composing it with the link's current pose is the caller's step. A child part's camera is named `<part>/<name>`. `KeyError` for an unknown camera |
 | `accepts_parts` | class attribute | Whether `send_action` takes `Action.parts`: `True` on an assembly with child parts, else `False` |
 | `now()` | optional | The robot's clock in seconds, what `Observation.stamps` times are on: `time.monotonic()` by default, simulated time in `toy` / `mujoco`. Wrappers return the inner robot's |
 | `hold()` | optional | Keep the robot where it is, e.g. after a policy is stopped. By default sends the current `joint_pos` as a POSITION action when the driver accepts POSITION, otherwise does nothing. A simulator that takes only Cartesian deltas does nothing; Unitree with `builtin_skills` does nothing (the motion service keeps the robot standing). A driver with its own balance loop (a whole-body-controlled humanoid) must override it to command standing still (base velocity `[0, 0, 0]`): sending `joint_pos` freezes the joints and the humanoid falls. Goes through the safety gate |
@@ -353,6 +466,8 @@ path to its joint span and children.
 | `cameras` | `List[Camera]` | `[]` | Camera streams |
 | `microphones` | `List[AudioDevice]` | `[]` | Microphones |
 | `speakers` | `List[AudioDevice]` | `[]` | Speakers |
+| `battery_soc_limit` | `(warn, shutdown)` or `None` | `None` | Battery charge (percent) where a monitor flags it as low (`warn`) and where it is unsafe to keep commanding (`shutdown`). Both within 0-100, `warn >= shutdown`. The gate uses `shutdown` when `safety:` sets no `min_battery_soc` |
+| `model` | `ModelRef` or `None` | `None` | Model file of the robot's one body, from its device file's `model:`. `None` with more than one body or no `model:`. Filled by `load_embodiment` and `make_robot`, real robots included |
 
 Properties: `joint_names -> List[str]`, `num_dofs -> int`.
 
@@ -369,6 +484,7 @@ an unknown joint, a joint claimed by two end-effectors, or an end-effector with 
 | | `torque_limit` | `float` or `None` | Max absolute torque (Nm) |
 | | `axis` | `(x, y, z)` or `None` | Unit vector the joint turns about, in the frame of the link the joint moves (as URDF `<axis>` and MJCF `axis`), not the world frame |
 | | `parent_link` | `str` or `None` | Link the joint hangs from (URDF `<parent>`) |
+| | `temperature_limit` | `(warn, shutdown)` or `None` | Motor temperatures (degC): `warn` is where a monitor flags the joint as hot, `shutdown` where it is unsafe to keep commanding it. Both > 0, `warn <= shutdown`. The gate uses `shutdown` when `safety:` sets no `max_joint_temperature` |
 | `EndEffector` | `name` | `str` | Key in `ee_poses` / `ee_targets` / `gripper` |
 | | `has_gripper` | `bool` | Has a gripper commanded through `Action.gripper`. Required for an end-effector driver without `joints` (`opening` interface) and not allowed with `joints` |
 | | `joints` | `List[str]` | Embodiment joints this end-effector actuates (finger joints), in its driver's motor order |
@@ -378,10 +494,19 @@ an unknown joint, a joint claimed by two end-effectors, or an end-effector with 
 | | `width`, `height` | `int` | Frame size as delivered |
 | | `driver` | `dict` or `None` | Camera-driver spec: `type` names a registered camera driver, other keys are its arguments. Omit for cameras the body driver renders itself (simulators). The old key `source` is an error |
 | | `depth` | `bool` | RGB-D camera: its driver also delivers a depth image registered to the colour image, in `Observation.depth` under the same name. Default `False` |
-| | `fps` | `float` or `None` | Nominal frame rate. `stale_sources` uses it; `make_robot` warns when `control_hz` is more than twice it |
-| | `mount` | `CameraMount` or `None` | Where the camera sits: `body` (link name), `pos` (m, in that link), `quat` `[x, y, z, w]` of the optical frame (z forward, x right, y down) in that link, `fovy` (vertical field of view, degrees). The `mujoco` body renders mounted cameras into `images`; real camera drivers ignore it |
+| | `fps` | `float` or `None` | Nominal frame rate. `stale_sources` uses it; `make_robot` warns when `control_hz` is more than twice it. A simulated camera renders at this rate (without it, at `sim.camera_fps`) |
+| | `mount` | `CameraMount` or `None` | Where the camera sits: `body` (link name), `pos` (m, in that link), `quat` `[x, y, z, w]` of the optical frame (z forward, x right, y down) in that link, `fovy` (vertical field of view, degrees). These are the camera's extrinsics: the `mujoco` body renders mounted cameras into `images` at that pose; for a real camera they are the calibrated pose, read back with `Robot.camera_info`. A config gives it through the camera's `placement` |
+| | `intrinsics` | `CameraIntrinsics` or `None` | Fixed intrinsics from a calibration (the camera file's `intrinsics:`). They win over what the driver reads from the device |
+| `CameraIntrinsics` | `width`, `height` | `int` | Image size these intrinsics are for. In a config they default to the camera's `width` / `height` |
+| | `fx`, `fy`, `cx`, `cy` | `float` | Pinhole focal lengths and principal point, pixels. Pixel `(u, v)` has its origin at the top-left corner, `u` right, `v` down, pixel centres at integers. A point `(x, y, z)` in the optical frame (OpenCV: z forward, x right, y down; m) projects to `u = fx·x/z + cx`, `v = fy·y/z + cy` before distortion |
+| | `model`, `coeffs` | `str`, `tuple` | Distortion: `none` (default, no coefficients), `brown_conrady` / `plumb_bob` (OpenCV `k1, k2, p1, p2, k3`), `inverse_brown_conrady` (RealSense, same 5), `kannala_brandt` (OpenCV fisheye `k1..k4`). All-zero coefficients become `none` |
+| | `K`, `scaled(w, h)`, `from_fovy(w, h, fovy)` | | `K` is the 3x3 numpy camera matrix. `scaled` gives the same camera at another resolution (a resize, no crop). `from_fovy` is an ideal pinhole with the principal point at the image centre, what a simulator renders |
+| `CameraInfo` | `name`, `intrinsics`, `intrinsics_source`, `mount`, `depth` | | What `Robot.camera_info` returns. `intrinsics_source` is `config`, `driver`, `fovy` or `None` |
 | `AudioDevice` | `name` | `str` | Key in `robot.microphones` / `robot.speakers` |
 | | `driver` | `dict` or `None` | Audio-driver spec: `type` names a registered microphone or speaker driver, other keys are its arguments |
+| `ModelRef` | `kind` | `"mjcf"` or `"urdf"` | Format of `path`. With both in `model:`, `mjcf`. Frozen and hashable; fields added later are optional |
+| | `path` | `str` | Absolute path, `~` expanded. Not checked to exist |
+| | `package_roots` | `Dict[str, str]` | URDF only: package name -> absolute directory for `package://` mesh paths. Empty for MJCF |
 
 `EmbodimentKind` is a string enum with `HUMANOID = "humanoid"` and `ARM = "arm"`.
 
@@ -605,7 +730,9 @@ runs it on the driver. Supported schema keywords: property
 `exclusiveMinimum`, `enum`, `default`, and `required`. Missing arguments take
 their `default`; unknown arguments are refused. It returns once the robot has
 accepted the command, not when the motion ends. `RobotSkillResult` carries
-`name`, the checked `args` (defaults filled in) and `duration_s`.
+`name`, the checked `args` (defaults filled in) and `duration_s`: the driver's
+estimate for these arguments if it gives one (G1 `walk`: its `seconds`; `turn`:
+an upper estimate from the angle), else the spec's `duration_s`.
 
 `RobotSkillError` is raised for an unknown skill, a bad argument, or a robot
 that refused.
@@ -698,6 +825,30 @@ are counted, not recorded: `safety["audit"]` has `accepted`, `refused`,
 `by_lease` (`"(direct)"` for calls with nobody holding; the 64 most recent
 names), `holder` and `last_refusal`. A lease also has `accepted` and `refused`.
 
+### Listeners
+
+`robot.add_listener` lets a recorder or a monitor see what the robot reads and
+is told, without being in the command path. Call it on the outermost robot
+(what `make_robot` returns); on a bare driver it attaches an arbiter as `claim` does.
+
+```python
+import queue
+
+q: "queue.Queue" = queue.Queue()
+handle = robot.add_listener(on_observation=q.put, on_command=q.put)
+...
+handle.remove()
+```
+
+| Item | Meaning |
+|---|---|
+| `on_observation(obs)` | Every top-level `get_observation()` on this robot, with the returned `Observation`. Reads inside a command (`hold()` reading the pose) are not reported |
+| `on_command(record)` | Every top-level `send_action` and `hold`, on the robot or a lease, accepted or not. `hold()`'s own `send_action` is not reported, nor is `reset`, a skill, or what a layer sends below |
+| `CommandRecord` | `t` (`now()` when the call started), `call` (`send_action` / `hold`), `action` (as the caller passed it, before an envelope or the gate clamps it; `None` for `hold`), `lease` and `priority` (`None` for a direct call), `accepted`, `reason` (the message of the `SafetyError`, `RobotBusyError`, `RobotFaultError` or driver error), `parts` (the lease's part paths) |
+| Threads | Callbacks run on the caller's thread after the call, so they must return quickly: put the item on a queue. Adding and removing listeners is safe from any thread |
+| Errors | A callback that raises is logged (once per 10 s per listener; `handle.errors` counts them) and never changes the call's result |
+| `ListenerHandle` | `remove()` (safe twice), `active` |
+
 ## SafetyGate
 
 `hirobot.control.safety`. The check `Robot.send_action` runs on every action before it
@@ -726,6 +877,10 @@ simulation check.
 | `max_joint_error` | Largest distance (rad) of a position target from the measured position, per joint. `None` skips it |
 | `min_battery_soc` | Refuse commands while `get_status().battery.soc` is below this (percent). `None` skips it |
 | `max_joint_temperature` | Refuse commands while a joint in `get_status().joint_temperature` is hotter than this (degC). `None` skips it |
+
+`from_embodiment` fills `min_battery_soc` and `max_joint_temperature` from the
+embodiment when they are not given: `Embodiment.battery_soc_limit[1]` and the
+smallest `Joint.temperature_limit[1]`. A value in `safety:` wins.
 
 Always checked: `joint_target` is 1-D, finite, and gripper values are finite;
 `base_velocity`, `base_target`, `latent`, every `ee_targets` entry and every
@@ -937,6 +1092,157 @@ policy_q = m.remap(obs.joint_pos)
 robot_target = m.scatter(policy_target, default=obs.joint_pos)
 ```
 
+## Features
+
+`hirobot.core.features` turns an `Observation` or `Action` into flat float32
+vectors with a name for every dimension, the layout a dataset such as
+LeRobot's stores. Joints are in `Embodiment.joints` order; an assembly's names
+carry the `<part>/` prefix.
+
+```python
+from hirobot import flatten_observation, observation_features
+
+names = observation_features(robot.embodiment)   # {"observation.state": ["j0.pos", ...], ...}
+obs = robot.get_observation()
+row = flatten_observation(obs, robot.embodiment)  # {"observation.state": array([...]), ...}
+```
+
+| Key | Values | Names |
+|---|---|---|
+| `observation.state` | `joint_pos`, then `gripper` of each end-effector with a gripper | `<joint>.pos`, `<ee>.gripper` |
+| `observation.ee_pose` | `ee_poses`, 7 per end-effector | `<ee>.x` ... `<ee>.qw` |
+| `observation.joint_vel`, `observation.joint_torque` | `joint_vel`, `joint_torque` | `<joint>.vel`, `<joint>.torque` |
+| `observation.imu` | `base_orientation` `[x, y, z, w]`, `base_angular_velocity`, `base_linear_acceleration` | `imu.qx` ... `imu.az` (10) |
+| `observation.base` | `base_position`, `base_linear_velocity` | `base.x` ... `base.vz` (6) |
+| `action` | Joint modes: `joint_target`, then grippers. Beside a non-joint mode: the targets `joint_names` gives, every joint, `NaN` for the others | `<joint>.pos` (`.vel`, `.torque` for those modes), `<ee>.gripper` |
+| `action.gripper` | Grippers under a non-joint mode | `<ee>.gripper` |
+| `action.ee`, `action.ee_delta` | `ee_targets` under `CARTESIAN` (7 each) / `CARTESIAN_DELTA` (6 each) | `<ee>.x` ... `<ee>.qw` / `<ee>.dx` ... `<ee>.daz` |
+| `action.base_velocity`, `action.base_target` | `base_velocity`, `base_target` (`BASE_POSE`) | `base.vx`, `base.vy`, `base.wz` / `base.x`, `base.y`, `base.yaw` |
+
+| Function | Returns |
+|---|---|
+| `observation_features(embodiment, obs=None)` | Key -> names. Without `obs`, every key the embodiment can have (`imu` and `base` only with a floating base); with `obs`, the keys it fills |
+| `flatten_observation(obs, embodiment)` | Key -> vector. `ValueError` on a wrong length |
+| `action_features(embodiment, mode=POSITION, action=None)` | Key -> names, for `mode`, or for `action` |
+| `flatten_action(action, embodiment)` | Key -> vector. `Action.parts` is flattened in the robot's names; its leaves must share one mode |
+| `image_features(embodiment)` | `observation.images.<cam>` -> camera name. Images are not flattened |
+
+A key whose source the observation or action does not fill is left out. A key
+that is present always has its full length; a missing piece inside it (one
+end-effector's pose, the IMU's acceleration, a gripper) is `NaN`. `kp` / `kd`,
+`latent`, `motion` and `extra` are not flattened.
+
+## Recording
+
+`hirobot.record` saves episodes as LeRobot v3.0 datasets without importing
+lerobot (`pip install 'hirobot[record]'`: pyarrow and PyAV). A `Recorder` is a
+[listener](#listeners) on the outermost robot: it never commands the robot, and
+an error in it never reaches the control loop.
+
+```python
+from hirobot.record import Recorder
+
+rec = Recorder(robot, "data/")           # fps: min(30, control_hz), control_hz without cameras
+rec.subscribe(lambda e: print(e.state, e.path, [f.name for f in e.flags]))
+rec.start("pick the cube", meta={"operator": "ann"})
+...                                      # the control loop runs as usual
+rec.stop()                               # returns at once; the episode saves in the background
+rec.close()                              # saves what is queued
+```
+
+| Item | Meaning |
+|---|---|
+| `Recorder(robot, root, *, fps=None, max_queue=15, min_duration_s=1.0, max_buffer_mb=4096, max_samples=1_000_000, copy_images=False, robot_config=None, hold_after_s=0.5, frozen_s=1.0, max_queue_mb=8192, worker="process", ring_mb=256)` | `ImportError` without pyarrow or PyAV. `fps` must be a whole number. Past `max_buffer_mb` of image pixels or `max_samples` readings an episode keeps no new ones. `copy_images` is accepted but does nothing: every kept image is copied into the frame ring anyway |
+| `worker` | Where episodes are kept and saved. `"process"` (default): a child Python process, started on the first `start()` and reused, so aligning and encoding never hold the control process's GIL. `"thread"`: a thread of this process. Without `memfd` (not Linux), or when the child exits twice in a row before it is ready, the recorder logs a warning and switches to `"thread"` |
+| `ring_mb` | Size of the shared-memory ring new images are copied into on their way to the worker (at least 16 frames of the largest declared camera), allocated and touched once in the constructor. A frame that arrives when the ring is full is dropped and the episode is flagged `dropped_samples` |
+| `Recorder.worker` | `"process"` or `"thread"`: where episodes are saved now, after any fallback |
+| `start(task, meta=None) -> int` | Starts an episode and returns its number. `RecorderError` when already recording, or when the stopped episodes still waiting to be saved number `max_queue` or hold more than `max_queue_mb` of images. `meta` is stored as is |
+| `stop() -> int` / `cancel()` | `stop` queues the episode for saving; `cancel` drops it |
+| `subscribe(callback) -> Subscription` | `callback(SaveEvent)` on the recorder's dispatcher thread (never the control loop's or the worker's): `saving`, then `saved` (with `path`, `flags`, `frames`) or `failed` (with `error`). A slow callback delays later events, not recording |
+| `wait(timeout=None)`, `close(timeout=None)`, `recording`, `queue_length` | `close` stops an open episode and saves it (`"stopped_by": "close"` in its metadata), ends the worker, delivers the last events, then ends the recorder's threads and frees the frame ring. After `timeout` a child process still saves the episodes it already received, even after this process exits; samples not yet passed to it are lost. A recorder dropped without `close()` is garbage-collected and its threads and worker end the same way |
+| `append_verdict(path, episode, verdict, note="", reviewer=None)` | Adds a reviewer's `PASS` / `FAIL` / `UNREVIEWED` line to `meta/qc.jsonl`; `read_qc(path)` reads the lines back |
+
+While recording, the listener callbacks keep one state sample per new
+`stamps[source].seq` (without `images`, `depth` and `extra`, which nothing in
+the dataset reads) and copy one image per new camera `seq` into the frame ring;
+a sender thread streams both to the worker. After `stop()` the worker aligns everything to a grid of `1/fps` over the time all streams cover
+(continuous values interpolated linearly, quaternions normalized, grippers take
+the last reading at or before the frame, commands are paired with the state
+reading they followed, images take the nearest frame), encodes each camera as
+H.264 and writes one directory per episode:
+
+```
+<root>/<YYYYmmdd-HHMMSS>_<task>_<NNNN>/
+  meta/info.json, meta/stats.json, meta/tasks.parquet, meta/episodes/chunk-000/file-000.parquet
+  data/chunk-000/file-000.parquet
+  videos/observation.images.<cam>/chunk-000/file-000.mp4
+  meta/hi/info.json           # hi.action_mode, hi.robot_config, hi.hirobot_version, hi.control_hz, hi.recorder_fps
+  meta/hi/alignment.json      # streams, image offsets, trimmed time, commands, lease events
+  meta/hi/episode.json        # task, meta, start and stop times
+  meta/qc.jsonl               # the save-time flags, then any reviewer verdicts
+```
+
+`meta/info.json` holds only LeRobot's own keys. The recorder's dataset-level
+keys are in `meta/hi/info.json`, one flat JSON object whose keys keep the `hi.`
+prefix (LeRobot drops unknown keys of `info.json` when it loads a dataset).
+
+The state and action columns are the [features](#features) (`observation.state`,
+`action` and the rest). The recorder adds:
+
+| Column | Meaning |
+|---|---|
+| `action` | The commands of the episode's most common mode (`hi.action_mode` in `meta/hi/info.json`). Row `k` holds the first command sent after the frame's state reading and before the next reading, so row `k` is the state the command answered; with no command there, the one still in force. When readings come slower than the grid (a loop that observes once per action chunk), later frames showing the same reading take the first command sent in their own frame period, else the one in force at the frame time. After a `hold()`, and in frames counted as `hold` because no command came for `hold_after_s` (the command watchdog's hold is not reported), position-type targets (`POSITION`, `PD`, `CARTESIAN`, `BASE_POSE`) and grippers keep their last value, while velocities, per-tick deltas and torques (`VELOCITY`, `TORQUE`, `CARTESIAN_DELTA`, `BASE_VELOCITY`, and `base_velocity` beside `CARTESIAN`) read 0. Frames under a command of another mode are `NaN` and the episode is flagged `mixed_action_modes` |
+| `hi.control_source` | The source of that command: `policy` (a direct call or a `CALLER` lease), `teleop` (a `TAKEOVER` lease), `skill` (`LAYER_SKILL`), or `hold`: no command yet, a `hold()`, or none for `hold_after_s` |
+| `intervention` | `hi.control_source == "teleop"` in an episode that also has `policy` frames; a pure teleoperation episode is all `false` |
+| `hi.rejected_action`, `hi.rejected_action_mask` | A refused `send_action` (preempted, refused by an envelope or the gate) in the one frame whose span holds it, the last one when a span has several. A frame's span starts at its state reading, or at its grid time when an earlier frame already shows that reading, and ends where the next frame's starts. Where there was none, `hi.rejected_action` is `0.0` and the mask `false`; `0.0` also where a refused action could not be converted to the columns (the mask is still `true`). Use the mask, never the values, to tell which rows hold one. Zeros, not `NaN`, because pandas (and so LeRobot's `aggregate_datasets`) turns `NaN` inside a list column into null |
+| `hi.capture_time` | The robot-clock time of the state reading at or before the frame |
+| `hi.stamp.<source>.t`, `hi.stamp.<source>.seq` | That reading's stamp, for every source, cameras included |
+| `hi.image_skew.<cam>` | Image time minus frame time, in seconds |
+| `hi.ik_joint_target` | The joint targets an IK layer sent for the frame's command (when the robot has `commanded_joint_targets`) |
+
+Save-time flags, in the `SaveEvent` and in `meta/qc.jsonl` (verdict `FAIL` when
+any): `too_short`, `missing_camera`, `camera_gap`, `frozen_camera` (the 32x24
+picture did not change for `frozen_s` while frames arrived), `alignment` (more
+than 1% of frames take an image further than `1/(2 fps)` s away),
+`invalid_state`, `dropped_samples` (a buffer limit reached, the frame ring
+full, or a sample the worker could not take), `fault` (the
+robot reports a fault at `stop()` that it did not have at `start()`),
+`no_commands`, `mixed_action_modes`, `unrecorded_action`.
+
+The worker holds the raw images of the episode being recorded and of the
+stopped episodes not yet saved, about 6 MB per 1080p frame. One episode keeps
+at most `max_buffer_mb` of them. `start()` refuses while the stopped episodes
+not yet saved hold more than `max_queue_mb`, so the raw images stay under
+`max_queue_mb + 2 * max_buffer_mb` (16 GB with the defaults). The control
+process itself holds only the frame ring (`ring_mb`).
+
+In a simulation (`toy`, `mujoco`) time advances only when a command is sent or
+an assembly idles a part, so after `hold()` a loop that only calls
+`get_observation()` reads the same simulated instant again and again. Those
+reads are de-duplicated by their stamp, no frames past `hold_after_s` appear,
+and the episode ends at the last command. To record a hold in simulation, keep
+sending: call `hold()` (or resend the held target) every tick. On a real robot
+the clock runs by itself and no extra calls are needed.
+
+MuJoCo episodes recorded before this version have `NaN` in `observation.imu`
+dims 7 to 9 (linear acceleration); don't merge them with newer episodes.
+
+**Known limitation: control-loop latency with large images.** Measured on a
+50 Hz MuJoCo G1 loop with IK and one 1920x1080 camera, the simulator rendering
+on an idle GPU:
+
+- While recording, the tick p99 is 8.2 to 8.9 ms and the worst tick 14.3 ms;
+  no tick took over 20 ms.
+- While an episode saves, the tick p99 is 8.4 to 10.2 ms.
+- After `stop()` the control process spends about 2 ms of CPU per episode
+  (about 600 ms when episodes were saved on a thread of this process).
+
+On a GPU that also drives a display, the simulator's synchronous 1080p readback
+alone reached 23.7 ms p99 without recording. Choose an idle GPU for MuJoCo's EGL
+rendering with `MUJOCO_EGL_DEVICE_ID`. Setting `NUMPY_MADVISE_HUGEPAGE=0` before
+numpy is imported avoids transparent-hugepage compaction stalls when large frame
+arrays are allocated.
+
 ## Kinematics
 
 `hirobot.geometry.kinematics.Kinematics.from_mjcf(path, backend="numpy")` loads an MJCF model and
@@ -964,10 +1270,35 @@ backend against `mj_kinematics` (G1 29 DoF: max difference below 1e-12).
 ```python
 from hirobot.geometry.kinematics import Kinematics
 
-kin = Kinematics.from_mjcf("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
+kin = Kinematics.from_mjcf("~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
 poses = kin.forward(obs.joint_pos, base_pos=[0, 0, 0.79], base_quat=[0, 0, 0, 1],
                     joint_names=robot.embodiment.joint_names)
 pos, quat = poses["torso_link"]
+```
+
+## Simulation assets
+
+`hirobot.assets` downloads simulation models (MJCF / URDF) from the Hugging Face dataset
+`humanoidintelligence/hirobot-assets` into `~/.cache/hirobot/assets`, keeping the dataset's
+layout; the built-in `*_mujoco` configs name files there. Needs `pip install
+'hirobot[assets]'` (`huggingface_hub`). Nothing goes to the network on import or when a
+config loads, only in `fetch`. `hirobot assets list` / `hirobot assets fetch` are the CLI.
+
+| Name | Description |
+|---|---|
+| `REPO_ID`, `REVISION` | The dataset and the tag of it that `fetch` downloads |
+| `repo_id() -> str` | The dataset `fetch` uses: `$HIROBOT_ASSETS_REPO` (another dataset with the same layout and tags, such as a mirror) if set, else `REPO_ID` |
+| `ASSETS` | `{name: allow_patterns}`: each model's directories plus its source's `LICENSE` and `SOURCE.md` and the dataset's `README.md` |
+| `assets_dir() -> Path` | `~/.cache/hirobot/assets`, where the built-in configs look |
+| `fetch(names, *, token=None) -> Path` | Download one name or a list (`snapshot_download`, files already there are kept) and return `assets_dir()`. `ValueError` for an unknown name, `RuntimeError` without `huggingface_hub`. `token` defaults to the saved `hf auth login` or `$HF_TOKEN` |
+| `is_fetched(name) -> bool` | Whether that model's files are in `assets_dir()` |
+| `asset_of(path) -> Optional[str]` | The name whose model files include `path` (under `assets_dir()`), else `None` |
+
+```python
+from hirobot import assets
+
+assets.fetch(["unitree_g1", "menagerie_universal_robots_ur5e"])
+assets.is_fetched("unitree_g1")   # True
 ```
 
 ## Config file reference
@@ -1000,12 +1331,17 @@ frames:                     # task-space frames (end-effector sites)
   - {name: tcp}
 mounts:                     # where components may hang (link -> site)
   wrist_camera: {link: wrist_3_link}
-model:                      # optional MJCF for sim / collision / kinematics
-  mjcf: ~/models/ur5e.xml
+model:                      # optional: the body's model file (Embodiment.model)
+  mjcf: ~/models/ur5e.xml   # MJCF, for sim / collision / kinematics
+  # urdf: ../urdf/ur5e.urdf                        # or a URDF (drawing only)
+  # package_roots: {ur_description: ../urdf}       # URDF package:// roots
 driver: {type: ur_rtde}     # registered driver name + its constructor kwargs
 ```
 
-A camera file carries `width` / `height` / `fps` / `depth` / `fovy`; an
+`model:` needs `mjcf` or `urdf`; with both, `Embodiment.model` gives the MJCF. Relative paths (also in `package_roots`) are taken from the device file's directory. The simulation, the `mujoco` driver and `mink_ik` need `mjcf`; a body with only a `urdf` is refused there. `kp`, `kd`, `armature`, `home` set the `mujoco` body's gains, armature and start pose.
+
+A camera file carries `width` / `height` / `fps` / `depth` / `fovy` /
+`intrinsics` (`{fx, fy, cx, cy}`, optional `width`, `height`, `model`, `coeffs`); an
 end-effector file `interface` (`joints` or `opening`), `joints`, `tcp`; a
 microphone or speaker only `driver`.
 
@@ -1039,6 +1375,9 @@ arbiter:
   audit_size: 256          # optional; events the audit ring keeps
 sim:                       # optional; make_robot(..., sim=True) builds a shared MuJoCo world
   realtime: true
+  camera_fps: 30           # cameras without fps; null renders every observation
+mcp:                       # optional; what `hirobot mcp` / serve_mcp serves (see MCP server)
+  tools: [observe]
 ```
 
 A single-robot config is an `assembly:` with one `body` part (see
@@ -1056,11 +1395,221 @@ Installed as `hirobot`.
 | Command | Description |
 |---|---|
 | `hirobot --version` | Print the version |
-| `hirobot info --config NAME_OR_PATH [--resolved]` | Print the embodiment: kind, control rate, floating base, joints, end-effectors, cameras. `--resolved` prints the whole config after `defaults:` are merged |
+| `hirobot info --config NAME_OR_PATH [--resolved]` | Print the embodiment: kind, control rate, floating base, joints, end-effectors, cameras, model file. `--resolved` prints the whole config after `defaults:` are merged |
 | `hirobot configs [GROUP]` | List the built-in configs (`robots`, `body`, `end_effector`, `camera`, `microphone`, `speaker`). Names under `robots/` also work without the prefix (`unitree_g1`) |
+| `hirobot assets list` | List the simulation models `hirobot assets fetch` can download, whether each is in `~/.cache/hirobot/assets`, and what it is (see [Simulation assets](#simulation-assets)) |
+| `hirobot assets fetch NAME... \| --all [--token T]` | Download those models (or all) into `~/.cache/hirobot/assets`; needs `hirobot[assets]`. Exit 2 for an unknown name, without `huggingface_hub`, or when the download fails (a private dataset needs `hf auth login`; `HF_ENDPOINT` can point at a mirror) |
 | `hirobot sim CONFIG [--seconds N] [--viewer] [--fast]` | Run a simulated robot: connect, hold the start pose for N s (default 3), print the joint error left, the base height, the rendered images and `get_observation` time. Says when a free base fell. Exit 2 for a real body; `--viewer` needs a MuJoCo body |
 | `hirobot check --sim CONFIG [--against-real] [--driver PART:KEY=VALUE ...] [--tolerance 0.02]` | Build the world the simulation check uses, without stepping it: every body needs a `model:`, every joint must be in its MJCF with an actuator, every end-effector frame a body of it; joint limits that differ from the MJCF's range by more than 0.1 rad are printed as warnings. `--against-real` also opens every body's real driver `read_only: true` (refused without that mode), reads one observation and prints each end effector's measured vs model position at those joint angles. Exit 1 on an error or an error above `--tolerance` m. Library: `hirobot.sim.check_sim` |
+| `hirobot mcp CONFIG [--transport stdio\|http] [--host H] [--port P] [--path /mcp] [--tools CATEGORY ...] [--max-steps N] [--no-reset]` | Serve the robot as an MCP server (see [MCP server](#mcp-server)); needs `hirobot[mcp]`. Exit 1 without the `mcp` package or on a bad config |
 | `hirobot view CONFIG [--model MUJOCO_CONFIG] [--body KEY=VALUE ...] [--hz 30] [--seconds N]` | Show a real robot's pose in a MuJoCo viewer. Opens CONFIG with `read_only: true` (a driver without a `read_only` mode is refused), copies the measured joints (by name) and base orientation into the model each frame, and never sends a command. `--model` defaults to the built-in `<config>_mujoco`. Exit 2 for a simulated robot or no model. Library: `hirobot.sim.view` |
+| `hirobot scan [--interface NIC] [--timeout 2] [--no-unitree] [--json]` | Look at this computer and the robot network, read-only, and print a summary (`--json`: the report only). Sends no command and changes no setting. Exit 0 even when nothing is found. See [`hirobot scan` and `hirobot init`](#hirobot-scan-and-hirobot-init). Library: `hirobot.scan` |
+| `hirobot init -o FILE [--model NAME] [--interface NIC] [--answers FILE] [--yes] [--force] [--no-verify] [--timeout 2]` | Scan, pick the model and network card, write a local config to FILE, then open it read-only and say which parts sent data. Exit 0 written (and checked), 1 nothing written, 2 written but the check failed. Library: `hirobot.scan.init_config` |
+
+### `hirobot scan` and `hirobot init`
+
+This version knows Unitree robots only (G1, G1 with Dex3 hands, H1, H1 with Inspire
+hands, H1-2, H2). `hirobot scan` reads the host (network cards, installed SDKs, ROS 2,
+cameras, audio devices) and, when a network card has an address on `192.168.123.x` (or
+`--interface` names one), probes the Unitree robot on it. The probe only subscribes to
+`rt/lowstate` and `rt/dex3/{left,right}/state` and asks the motion switcher `CheckMode`
+once. It creates no DDS publisher, sends no command and changes no network setting.
+Anything that needs `sudo` is printed under suggestions and not run.
+
+On a G1 with Dex3 hands, `hirobot scan --json` prints a report like this (example,
+shortened):
+
+```json
+{
+  "version": 1,
+  "host": {
+    "hostname": "robot-pc", "os": "Linux 5.15.0-tegra", "arch": "aarch64",
+    "python": "3.10.12", "jetson": "NVIDIA Jetson Orin NX",
+    "interfaces": [{"name": "eth0", "up": true, "ipv4": ["192.168.123.164/24"],
+                    "mac": "00:11:22:33:44:55", "speed_mbps": 1000, "unitree_subnet": true}],
+    "sdks": [{"distribution": "unitree_sdk2py", "minimum": "1.0.1", "installed": "1.0.1",
+              "ok": true, "drivers": ["unitree_handcmd", "unitree_sdk2", "..."],
+              "install": "pip install -e <clone of https://github.com/unitreerobotics/unitree_sdk2_python>"}],
+    "ros2": {"distro": null, "rclpy": false},
+    "cameras": [{"kind": "realsense", "name": "Intel RealSense D435", "serial": "123456789",
+                 "device": null}],
+    "audio": {"source": "alsa", "devices": [{"name": "USB Audio", "inputs": 1, "outputs": 2}]},
+    "suggestions": [],
+    "notes": []
+  },
+  "unitree": {
+    "interface": "eth0",
+    "status": "found",
+    "error": null,
+    "msg_family": "hg",
+    "motor_slots": 35,
+    "motors_reporting": 29,
+    "reporting_slots": [0, 1, 2, "...", 28],
+    "mode_machine": 5,
+    "lowstate_hz": 500.0,
+    "motion_service": {"checked": true, "mode": "ai", "owns_lowcmd": true},
+    "hands": {"dex3_left": true, "dex3_right": true},
+    "candidates": [
+      {"config": "robots/unitree_g1_dex3", "confidence": 0.9, "why": "unitree_hg with 29 motors reporting: G1 29-DoF; rt/dex3/left/state and rt/dex3/right/state seen"},
+      {"config": "robots/unitree_g1", "confidence": 0.85, "why": "unitree_hg with 29 motors reporting: G1 29-DoF"}
+    ],
+    "notes": ["built-in motion service 'ai' owns rt/lowcmd; joint commands need it released (robot hung or supported)"]
+  }
+}
+```
+
+A value the scan could not see is `null` (or `[]`): it means "not seen, please
+confirm", never "absent". A G1 with a locked waist reports 27 motors, and a Dex3 hand
+that is off the bus shows as `null`.
+
+| Key | Meaning |
+|---|---|
+| `host.interfaces[].unitree_subnet` | The card has an IPv4 address on `192.168.123.0/24`; the first such card that is up is probed |
+| `host.sdks[]` | One entry per SDK a driver manifest lists. `installed` is the version, `"unknown"` when the module imports but has no package metadata (a source checkout), `null` when it is not installed. `ok` is true when installed and not older than `minimum`. `install` is the manifest's install hint |
+| `host.suggestions` | Commands for you to run (an address for the robot's subnet, the SDK install); never run by the scan |
+| `host.notes` | Probes that failed on this host (a missing `ip` command, a camera library that raised); the scan goes on |
+| `unitree.status` | `found` (`rt/lowstate` arrived), `not_seen` (nothing arrived within `--timeout`), `skipped` (no network card on `192.168.123.x`, or `--no-unitree`), `error` (SDK missing, DDS could not start on the card; the text is in `error`) |
+| `unitree.msg_family` | `hg` (G1, H1-2, H2) or `go` (the 19-DoF H1) |
+| `unitree.motor_slots`, `motors_reporting`, `reporting_slots` | Motor slots in the `LowState` message, how many read a temperature or voltage, and their indexes. `reporting_slots` is only present when the probe ran |
+| `unitree.motion_service` | `CheckMode` result: `mode` is the running built-in service (`""` when none); `owns_lowcmd` is true while one runs. `checked: false` when the query got no answer |
+| `unitree.hands` | `true` when that Dex3 state topic sent data, `null` when not seen |
+| `unitree.candidates` | Built-in robot configs that fit, highest `confidence` first, each with `why` |
+
+`hirobot init` runs the scan, then:
+
+1. **Model.** `--model` (or `model:` in the answers file) is used as given (`unitree_g1`
+   and `robots/unitree_g1` both work). Without it, `init` lists the candidates and asks;
+   `--yes` takes the first one; without a terminal it takes the first only when its
+   confidence is 0.9 or more. No candidate and no model: nothing is written, exit 1.
+2. **Network card.** `--interface`, `interface:` in the answers file, or the scanned
+   card. None: exit 1.
+3. **Existing file.** `init` asks before replacing FILE (default no). It overwrites only
+   on a "y" answer, `--force` or `overwrite: true`. `--yes` alone never overwrites: the
+   file is kept and the exit code is 1.
+4. **Write.** FILE gets a header comment (model, card, date, what the scan saw), then
+   `defaults: [robots/<model>]` and `assembly: parts:` overrides that set the body driver
+   to `unitree_sdk2` with `network_interface`, and `network_interface` on every part whose
+   driver takes one (Dex3 hands, head camera, microphone, speaker). No gains and no safety
+   values: those stay the built-in defaults. The file is loaded with `load_embodiment`
+   right away.
+5. **Read-only check** (skip with `--no-verify` or `verify: false`). `init` opens FILE
+   with the body driver `read_only: true` (as `hirobot view` does; hands become
+   read-only with the body), reads observations for up to `--timeout` s (at least 1 s),
+   and prints each part as data seen, partly seen, not seen or skipped. Cameras and
+   microphones only receive, so they are opened. A part whose driver has no `read_only`
+   mode is skipped and not opened: the speaker is one (it sets its volume on connect).
+   The check fails when the robot does not connect, `joint_pos` does not have one
+   value per joint, or a body joint is not finite. A hand, camera or microphone with no
+   data, or one that fails to connect, is reported as not seen and left out without
+   failing; only the body must report.
+
+The answers file (`--answers FILE`) is YAML with these keys only, for runs without a
+terminal:
+
+```yaml
+model: robots/unitree_g1_dex3   # skip the model question
+interface: eth0                 # skip the network card choice
+overwrite: true                 # replace FILE if it exists (default: keep it)
+verify: false                   # skip the read-only check
+```
+
+Exit codes: 0 written (and the check passed or was skipped); 1 nothing written (no
+model, no card, the file exists and was kept, a bad answer or model name); 2 written
+but the read-only check failed (the file is kept, fix the cause and run `init` again).
+
+Check the written file before the first commanded motion: see the
+[Unitree setup guide](setup/unitree.md#generate-a-local-config).
+
+## MCP server
+
+How to connect a client, a first run in simulation and safe use on a real robot: [MCP guide](./mcp.md).
+
+`pip install -e '.[mcp]'` (the `mcp` SDK, Python 3.10+, and Pillow) serves a
+robot as an [MCP](https://modelcontextprotocol.io) server, so an LLM agent or
+any MCP client can call its observation and command tools. The tools are the
+robot API below them, nothing more: every command goes through the robot's
+`send_action`, its `SafetyGate`, and a command lease. The control loop stays
+with whoever calls the tools.
+
+```bash
+hirobot mcp robots/ur_ur5e                       # stdio: the MCP client starts this command
+hirobot mcp my_robot.yaml --tools observe act    # also allow motion
+hirobot mcp my_robot.yaml --transport http --port 8000   # streamable HTTP at http://127.0.0.1:8000/mcp
+```
+
+`hirobot mcp` builds the robot, connects, resets it (unless `--no-reset`),
+serves until the client disconnects or Ctrl-C, then disconnects. Logs go to
+stderr. HTTP listens on `127.0.0.1` by default; any other `--host` lets
+everyone who can reach that port command the robot, and logs a warning.
+
+### Tools
+
+| Category | Tool | What it does |
+|---|---|---|
+| `observe` | `describe_robot` | Name, kind, `control_hz`, joints (names and limits, in the order joint lists use), end effectors, cameras with intrinsics and mount, `action_modes`, the tools that are on, `max_steps` |
+| `observe` | `get_observation` | State as JSON (joint arrays as `{joint: value}`, end-effector poses, grippers, base, stamps) plus one JPEG per camera. `images: false` for state only; `cameras: [...]` to pick |
+| `observe` | `get_robot_status` | `get_status()` (faults, battery, temperatures, gate counts, command progress) plus `skill_running` and the MCP lease state |
+| `act` | `send_actions` | 1 to `max_steps` actions, one per control tick at `control_hz` (simulators too), then `hold`. A refused step ends the chunk. Returns `sent`, `of`, `stopped` (`done` / `refused` / `stop`), `error`, and the new observation |
+| `act` | `hold` | `hold()` |
+| `act` | `stop` | Interrupts a `send_actions` in progress before its next step, stops a running skill, holds. Not an emergency stop |
+| `skill` | `list_skills` | `list_robot_skills()` with each skill's argument schema |
+| `skill` | `run_skill` | `run_robot_skill(name, args)`; returns once it has started |
+| `skill` | `stop_skill` | `stop_robot_skill()` |
+| `episode` | `reset` | `reset(seed)`, then the new observation |
+
+Only `observe` is on by default; motion must be enabled in the config or with
+`--tools`. There is no `estop` tool (an e-stop is for a person or a watchdog,
+not for a model to call) and no task-completion tool (that belongs to the
+agent or the benchmark). Depth images are not sent.
+
+An action in `send_actions` is an `Action` as JSON: `mode` (one of
+`action_modes`), and the fields that mode uses. `joint_target` / `kp` / `kd`
+take a list in `describe_robot` order or `{joint name: value}`; a mapping that
+names only some joints sets `joint_names` (for the non-joint modes). `parts`
+takes `{part: action}` on a robot with parts.
+
+The first command claims a lease named `mcp` (see [Command arbiter](#command-arbiter)),
+with the config's `envelope` if it sets one. If someone with a higher priority
+takes the robot (`Priority.TAKEOVER`), the next command reports the
+preemption and is refused; it does not claim again.
+
+A tool the caller got wrong, or that the robot refused, comes back as a result
+with `isError` set and the reason as text. Results also carry the JSON as
+`structuredContent`.
+
+### `mcp:` config section
+
+Root config only, like `arbiter:`. Every key is optional; the command-line
+options and `serve_mcp` keyword arguments win over it.
+
+```yaml
+mcp:
+  tools: [observe, act]          # categories: observe, act, skill, episode (default [observe])
+  max_steps: 10                  # most actions per send_actions call, 1-50 (default 5)
+  image_max_side: 512            # longest side of a returned image, px (default 512)
+  image_quality: 80              # JPEG quality 1-100 (default 80)
+  envelope: {max_joint_step: 0.05}   # the mcp lease's limits; same keys as claim(envelope=...)
+```
+
+### From Python
+
+```python
+from hirobot import make_robot
+from hirobot.mcp import serve_mcp
+
+robot = make_robot("my_robot.yaml")
+robot.connect()
+serve_mcp(robot, transport="stdio", tools=["observe", "act"])   # blocks
+```
+
+`serve_mcp(robot, *, transport="stdio", host="127.0.0.1", port=8000, path="/mcp",
+name=None, tools=None, max_steps=None, image_max_side=None, image_quality=None,
+envelope=None)` does not connect or disconnect the robot; it releases the lease
+on return. `hirobot.mcp.RobotTools(robot, settings=None)` is the same tools
+without the SDK: `tools.call(name, args)` returns a `ToolResult` (`data`,
+`images`). `build_server(tools)` returns the SDK's low-level `Server`, for
+in-process use (`mcp.Client(server)`) or another transport. All robot calls
+run on one thread that `RobotTools` owns.
 
 ## Writing a driver or a layer (SPI)
 
@@ -1074,7 +1623,7 @@ calls them, and a layer's `inner` does not expose them.
 | `_estop()` | optional | Driver primitive behind `estop()`. Default: `damp()` if the driver has one |
 | `_idle_step()` | optional, SPI | Let simulated time pass one control period under the last command. An assembly calls it on simulated parts the action did not mention. No-op by default; the toy sim and MuJoCo step |
 | `_set_safety(gate)` | concrete, SPI | Attach or clear (`None`) the `SafetyGate`. For `make_robot` and tests; an application sets limits in the config's `safety:` section |
-| `_run_onboard_skill(spec, args)` | optional | Driver primitive behind `run_onboard_skill`; `args` are already checked |
+| `_run_onboard_skill(spec, args)` | optional | Driver primitive behind `run_onboard_skill`; `args` are already checked. Returns the expected run time in seconds for these arguments, or `None` for `spec.duration_s` |
 | `_set_fault(reason)` / `_clear_fault()` | concrete, SPI | Put the robot in its fault state (a driver or layer that damped or stopped itself), so commands raise `RobotFaultError` until `reset()`; clear it |
 | `_stop_token()`, `_commanding(token)`, `_wait(seconds, token)` | concrete, SPI | Let a long driver loop end at once when `estop()` is called from another thread (see [Writing a driver](#writing-a-driver)) |
 
@@ -1195,13 +1744,13 @@ from the body driver. Like body drivers, they import vendor SDKs lazily.
 | Name | Description |
 |---|---|
 | `register_camera(name)`, `get_camera(name)`, `available_cameras()` | Registry, same behavior as the driver registry |
-| `CameraDriver(name)` | Abstract: `start()`, `latest() -> Optional[Frame]` (`(image, Stamp)`, `Stamp.t` on `time.monotonic()`, `seq` one more per new frame; must not block; `None` before the first frame), `stop()` (idempotent). RGB-D drivers also override `latest_rgbd() -> Optional[RgbdFrame]`; the default returns `latest()` with no depth |
+| `CameraDriver(name)` | Abstract: `start()`, `latest() -> Optional[Frame]` (`(image, Stamp)`, `Stamp.t` on `time.monotonic()`, `seq` one more per new frame; must not block; `None` before the first frame), `stop()` (idempotent). RGB-D drivers also override `latest_rgbd() -> Optional[RgbdFrame]`; the default returns `latest()` with no depth. Optional `intrinsics() -> Optional[CameraIntrinsics]`: the intrinsics of the delivered images, read from the device after `start()`; default `None` |
 | `PollingCameraDriver(name, poll_hz=30.0, retry_s=0.2)` | Runs a blocking `_grab() -> HxWx3 uint8 RGB` on a background thread and keeps only the newest frame. Subclasses implement `_grab` and optionally `_open` / `_close`. Exposes `wait_for_frame(timeout)`, `error`, `frames`, `errors` |
 | `Frame` | `Tuple[np.ndarray, Stamp]`: the image and when it arrived (`Stamp(t, seq)`, `t` on `time.monotonic()`) |
 | `RgbdFrame` | `Tuple[np.ndarray, Optional[np.ndarray], Stamp]`: colour image, depth registered to it (HxW float32, metres) or `None`, and their common `Stamp` |
-| `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | One Intel RealSense (D435i, D405, L515, ...) on the local USB of the computer running hiRobot, over `pyrealsense2`. `serial` picks a device when several are attached (else the first enumerated). With `depth: true` it is an RGB-D camera: the depth sensor is aligned to colour so `Observation.depth` shares the colour pixel grid, device units scaled to metres by the sensor's `depth_scale`. `depth_width` / `depth_height` set the depth stream size when it differs from colour (default: the colour size); the aligned depth image still comes out at the colour size. Needs `pyrealsense2` (`pip install pyrealsense2`); the L515 needs an older release (2.54.2 verified; 2.59.1 does not list it) |
-| `orbbec_pyorbbecsdk` → `OrbbecCamera(name, serial=None, uid=None, width=640, height=480, fps=30, color_format="MJPG", depth=False, align="hw", timeout_ms=1000, poll_hz=60.0)` | One Orbbec camera (Dabai DC1, ...) on the local USB of the computer running hiRobot, over the 1.x `pyorbbecsdk` bindings (OrbbecSDK 1.10; older cameras do not enumerate under 2.x). `uid` (USB port path) or `serial` picks the device. With `depth: true` it is an RGB-D camera: depth aligned to colour (`align`: `hw` on the camera, `sw` in the SDK), device units scaled to metres. MJPEG / YUYV colour is decoded with OpenCV. The bindings are built from source; see [agilex_piper.md](setup/agilex_piper.md#6-orbbec-camera) |
-| `stereolabs_zed` → `ZedCamera(name, serial=None, resolution="HD720", fps=30, depth=False, depth_mode="NEURAL", min_depth_m=0.1, poll_hz=60.0)` | One Stereolabs ZED (ZED 2i, ZED Mini, ...) on the local USB of the computer running hiRobot, over `pyzed`. `serial` picks a camera when several are attached (else the first). The image is the left camera's colour (`resolution`: `HD2K`, `HD1080`, `HD1200`, `HD720`, `SVGA`, `VGA`). With `depth: true` it is an RGB-D camera: depth in metres registered to the left image from the SDK's `depth_mode` (`NEURAL`, `ULTRA`, `QUALITY`, `PERFORMANCE`), 0 where there is no reading. Needs the ZED SDK, its `pyzed` wheel and an NVIDIA GPU |
+| `intel_realsense` → `RealSenseCamera(name, serial=None, width=640, height=480, fps=30, depth=False, depth_width=None, depth_height=None, timeout_ms=1000, poll_hz=60.0)` | One Intel RealSense (D435i, D405, L515, ...) on the local USB of the computer running hiRobot, over `pyrealsense2`. `serial` picks a device when several are attached (else the first enumerated). With `depth: true` it is an RGB-D camera: the depth sensor is aligned to colour so `Observation.depth` shares the colour pixel grid, device units scaled to metres by the sensor's `depth_scale`. `depth_width` / `depth_height` set the depth stream size when it differs from colour (default: the colour size); the aligned depth image still comes out at the colour size. Needs `pyrealsense2` (`pip install pyrealsense2`); the L515 needs an older release (2.54.2 verified; 2.59.1 does not list it). `intrinsics()` is the colour stream's `get_intrinsics()` with its distortion model and coefficients |
+| `orbbec_pyorbbecsdk` → `OrbbecCamera(name, serial=None, uid=None, width=640, height=480, fps=30, color_format="MJPG", depth=False, align="hw", timeout_ms=1000, poll_hz=60.0)` | One Orbbec camera (Dabai DC1, ...) on the local USB of the computer running hiRobot, over the 1.x `pyorbbecsdk` bindings (OrbbecSDK 1.10; older cameras do not enumerate under 2.x). `uid` (USB port path) or `serial` picks the device. With `depth: true` it is an RGB-D camera: depth aligned to colour (`align`: `hw` on the camera, `sw` in the SDK), device units scaled to metres. MJPEG / YUYV colour is decoded with OpenCV. The bindings are built from source; see [agilex_piper.md](setup/agilex_piper.md#6-orbbec-camera). `intrinsics()` is the colour intrinsics from `get_camera_param()`, Brown-Conrady distortion when set (a rational model, k4-k6, is reported without distortion, with a warning) |
+| `stereolabs_zed` → `ZedCamera(name, serial=None, resolution="HD720", fps=30, depth=False, depth_mode="NEURAL", min_depth_m=0.1, poll_hz=60.0)` | One Stereolabs ZED (ZED 2i, ZED Mini, ...) on the local USB of the computer running hiRobot, over `pyzed`. `serial` picks a camera when several are attached (else the first). The image is the left camera's colour (`resolution`: `HD2K`, `HD1080`, `HD1200`, `HD720`, `SVGA`, `VGA`). With `depth: true` it is an RGB-D camera: depth in metres registered to the left image from the SDK's `depth_mode` (`NEURAL`, `ULTRA`, `QUALITY`, `PERFORMANCE`), 0 where there is no reading. Needs the ZED SDK, its `pyzed` wheel and an NVIDIA GPU. `intrinsics()` is the rectified left camera's calibration, no distortion |
 | `agibot_cosine` → `AgibotCosineCamera(name, topic, depth_topic=None, depth_scale=0.001, max_pair_skew_s=0.005, pair_wait_s=0.02, queue=4, poll_hz=60.0)` | AgiBot G1 cameras on the robot's `cosine_bus` topics (`/camera/head_color` + `/camera/head_depth`, `/camera/hand_left_color`, ...). With `depth_topic` it is an RGB-D camera: each colour frame is paired with the depth frame of the same capture (`source_timestamp`), Z16 scaled to metres. Runs on the robot's computer with the vendor environment sourced (`LOCATOR_IP`, `AORTA_DISCOVERY_URI`) |
 | `unitree_videohub` → `UnitreeVideohubCamera(name, network_interface=None, domain_id=0, timeout_s=1.0, poll_hz=30.0)` | G1 head camera |
 | `unitree_image_server` → `UnitreeImageServerCamera(name, address, header=False, crop=None, timeout_s=1.0, poll_hz=60.0)` | H1 head camera: JPEG frames over ZeroMQ SUB from Unitree's teleoperation `image_server` (or `scripts/camera_image_server.py`). `header` strips the `Unit_Test` timestamp / frame id (kept in `remote_stamp` / `remote_frame_id`); `crop: [x, y, w, h]` takes one camera out of a side-by-side frame. Needs the `camera` extra |
@@ -1262,15 +1811,16 @@ All PCM is mono int16 little-endian.
 | `register_audio(name)`, `get_audio(name)`, `available_audio()` | Registry shared by microphones and speakers |
 | `MicrophoneDriver(name)` | Abstract: `open()`, `read(timeout=None) -> Optional[AudioChunk]` (oldest first; `None` on timeout or once closed), `close()` (idempotent), `sample_rate` |
 | `QueuedMicrophone(name, queue_s=10.0, retry_s=0.2)` | Runs a blocking `_receive() -> Optional[bytes]` on a background thread and queues up to `queue_s` of audio, dropping the oldest chunks beyond that. Subclasses implement `_receive` and optionally `_open` / `_close`. Exposes `wait_for_audio(timeout)`, `error`, `chunks`, `dropped` |
-| `SpeakerDriver(name)` | Abstract: `open()`, `play(pcm, sample_rate=None) -> float` (blocks; returns the seconds played, less when stopped), `stop()` (callable from another thread), `close()`, `sample_rate` |
+| `SpeakerDriver(name)` | Abstract: `open()`, `play(pcm, sample_rate=None) -> float` (blocks; returns the seconds played, less when stopped), `stop()` (callable from another thread), `close()`, `sample_rate`. Optional volume: `supports_volume` (class attribute, default `False`), `volume -> Optional[int]` (0-100, `None` when unknown), `set_volume(level: int)` (0-100, callable while `play()` runs; `ValueError` outside 0-100, `NotImplementedError` when `supports_volume` is `False`). Other optional device capabilities follow the same pattern: a `supports_<name>` flag the caller checks first |
+| `SoftwareVolume` | Mixin for speakers without hardware volume: `supports_volume = True`, the level is kept in the driver and the driver scales its PCM with `apply_gain(pcm, level)` |
 | `AudioChunk` | Dataclass: `pcm`, `sample_rate`, `stamp` (host receive time), `duration` |
 | `resample(pcm, src_rate, dst_rate)` | Linear-interpolation resampling for speech |
 | `unitree_voice_mic` → `UnitreeG1Microphone(name, network_interface=None, local_ip=None, group="239.168.123.161", port=5555, queue_s=10.0)` | G1 microphone: the audio board's UDP multicast, 16 kHz |
-| `unitree_voice_speaker` → `UnitreeG1Speaker(name, network_interface=None, domain_id=0, volume=None, app_name="hirobot", chunk_s=1.0, lead_s=1.0, timeout_s=2.0)` | G1 speaker: the SDK `voice` service, 16 kHz. `volume` is set on `open()` and restored on `close()`; `set_volume(v)` changes it now |
+| `unitree_voice_speaker` → `UnitreeG1Speaker(name, network_interface=None, domain_id=0, volume=None, app_name="hirobot", chunk_s=1.0, lead_s=1.0, timeout_s=2.0)` | G1 speaker: the SDK `voice` service, 16 kHz. Hardware volume (`supports_volume`): `volume` reads the robot's current level (`GetVolume`), `set_volume(level)` sets it now (`RuntimeError` when not open or the call fails). The config `volume` is set on `open()`; if either changed it, the level the robot had on `open()` comes back on `close()` |
 | `wav_mic` → `WavMicrophone(name, path, chunk_ms=20, realtime=True, tail_silence=1.0)` | Plays a 16-bit WAV file into the queue (at speaking speed with `realtime`, all at once without), adds `tail_silence` seconds of silence, then `read()` returns `None`. Simulated |
-| `wav_speaker` → `WavSpeaker(name, path, realtime=True, sample_rate=16000)` | Records everything played into one WAV file, written on `close()`. With `realtime`, `play` takes as long as the audio and `stop()` cuts it. Simulated |
-| `null_speaker` → `NullSpeaker(name, realtime=True, sample_rate=16000)` | Plays nothing; with `realtime` it takes as long as the audio would. Simulated |
+| `wav_speaker` → `WavSpeaker(name, path, realtime=True, sample_rate=16000)` | Records everything played into one WAV file, written on `close()`. With `realtime`, `play` takes as long as the audio and `stop()` cuts it. Volume is a software gain applied to what it records (starts at 100). Simulated |
+| `null_speaker` → `NullSpeaker(name, realtime=True, sample_rate=16000)` | Plays nothing; with `realtime` it takes as long as the audio would. Has software volume (keeps the level only). Simulated |
 | `sounddevice_mic` → `SoundDeviceMicrophone(name, sample_rate=16000, chunk_ms=20, device=None)` | The computer's input device. Needs the `audio` extra. Simulated (usable next to a simulator) |
-| `sounddevice_speaker` → `SoundDeviceSpeaker(name, device=None, block_ms=50)` | The computer's output device, written in `block_ms` blocks so `stop()` is prompt. Needs the `audio` extra. Simulated |
+| `sounddevice_speaker` → `SoundDeviceSpeaker(name, device=None, block_ms=50)` | The computer's output device, written in `block_ms` blocks so `stop()` is prompt. Volume is a software gain per block (starts at 100; the system mixer is not touched). Needs the `audio` extra. Simulated |
 | `build_audio(microphones, speakers, network_interface=None, sim_only=False) -> (mics, speakers)` | Drivers for the devices with a `driver:`, same rules as `build_cameras` |
 | `read_wav(path) -> (pcm, rate)`, `wav_bytes(pcm, rate)` | 16-bit WAV helpers in `hirobot.drivers.audio` (mono; the first channel of a multi-channel file) |

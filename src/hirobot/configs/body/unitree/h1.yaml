@@ -38,7 +38,8 @@ frames:
   - {name: left_hand,  link: left_elbow_link,  pose: [0.2605, 0, -0.0185, 0, 0, 0, 1]}
   - {name: right_hand, link: right_elbow_link, pose: [0.2605, 0, -0.0185, 0, 0, 0, 1]}
 
-# Nominal positions from unitree_ros robots/h1_description, not calibrated.
+# Nominal positions from unitree_ros robots/h1_description (`hirobot assets fetch
+# unitree_h1`), not calibrated.
 mounts:
   # Hand flange at the end of the forearm: left/right_hand_joint origin in
   # h1_with_hand.urdf (the hand link on the elbow link).
@@ -49,5 +50,17 @@ mounts:
   head_camera:
     link: torso_link
     pose: [0.10848474394, 0.0325, 0.69317107367, -0.666125, 0.666128, -0.237225, 0.237224]
+
+# The MJCF is h1_hirobot.xml from the hirobot-assets dataset: unitree_ros's
+# robots/h1_description/mjcf/h1.xml (BSD-3-Clause) with torso_joint renamed to
+# waist_yaw_joint and the home keyframe removed; nothing else changes. It is not
+# shipped with hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch unitree_h1
+#
+# No gains here: there is no *_mujoco config for H1 yet.
+model:
+  mjcf: ~/.cache/hirobot/assets/unitree_ros/robots/h1_description/mjcf/h1_hirobot.xml
 
 driver: {type: unitree_sdk2, msg_family: go}

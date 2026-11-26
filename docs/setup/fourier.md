@@ -59,6 +59,10 @@ The joint order follows the 32-joint list in `config_GR1_T1.yaml` /
 `config_GR1_T2.yaml`. Gain arrays must have exactly 32 entries, or the client
 **silently ignores** them.
 
+The bodies name Fourier's URDF as their model (`model: {urdf: ...}`, from `hirobot
+assets fetch fourier_gr1`, GPL-3.0), for `hirobot.model_path` and URDF tools outside
+hiRobot. Fourier publishes no MJCF for the GR1, so there is no `*_mujoco` config.
+
 ## 5. Minimal loop
 
 Check the connection with the basic loop from the

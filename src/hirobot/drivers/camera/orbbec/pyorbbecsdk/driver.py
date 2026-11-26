@@ -24,12 +24,16 @@ opencv-python``). Depth arrives as uint16 in device units; ``get_depth_scale()``
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional, Tuple
 
 import numpy as np
 
+from hirobot.core.embodiment import CameraIntrinsics
 from hirobot.devices.camera import PollingCameraDriver, register_camera
 from hirobot.loading.sdk import require_sdk
+
+logger = logging.getLogger(__name__)
 
 
 @register_camera("orbbec_pyorbbecsdk")
@@ -86,6 +90,7 @@ class OrbbecCamera(PollingCameraDriver):
         self._ob: Any = None
         self._cv2: Any = None
         self._pipeline: Any = None
+        self._intrinsics: Optional[CameraIntrinsics] = None
         self._last_stamp: Optional[int] = None
 
     # ------------------------------------------------------------ opening
@@ -148,6 +153,30 @@ class OrbbecCamera(PollingCameraDriver):
                 pass
         pipeline.start(config)
         self._pipeline = pipeline
+        self._intrinsics = self._read_intrinsics(pipeline)
+
+    def _read_intrinsics(self, pipeline: Any) -> Optional[CameraIntrinsics]:
+        # Depth is aligned to colour, so the colour (rgb) intrinsics hold for both.
+        try:
+            param = pipeline.get_camera_param()
+            i, d = param.rgb_intrinsic, param.rgb_distortion
+            k = [float(getattr(d, n, 0.0)) for n in ("k1", "k2", "p1", "p2", "k3", "k4", "k5", "k6")]
+            intr = dict(width=int(i.width), height=int(i.height), fx=float(i.fx),
+                        fy=float(i.fy), cx=float(i.cx), cy=float(i.cy))
+        except Exception as exc:  # noqa: BLE001 - frames still flow without intrinsics
+            logger.warning("camera %s: could not read the colour intrinsics: %s", self.name, exc)
+            return None
+        if any(k[5:]):  # rational model (k4-k6): not one we describe
+            logger.warning("camera %s: rational distortion (k4-k6) is not supported; "
+                           "reporting the pinhole without distortion", self.name)
+            return CameraIntrinsics(**intr)
+        if any(k[:5]):
+            return CameraIntrinsics(**intr, model="brown_conrady", coeffs=tuple(k[:5]))
+        return CameraIntrinsics(**intr)
+
+    def intrinsics(self) -> Optional[CameraIntrinsics]:
+        """The colour stream's intrinsics from the SDK (``get_camera_param``), read on start."""
+        return self._intrinsics
 
     # ------------------------------------------------------------ frames
 

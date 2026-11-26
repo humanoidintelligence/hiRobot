@@ -197,7 +197,8 @@ def test_floating_part_without_odometry_is_refused(arm_xml):
 
 # ---------------------------------------------------------------- real model
 
-G1 = os.path.expanduser("~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
+G1 = os.path.expanduser(
+    "~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml")
 
 
 @pytest.mark.skipif(not os.path.isfile(G1), reason="G1 MJCF not found")

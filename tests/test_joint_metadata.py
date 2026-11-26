@@ -10,17 +10,29 @@ from hirobot.loading.tree import _joints
 
 def test_joint_fields_default_to_none():
     j = Joint(name="a")
-    assert (j.position_limit, j.torque_limit, j.axis, j.parent_link) == (None, None, None, None)
+    assert (j.position_limit, j.torque_limit, j.temperature_limit, j.axis, j.parent_link) == (
+        None, None, None, None, None)
 
 
 @pytest.mark.parametrize("bad", [
     {"position_limit": (1.0, -1.0)},
     {"torque_limit": 0.0},
     {"axis": (1.0, 1.0, 0.0)},
+    {"temperature_limit": (60.0, 0.0)},    # a non-positive tier
+    {"temperature_limit": (0.0, 80.0)},
+    {"temperature_limit": (-10.0, 80.0)},
+    {"temperature_limit": (80.0, 60.0)},   # warn > shutdown (reversed)
 ])
 def test_joint_refuses_bad_values(bad):
     with pytest.raises(ValidationError):
         Joint(name="a", **bad)
+
+
+def test_joint_accepts_temperature_limit():
+    j = Joint(name="a", temperature_limit=(60.0, 80.0))
+    assert j.temperature_limit == (60.0, 80.0)
+    # warn == shutdown is allowed (a single hard threshold).
+    assert Joint(name="a", temperature_limit=(80.0, 80.0)).temperature_limit == (80.0, 80.0)
 
 
 def test_config_accepts_axis_and_parent_link_and_refuses_unknown_keys():
@@ -28,6 +40,13 @@ def test_config_accepts_axis_and_parent_link_and_refuses_unknown_keys():
     assert Joint(**out[0]).axis == (0.0, 0.0, 1.0)
     with pytest.raises(ValueError, match="unknown key"):
         _joints([{"name": "a", "range": [0, 1]}], "body")
+
+
+def test_config_accepts_temperature_limit():
+    out = _joints([{"name": "a", "temperature_limit": [60, 80]}], "body")
+    assert Joint(**out[0]).temperature_limit == (60.0, 80.0)
+    with pytest.raises(ValueError, match="unknown key"):
+        _joints([{"name": "a", "temp": [60, 80]}], "body")
 
 
 @pytest.mark.parametrize("config", ["unitree_g1", "unitree_g1_mujoco"])

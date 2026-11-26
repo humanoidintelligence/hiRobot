@@ -127,6 +127,17 @@ robot.send_action(Action(mode=ControlMode.POSITION, joint_target=obs.joint_pos,
 robot.disconnect()
 ```
 
+Without the arm, try the loop in MuJoCo with the built-in `agilex_piper_mujoco` config
+(MuJoCo Menagerie's PiPER model; the gripper does not move there).
+`hirobot sim` holds the home pose for 3 s and reports the drift; add `--viewer`
+to watch it, or pass the config name to `make_robot` in the loop above:
+
+```bash
+pip install 'hirobot[sim,assets]'
+hirobot assets fetch menagerie_agilex_piper
+hirobot sim agilex_piper_mujoco
+```
+
 ## 6. Orbbec camera
 
 Driver: `orbbec_pyorbbecsdk` (`src/hirobot/drivers/camera/orbbec/pyorbbecsdk/`),

@@ -39,6 +39,8 @@ class Bus:
         self.repeat_stamp = False
         self._bgra: Optional[np.ndarray] = None
         self._depth: Optional[np.ndarray] = None
+        # Rectified left intrinsics (fx, fy, cx, cy, width, height); None makes the read fail.
+        self.left = (700.0, 700.0, 640.5, 360.25, 1280, 720)
 
     def set_image(self, rgb=(10, 150, 200), size=(64, 48)) -> None:
         w, h = size
@@ -97,6 +99,16 @@ def install(monkeypatch, open_status: str = "ERROR_CODE.SUCCESS") -> Bus:
             if not bus.repeat_stamp:
                 bus.stamp += 33_000_000
             return ERROR_CODE.SUCCESS
+
+        def get_camera_information(self):
+            if bus.left is None:
+                raise RuntimeError("no calibration")
+            fx, fy, cx, cy, w, h = bus.left
+            left = types.SimpleNamespace(fx=fx, fy=fy, cx=cx, cy=cy,
+                                         image_size=types.SimpleNamespace(width=w, height=h))
+            calib = types.SimpleNamespace(left_cam=left)
+            return types.SimpleNamespace(camera_configuration=types.SimpleNamespace(
+                calibration_parameters=calib))
 
         def get_timestamp(self, ref):
             return _Timestamp(bus.stamp)

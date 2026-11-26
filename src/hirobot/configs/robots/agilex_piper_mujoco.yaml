@@ -1,0 +1,17 @@
+# AgileX PiPER (6 DoF) in MuJoCo, no hardware needed.
+#
+# The whole robot agilex_piper in the shared simulation (sim:): the arm from its
+# device file's model: (body/agilex/piper.yaml: the MuJoCo Menagerie MJCF, its
+# gains and home pose), the scene camera rendered from its mount. The gripper
+# does not move: the simulation does not drive gripper joints. Fetch the model
+# first:
+#
+#   hirobot assets fetch menagerie_agilex_piper
+#
+# make_robot("agilex_piper_mujoco", sim=False) builds the real robot instead.
+
+defaults: [robots/agilex_piper]
+
+sim:
+  viewer: false            # set true to open the MuJoCo window
+  ramp_seconds: 1.0

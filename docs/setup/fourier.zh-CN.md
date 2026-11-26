@@ -51,6 +51,9 @@ body:
 关节顺序沿用 `config_GR1_T1.yaml` / `config_GR1_T2.yaml` 中的 32 关节列表。增益数组必须恰好有 32 项，
 否则客户端会**静默忽略**它们。
 
+两个 body 把 Fourier 的 URDF 写成模型（`model: {urdf: ...}`，用 `hirobot assets fetch fourier_gr1` 下载，
+GPL-3.0），供 `hirobot.model_path` 和 hiRobot 之外的 URDF 工具使用。Fourier 没有发布 GR1 的 MJCF，所以没有 `*_mujoco` 配置。
+
 ## 5. 最小循环
 
 用[快速开始](../../README.zh-CN.md#仿真)中的基本循环检查连接，在你的本地配置（内置配置加上面的

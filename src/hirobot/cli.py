@@ -61,12 +61,100 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--tolerance", type=float, default=0.02,
                        help="End-effector position error (m) above which --against-real fails.")
 
+    mcp = sub.add_parser(
+        "mcp", help="Serve a robot as an MCP server (stdio or streamable HTTP; needs hirobot[mcp]).")
+    mcp.add_argument("config", help="Built-in config name or file path; its mcp: section applies.")
+    mcp.add_argument("--transport", choices=("stdio", "http"), default="stdio",
+                     help="stdio (default; the client starts this command) or streamable HTTP.")
+    mcp.add_argument("--host", default="127.0.0.1",
+                     help="HTTP host (default local only; another host exposes robot control).")
+    mcp.add_argument("--port", type=int, default=8000, help="HTTP port.")
+    mcp.add_argument("--path", default="/mcp", help="HTTP path.")
+    mcp.add_argument("--tools", nargs="+", default=None, metavar="CATEGORY",
+                     help="Tool categories, overriding mcp: tools: (observe act skill episode).")
+    mcp.add_argument("--max-steps", type=int, default=None,
+                     help="Most actions per send_actions call (1-50), overriding the config.")
+    mcp.add_argument("--no-reset", action="store_true",
+                     help="Connect without reset (the robot keeps its state).")
+
+    scan = sub.add_parser(
+        "scan", help="Look at this computer and the robot network (read-only); print a report.")
+    scan.add_argument("--interface", default=None, metavar="NIC",
+                      help="Network card on the robot's network (default: the first one on "
+                           "192.168.123.x).")
+    scan.add_argument("--timeout", type=float, default=2.0, help="Seconds to listen for the robot.")
+    scan.add_argument("--json", action="store_true", help="Print the report as JSON only.")
+    scan.add_argument("--no-unitree", action="store_true",
+                      help="Do not listen for a Unitree robot (host only).")
+
+    init = sub.add_parser(
+        "init", help="Scan, then write a local config for the robot and check it read-only.")
+    init.add_argument("-o", "--output", required=True, metavar="FILE",
+                      help="The config file to write.")
+    init.add_argument("--model", default=None,
+                      help="Built-in robot config to inherit, e.g. robots/unitree_g1 "
+                           "(default: ask, from what the scan saw).")
+    init.add_argument("--interface", default=None, metavar="NIC",
+                      help="Network card on the robot's network (default: the scanned one).")
+    init.add_argument("--answers", default=None, metavar="FILE",
+                      help="YAML with model, interface, overwrite, verify (no questions asked).")
+    init.add_argument("--yes", action="store_true",
+                      help="Take the defaults without asking (never overwrites a file).")
+    init.add_argument("--force", action="store_true", help="Overwrite FILE if it exists.")
+    init.add_argument("--no-verify", action="store_true",
+                      help="Skip the read-only check after writing.")
+    init.add_argument("--timeout", type=float, default=2.0,
+                      help="Seconds to listen for the robot (scan and check).")
+
     configs = sub.add_parser("configs", help="List the built-in configs.")
     configs.add_argument("group", nargs="?", default=None,
                          help="Only this group: robots, body, end_effector, camera, microphone, "
                               "speaker.")
 
+    assets = sub.add_parser(
+        "assets", help="List or download the simulation models (needs hirobot[assets] to fetch).")
+    assets_sub = assets.add_subparsers(dest="assets_command")
+    assets_sub.add_parser("list", help="List the models, and whether each is downloaded.")
+    fetch = assets_sub.add_parser("fetch", help="Download models into ~/.cache/hirobot/assets.")
+    fetch.add_argument("names", nargs="*", metavar="NAME", help="Models to download.")
+    fetch.add_argument("--all", action="store_true", help="Download every model.")
+    fetch.add_argument("--token", default=None,
+                       help="Hugging Face token (default: the saved login or $HF_TOKEN).")
+    assets.set_defaults(assets_help=assets.print_help)
+
     return parser
+
+
+def _assets(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    from hirobot import assets
+
+    if args.assets_command == "list":
+        width = max(len(n) for n in assets.ASSETS)
+        print(f"{'NAME':<{width}}  FETCHED  WHAT")
+        for name in assets.ASSETS:
+            fetched = "yes" if assets.is_fetched(name) else "no"
+            print(f"{name:<{width}}  {fetched:<7}  {assets.DESCRIPTIONS.get(name, '')}")
+        print(f"\nDirectory: {assets.assets_dir()}")
+        return 0
+    if args.assets_command == "fetch":
+        if args.all == bool(args.names):
+            parser.error("assets fetch: name the models, or pass --all")
+        names = list(assets.ASSETS) if args.all else args.names
+        try:
+            root = assets.fetch(names, token=args.token)
+        except (ValueError, RuntimeError) as e:
+            print(f"hirobot assets: {e}", file=sys.stderr)
+            return 2
+        except OSError as e:  # huggingface_hub's HTTP errors and network errors
+            first = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
+            print(f"hirobot assets: download failed ({type(e).__name__}: {first}). The dataset "
+                  f"may be private: log in with `hf auth login`. Or huggingface.co is not "
+                  f"reachable: HF_ENDPOINT can point at a mirror.", file=sys.stderr)
+            return 2
+        print(f"Fetched {', '.join(names)} into {root}")
+        return 0
+    args.assets_help()
+    return 0
 
 
 def _sim(args: argparse.Namespace) -> int:
@@ -222,6 +310,71 @@ def _check(args: argparse.Namespace) -> int:
     return status
 
 
+def _scan(args: argparse.Namespace) -> int:
+    """Print what ``hirobot.scan.scan`` sees; nothing found is still exit 0."""
+    import json
+
+    from hirobot import scan as scan_mod
+
+    if args.timeout <= 0:
+        print(f"hirobot scan: --timeout must be > 0, got {args.timeout}", file=sys.stderr)
+        return 2
+    report = scan_mod.scan(args.interface, args.timeout, unitree=not args.no_unitree)
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(scan_mod.summary(report))
+    return 0
+
+
+def _init(args: argparse.Namespace) -> int:
+    """Write a local config for the scanned robot (``hirobot.scan.init_config.run_init``)."""
+    from hirobot.scan.init_config import run_init
+
+    if args.timeout <= 0:
+        print(f"hirobot init: --timeout must be > 0, got {args.timeout}", file=sys.stderr)
+        return 2
+    return run_init(args.output, model=args.model, interface=args.interface,
+                    answers=args.answers, yes=args.yes, force=args.force,
+                    verify=not args.no_verify, timeout=args.timeout)
+
+
+def _mcp(args: argparse.Namespace) -> int:
+    """Build, connect and reset the robot, serve it over MCP, then disconnect."""
+    import importlib.util
+    import logging
+
+    if importlib.util.find_spec("mcp") is None:
+        print("hirobot mcp: the MCP server needs the mcp package: pip install 'hirobot[mcp]'",
+              file=sys.stderr)
+        return 1
+    # stdout is the MCP stream under stdio: logs go to stderr.
+    logging.basicConfig(level=logging.INFO, stream=sys.stderr,
+                        format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    from hirobot import make_robot
+    from hirobot.mcp.server import serve_mcp
+
+    try:
+        robot = make_robot(args.config)
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"hirobot mcp: {exc}", file=sys.stderr)
+        return 1
+    robot.connect()
+    try:
+        if not args.no_reset:
+            robot.reset()
+        serve_mcp(robot, transport=args.transport, host=args.host, port=args.port,
+                  path=args.path, tools=args.tools, max_steps=args.max_steps)
+    except (ValueError, TypeError) as exc:
+        print(f"hirobot mcp: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        pass
+    finally:
+        robot.disconnect()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -230,6 +383,9 @@ def main(argv: list[str] | None = None) -> int:
         for name in available_configs(args.group):
             print(name)
         return 0
+
+    if args.command == "assets":
+        return _assets(args, parser)
 
     if args.command == "info":
         config = load_config(args.config)
@@ -252,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
         parts = [p for p in embodiment.parts if p]
         if parts:
             print(f"  parts:         {parts}")
+        if embodiment.model is not None:
+            print(f"  model:         {embodiment.model.kind} {embodiment.model.path}")
         return 0
 
     if args.command == "sim":
@@ -262,6 +420,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "check":
         return _check(args)
+
+    if args.command == "mcp":
+        return _mcp(args)
+
+    if args.command == "scan":
+        return _scan(args)
+
+    if args.command == "init":
+        return _init(args)
 
     parser.print_help()
     return 0

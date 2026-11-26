@@ -62,15 +62,16 @@ mounts:
     pose: [0.0576235, 0.01753, 0.42987, -0.659252, 0.659252, -0.255707, 0.255707]
 
 # The MJCF comes from unitreerobotics/unitree_ros (robots/g1_description,
-# BSD-3-Clause); it is not shipped with hiRobot. Fetch it with:
+# BSD-3-Clause); it is not shipped with hiRobot. Fetch it with
 #
-#   git clone --depth 1 --filter=blob:none --sparse \
-#       https://github.com/unitreerobotics/unitree_ros.git ~/.cache/hirobot/unitree_ros
-#   git -C ~/.cache/hirobot/unitree_ros sparse-checkout set robots/g1_description
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch unitree_g1
+#
+# which downloads it to ~/.cache/hirobot/assets/unitree_ros/robots/g1_description.
 #
 # Gains match RoboJuDo's G1 stiffness/damping (robojudo/config/g1/env/g1_env_cfg.py).
 model:
-  mjcf: ~/.cache/hirobot/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml
+  mjcf: ~/.cache/hirobot/assets/unitree_ros/robots/g1_description/g1_29dof_rev_1_0.xml
   #     hip_p hip_r hip_y knee ank_p ank_r   (left, then right)
   kp: [100, 100, 100, 150, 40, 40,
        100, 100, 100, 150, 40, 40,

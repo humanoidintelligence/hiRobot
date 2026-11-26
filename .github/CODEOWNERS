@@ -15,11 +15,11 @@
 # Drivers, one line per SDK directory (src/hirobot/drivers/<part>/<vendor>/<sdk>/).
 # The matching tests/drivers/ directory has the same owners.
 /src/hirobot/drivers/_sdk/                          @artpli
-/src/hirobot/drivers/body/agibot/aimrt/             @artpli
 /src/hirobot/drivers/body/agibot/gdk/               @artpli
 /src/hirobot/drivers/body/agilex/piper_sdk/         @artpli
 /src/hirobot/drivers/body/fourier/grx/              @artpli
 /src/hirobot/drivers/body/franka/droid/             @artpli
+/src/hirobot/drivers/body/generic/ros2/             @artpli
 /src/hirobot/drivers/body/trossen/dynamixel/        @artpli
 /src/hirobot/drivers/body/unitree/sdk2/             @artpli
 /src/hirobot/drivers/body/ur/rtde/                  @artpli
@@ -38,11 +38,11 @@
 /src/hirobot/drivers/sim/mujoco/                    @artpli
 /src/hirobot/drivers/sim/                           @artpli
 
-/tests/drivers/body/agibot/aimrt/                   @artpli
 /tests/drivers/body/agibot/gdk/                     @artpli
 /tests/drivers/body/agilex/piper_sdk/               @artpli
 /tests/drivers/body/fourier/grx/                    @artpli
 /tests/drivers/body/franka/droid/                   @artpli
+/tests/drivers/body/generic/ros2/                   @artpli
 /tests/drivers/body/trossen/dynamixel/              @artpli
 /tests/drivers/body/unitree/sdk2/                   @artpli
 /tests/drivers/body/ur/rtde/                        @artpli

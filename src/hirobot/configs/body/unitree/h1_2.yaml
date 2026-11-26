@@ -41,4 +41,16 @@ frames:
   - {name: left_hand}
   - {name: right_hand}
 
+# The MJCF is h1_2_handless_hirobot.xml from the hirobot-assets dataset: unitree_ros's
+# robots/h1_2_description/h1_2_handless.xml (BSD-3-Clause) with torso_joint renamed
+# to waist_yaw_joint; nothing else changes. It is not shipped with hiRobot. Fetch it
+# with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch unitree_h1_2
+#
+# No gains here: there is no *_mujoco config for H1-2 yet.
+model:
+  mjcf: ~/.cache/hirobot/assets/unitree_ros/robots/h1_2_description/h1_2_handless_hirobot.xml
+
 driver: {type: unitree_sdk2}

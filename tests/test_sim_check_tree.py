@@ -1,7 +1,7 @@
 """The simulation check built from the robot's tree (two UR5e arms on toy drivers).
 
 Uses the UR5e MJCF from MuJoCo Menagerie (universal_robots_ur5e/ur5e.xml) at
-$HIROBOT_UR5E_MJCF, default ~/.cache/hirobot/mujoco_menagerie/; skipped when it or
+$HIROBOT_UR5E_MJCF, default ~/.cache/hirobot/assets/menagerie/; skipped when it or
 mujoco is missing.
 """
 
@@ -18,7 +18,7 @@ from hirobot.control.safety import SafetyError
 
 mujoco = pytest.importorskip("mujoco")
 
-UR5E = Path(os.environ.get("HIROBOT_UR5E_MJCF", Path.home() / ".cache/hirobot/mujoco_menagerie"
+UR5E = Path(os.environ.get("HIROBOT_UR5E_MJCF", Path.home() / ".cache/hirobot/assets/menagerie"
                            "/universal_robots_ur5e/ur5e.xml")).expanduser()
 pytestmark = pytest.mark.skipif(not UR5E.is_file(), reason=f"UR5e MJCF not found at {UR5E}")
 
@@ -138,7 +138,7 @@ def _extra_joint():
     ``joints:`` in overrides merges by name, so this adds a 7th joint; the
     gains are one value for every joint.
     """
-    left = {"model": {"mjcf": str(UR5E), "kp": 1000, "kd": 50},
+    left = {"model": {"mjcf": str(UR5E), "kp": 1000, "kd": 50, "home": None},
             "joints": [{"name": "elbow_x"}]}
     return {"defaults": ["robots/ur5e_dual"],
             "assembly": {"parts": {"left": {"overrides": {"body": left}},
@@ -235,16 +235,20 @@ def test_against_real_opens_read_only_and_compares(real_drivers, tmp_path):
                   drivers={"middle/body": {"ip": "x"}})
 
 
-def test_hirobot_check_sim_fails_on_a_body_without_a_model(capsys):
+def test_hirobot_check_sim_fails_on_a_body_without_a_model(capsys, tmp_path):
     from hirobot.cli import main
 
-    assert main(["check", "--sim", "ur5e_dual"]) == 1
+    cfg = tmp_path / "no_model.yaml"
+    cfg.write_text("defaults: [robots/ur5e_dual]\n"
+                   "assembly: {parts: {right: {overrides: {body: {model: null}}}}}\n")
+    assert main(["check", "--sim", str(cfg)]) == 1
     assert "have no model" in capsys.readouterr().err
 
 
 def test_the_check_needs_a_model_for_every_body():
     cfg = {"defaults": ["robots/ur5e_dual"],
-           "assembly": {"parts": {"left": {"overrides": {"body": MODEL}}}},
+           "assembly": {"parts": {"left": {"overrides": {"body": MODEL}},
+                                  "right": {"overrides": {"body": {"model": None}}}}},
            "safety": {"sim_check": True}}
     with pytest.raises(ValueError, match=r"\['right/body'\] have no model"):
         make_robot(cfg)

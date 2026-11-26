@@ -1,9 +1,9 @@
-# AgiBot X1 — humanoid, driven via a ROS2/AimRT bridge (see the 'agibot_aimrt' driver).
+# AgiBot X1 — humanoid, driven over AimRT's ros2 backend by the generic 'ros2' driver.
 #
 # Joint names/order follow the ControlModule joint_list in
 # agibot_x1_infer cfg/.../rl_x1.yaml (29 joints: waist, arms, legs).
-# /joint_cmd matches joints by NAME, not index, so this order only needs to be
-# internally consistent with joint_pos/joint_target vectors. The DCU hardware
+# /joint_states and /joint_cmd are matched by NAME, so this order only needs to
+# be internally consistent with joint_pos/joint_target vectors. The DCU hardware
 # list has 32 joints (adds left/right claw + a different ordering); adjust here
 # if you drive the DCU layer directly.
 
@@ -45,4 +45,23 @@ frames:
   - {name: left_hand}
   - {name: right_hand}
 
-driver: {type: agibot_aimrt}
+driver:
+  type: ros2
+  node_name: hirobot_agibot_x1
+  default_kp: 100.0              # stiffness when an action carries no kp
+  default_kd: 2.0                # damping when an action carries no kd
+  state:
+    - {type: joint_state, topic: /joint_states}
+    - {type: imu, topic: /imu/data}
+  command:
+    - type: message              # my_ros2_proto, built from agibot_x1_infer
+      topic: /joint_cmd
+      msg: my_ros2_proto/msg/JointCommand
+      modes: [position, pd]
+      fields:
+        name: $joint_names
+        position: $joint_target
+        stiffness: $kp
+        damping: $kd
+        velocity: []
+        effort: []

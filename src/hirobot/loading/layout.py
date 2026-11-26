@@ -57,6 +57,7 @@ from hirobot.core.embodiment import (
     EndEffector,
     EndEffectorFrame,
     Joint,
+    ModelRef,
 )
 from hirobot.geometry.transforms import IDENTITY_POSE, pose_compose
 from hirobot.loading.tree import SEP, DeviceSpec, NodeSpec
@@ -142,6 +143,17 @@ def node_layout(node: NodeSpec, name: Optional[str] = None,
     emb = _embodiment(node, name, layouts, children, floating_part, where, link_prefix)
     return NodeLayout(embodiment=emb, parts=layouts, children=children,
                       floating=floating_part is not None, moving=floating_part)
+
+
+def model_ref(dev: DeviceSpec) -> Optional[ModelRef]:
+    """The :class:`ModelRef` of a device's ``model:`` (the MJCF when it has both), or ``None``."""
+    model = dev.fields.get("model")
+    if not model:
+        return None
+    if model.get("mjcf"):
+        return ModelRef(kind="mjcf", path=str(model["mjcf"]))
+    return ModelRef(kind="urdf", path=str(model["urdf"]),
+                    package_roots=dict(model.get("package_roots") or {}))
 
 
 def node_embodiment(node: NodeSpec, name: Optional[str] = None) -> Embodiment:
@@ -265,6 +277,7 @@ def _embodiment(node: NodeSpec, name: Optional[str], layouts: Dict[str, PartLayo
     parts: Dict[str, EmbodimentPart] = {}
     hz: List[int] = []
     floating = False
+    battery_soc_limit = None
     # Body frames a hand of the same name, mounted at the frame's link, replaces.
     replaced = _replaced_frames(node, layouts)
     for p, part in node.parts.items():
@@ -302,6 +315,7 @@ def _embodiment(node: NodeSpec, name: Optional[str], layouts: Dict[str, PartLayo
             joints += [Joint(**j) for j in f["joints"]]
             hz.append(f["control_hz"])
             floating = floating or bool(f["floating_base"])
+            battery_soc_limit = f.get("battery_soc_limit")
             for fr in f["frames"]:
                 if fr["name"] in replaced:
                     continue
@@ -329,7 +343,8 @@ def _embodiment(node: NodeSpec, name: Optional[str], layouts: Dict[str, PartLayo
             mount = None if fr is None else CameraMount(body=fr[0], pos=fr[1], quat=fr[2],
                                                         fovy=f["fovy"])
             cams.append(Camera(name=p, width=f["width"], height=f["height"], driver=part.driver,
-                               mount=mount, depth=f["depth"], fps=f.get("fps")))
+                               mount=mount, depth=f["depth"], fps=f.get("fps"),
+                               intrinsics=f.get("intrinsics")))
         elif part.kind == "microphone":
             mics.append(AudioDevice(name=p, driver=part.driver))
         else:
@@ -341,13 +356,16 @@ def _embodiment(node: NodeSpec, name: Optional[str], layouts: Dict[str, PartLayo
         children=[p for p in node.parts if isinstance(node.parts[p], NodeSpec)],
         moving=floating_part is not None,
         devices=[p for p in node.parts if not isinstance(node.parts[p], NodeSpec)])
+    bodies = [d for _, d in node.walk() if isinstance(d, DeviceSpec) and d.kind == "body"]
     try:
         return Embodiment(
             name=name if name is not None else (node.name or "robot"),
             kind=EmbodimentKind.HUMANOID if floating else EmbodimentKind.ARM,
             control_hz=node.control_hz or (min(hz) if hz else 30),
             joints=joints, floating_base=floating, end_effectors=ees, cameras=cams,
-            microphones=mics, speakers=spks, parts=dict(sorted(parts.items())))
+            microphones=mics, speakers=spks, parts=dict(sorted(parts.items())),
+            battery_soc_limit=battery_soc_limit,
+            model=model_ref(bodies[0]) if len(bodies) == 1 else None)
     except ValueError as exc:
         raise ValueError(f"{where}: {exc}") from None
 

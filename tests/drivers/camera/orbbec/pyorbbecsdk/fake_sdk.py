@@ -89,6 +89,10 @@ class Bus:
         self.garbage = False                          # colour buffers all 0xff
         self.fps = [(640, 480, 30, OBFormat.MJPG), (1280, 720, 30, OBFormat.MJPG),
                     (640, 480, 30, OBFormat.RGB)]
+        # Colour intrinsics (fx, fy, cx, cy) at the colour size, and k1..k6, p1, p2;
+        # None makes get_camera_param raise.
+        self.intrinsics = (605.0, 604.5, 318.0, 242.0)
+        self.distortion = dict(k1=0.0, k2=0.0, k3=0.0, k4=0.0, k5=0.0, k6=0.0, p1=0.0, p2=0.0)
 
     def set_color(self, h=480, w=640):
         self.color = np.zeros((h, w, 3), dtype=np.uint8)
@@ -187,6 +191,14 @@ def install(monkeypatch) -> Bus:
 
         def wait_for_frames(self, timeout_ms):
             return bus.frameset()
+
+        def get_camera_param(self):
+            if bus.intrinsics is None:
+                raise RuntimeError("no camera param")
+            _, w, h, _, _ = bus.color_profile
+            fx, fy, cx, cy = bus.intrinsics
+            return NS(rgb_intrinsic=NS(fx=fx, fy=fy, cx=cx, cy=cy, width=w, height=h),
+                      rgb_distortion=NS(**bus.distortion))
 
     mod = types.ModuleType("pyorbbecsdk")
     mod.Context, mod.Pipeline, mod.Config = Context, Pipeline, Config

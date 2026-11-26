@@ -19,8 +19,8 @@ from hirobot.drivers import audio, camera, end_effector  # noqa: F401 (register 
 from hirobot.drivers.audio import UnitreeG1Microphone, UnitreeG1Speaker
 from hirobot.drivers.body import (
     AgibotG1Robot,
-    AgibotX1Robot,
     FourierRobot,
+    Ros2Robot,
     UnitreeRobot,
     URRobot,
 )
@@ -33,7 +33,7 @@ __all__ = [
     "UnitreeRobot",
     "FourierRobot",
     "URRobot",
-    "AgibotX1Robot",
+    "Ros2Robot",
     "AgibotG1Robot",
     "UnitreeDex3Hand",
     "UnitreeG1Microphone",

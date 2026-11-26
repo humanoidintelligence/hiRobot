@@ -58,6 +58,10 @@ class Bus:
     """Shared state: the frames the fake pipeline hands out, and what was configured."""
 
     def __init__(self, depth_scale: float = 0.001):
+        # Colour intrinsics (fx, fy, ppx, ppy); None makes get_intrinsics raise.
+        self.intrinsics = (615.0, 616.0, 321.5, 238.25)
+        self.distortion_model = "distortion.inverse_brown_conrady"
+        self.coeffs = [0.0] * 5
         self.depth_scale = depth_scale
         self.enabled_device: Optional[str] = None
         self.enabled_streams: list = []
@@ -108,9 +112,30 @@ def install(monkeypatch, depth_scale: float = 0.001) -> Bus:
         def first_depth_sensor(self):
             return _DepthSensor()
 
+    class _Intrinsics:
+        def __init__(self):
+            w, h = next(((w, h) for s, w, h, _, _ in bus.enabled_streams if s == "stream.color"),
+                        (640, 480))
+            self.width, self.height = w, h
+            self.fx, self.fy, self.ppx, self.ppy = bus.intrinsics[:4]
+            self.model = bus.distortion_model
+            self.coeffs = list(bus.coeffs)
+
+    class _StreamProfile:
+        def as_video_stream_profile(self):
+            return self
+
+        def get_intrinsics(self):
+            if bus.intrinsics is None:
+                raise RuntimeError("no intrinsics")
+            return _Intrinsics()
+
     class _Profile:
         def get_device(self):
             return _Device()
+
+        def get_stream(self, stream):
+            return _StreamProfile()
 
     class pipeline:  # the SDK's name
         def __init__(self):

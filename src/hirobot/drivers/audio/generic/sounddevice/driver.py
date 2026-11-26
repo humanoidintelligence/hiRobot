@@ -21,7 +21,9 @@ from typing import Any, Optional, Union
 from hirobot.devices.audio import (
     SAMPLE_WIDTH,
     QueuedMicrophone,
+    SoftwareVolume,
     SpeakerDriver,
+    apply_gain,
     register_audio,
 )
 from hirobot.loading.sdk import require_sdk
@@ -86,8 +88,12 @@ class SoundDeviceMicrophone(QueuedMicrophone):  # pragma: no cover - needs hardw
 
 
 @register_audio("sounddevice_speaker")
-class SoundDeviceSpeaker(SpeakerDriver):  # pragma: no cover - needs hardware
+class SoundDeviceSpeaker(SoftwareVolume, SpeakerDriver):  # pragma: no cover - needs hardware
     """The default (or named) output device, written in short blocks so stop is prompt.
+
+    Volume is a software gain on each block, so :meth:`set_volume` during
+    :meth:`play` takes effect within ``block_ms``. It does not touch the
+    system mixer.
 
     Args:
         name: Speaker name.
@@ -118,7 +124,7 @@ class SoundDeviceSpeaker(SpeakerDriver):  # pragma: no cover - needs hardware
                 if self._stop.is_set():
                     break
                 block = pcm[i:i + step]
-                out.write(block)
+                out.write(apply_gain(block, self._level))
                 played += len(block)
         return played / (SAMPLE_WIDTH * rate)
 

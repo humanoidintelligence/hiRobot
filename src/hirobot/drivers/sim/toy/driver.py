@@ -12,7 +12,10 @@ takes ``BASE_VELOCITY`` (``[vx, vy, wz]`` in the body frame) and integrates it o
 the ground plane into an odometry pose (``base_position``, yaw-only
 ``base_orientation``), which it reports in every observation. ``joints: []``
 makes it a base with no joints at all (a wheeled platform). Without the flag a
-floating-base toy reports only a fixed ``base_orientation`` (no odometry).
+floating-base toy reports only a fixed upright ``base_orientation`` (no odometry).
+A floating-base toy reports ``base_linear_acceleration`` as an IMU does: specific
+force in the body frame, ``[0, 0, 9.81]`` at rest (plus the centripetal part of a
+turning mobile base).
 """
 
 from __future__ import annotations
@@ -27,6 +30,9 @@ from hirobot.core.robot import Robot
 from hirobot.core.stamps import Stamp
 from hirobot.core.types import Action, ControlMode, Observation
 from hirobot.control.watchdog import DEFAULT_COMMAND_TIMEOUT_S, CommandWatchdog
+
+#: Standard gravity (m/s^2); a resting IMU reads it upward.
+GRAVITY = 9.81
 
 
 @register_body("toy")
@@ -124,9 +130,13 @@ class ToyRobot(Robot):
             # angular one in the body frame (as an IMU); about z only, so equal.
             obs.base_linear_velocity = np.array([c * vx - s * vy, s * vx + c * vy, 0.0])
             obs.base_angular_velocity = np.array([0.0, 0.0, wz])
+            # As an IMU: specific force in the body frame, the centripetal part of
+            # the arc (w x v) plus the reaction to gravity.
+            obs.base_linear_acceleration = np.array([-wz * vy, wz * vx, GRAVITY])
         elif self._embodiment.floating_base:
             obs.base_orientation = np.array([0.0, 0.0, 0.0, 1.0])
             obs.base_angular_velocity = np.zeros(3)
+            obs.base_linear_acceleration = np.array([0.0, 0.0, GRAVITY])
         obs.stamps["body"] = Stamp(self.now(), self._ticks + 1)
         return obs
 

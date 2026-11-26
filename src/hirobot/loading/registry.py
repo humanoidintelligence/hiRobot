@@ -17,8 +17,9 @@ that registers its drivers on import, e.g. in that package's ``pyproject.toml``:
 Layers (:data:`LAYERS`) are the other kind of plugin: a :class:`Robot` that
 wraps another robot and changes how it is commanded (a whole-body controller
 that turns base velocities into joint targets, say). A config stacks them with
-``layers:``; see :func:`hirobot.make_robot`. hiRobot ships none. A plugin
-package registers its layers from the same ``hirobot.drivers`` entry point.
+``layers:``; see :func:`hirobot.make_robot`. hiRobot ships one, ``mink_ik``
+(:mod:`hirobot.layers`, registered with the built-in drivers); a plugin package
+registers its layers from the same ``hirobot.drivers`` entry point.
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ def load_drivers() -> None:
     _loaded = True
     try:
         importlib.import_module("hirobot.drivers")
+        importlib.import_module("hirobot.layers")  # the built-in layers (mink_ik)
     except BaseException:
         _loaded = False
         raise

@@ -2,12 +2,13 @@
 
 [English](./agibot_x1.md) | 简体中文
 
-驱动：`agibot_aimrt`（`src/hirobot/drivers/body/agibot/aimrt/`）。
+驱动：通用 `ros2` 驱动（`src/hirobot/drivers/body/generic/ros2/`，见
+[ROS 2 机器人](ros2.zh-CN.md)）；X1 是它的一份配置。
 
 **与其他厂商不同，AgiBot X1 没有 Python API。**
 [agibot_x1_infer](https://github.com/AgibotTech/agibot_x1_infer)
 （xyber_x1_infer）是一套纯 C++ / AimRT 的软件栈。从 hiRobot 驱动 X1 的可行办法，是用一个 ROS2 节点
-通过 AimRT 的 `ros2` channel 后端与它通信。本驱动正是这样一个 **rclpy bridge**：
+通过 AimRT 的 `ros2` channel 后端与它通信。`ros2` 驱动就是这样一个节点，X1 的本体文件写好了它的话题和消息字段：
 
 - 它订阅 `/joint_states`（`sensor_msgs/JointState`）和 `/imu/data`（`sensor_msgs/Imu`）作为观测。
 - 它发布 `/joint_cmd`（`my_ros2_proto/JointCommand`：name / position / velocity / effort /
@@ -24,7 +25,7 @@
 3. **编译自定义消息**：`my_ros2_proto` 必须用 `colcon build` 编译并 source，这样 Python 才能
    `from my_ros2_proto.msg import JointCommand`。
 
-这三条都满足后，驱动就能工作；观测 / 动作映射本身是完整的。
+这三条都满足后，驱动就能工作。还没在真机 X1 上跑过。
 
 ## 1. 前置条件
 
@@ -43,14 +44,33 @@
 
 `agibot_x1`：
 
+内置的机器人配置跑在 toy 本体上。本体文件 `body/agibot/x1` 里是真机的驱动段：
+
 ```yaml
-body:
-  driver: agibot_aimrt
-  # node_name: hirobot_agibot_x1
-  # default_kp: 100.0        # fallback stiffness
-  # default_kd: 2.0          # fallback damping
-  # spin_timeout: 5.0        # seconds to wait for the first /joint_states
+driver:
+  type: ros2
+  node_name: hirobot_agibot_x1
+  default_kp: 100.0              # stiffness when an action carries no kp
+  default_kd: 2.0                # damping when an action carries no kd
+  state:
+    - {type: joint_state, topic: /joint_states}
+    - {type: imu, topic: /imu/data}
+  command:
+    - type: message              # my_ros2_proto, built from agibot_x1_infer
+      topic: /joint_cmd
+      msg: my_ros2_proto/msg/JointCommand
+      modes: [position, pd]
+      fields:
+        name: $joint_names
+        position: $joint_target
+        stiffness: $kp
+        damping: $kd
+        velocity: []
+        effort: []
 ```
+
+本地配置用 `body: {from: body/agibot/x1}` 引用它，不要机器人配置里的 toy 覆盖。`connect_timeout_s`（默认 5）是
+`connect()` 等每个状态话题第一条消息的时间。
 
 关节顺序沿用 `rl_x1.yaml` 中 ControlModule 的 29 关节 `joint_list`（腰部 3 + 双臂 14 + 双腿 12）。
 如果直接驱动 DCU 层，它有 32 个关节（多出左右夹爪，且顺序不同）；相应调整配置。
@@ -72,18 +92,19 @@ robot.hold()
 robot.disconnect()
 ```
 
-驱动做了什么：`connect()` 启动一个 rclpy 节点，创建 publisher 和 subscribers，并 spin 到第一条
-`/joint_states` 到达（超过 `spin_timeout` 仍未到达时，抛出一个指向本指南的错误）。
-`get_observation()` 组装缓存的 JointState（position / velocity / effort）和 Imu。`send_action()`
-（POSITION / PD）发布一条 JointCommand，其中 `stiffness/damping` 取自 kp/kd。
+驱动做了什么：`connect()` 启动一个 rclpy 节点，等到每个状态话题都来过消息、且 `/joint_states` 里每个关节都有
+（超过 `connect_timeout_s` 时报错，写出是哪个话题或缺哪些关节）。`get_observation()` 读最新的 JointState
+（position / velocity / effort，按名字对）和 Imu。`send_action()`（POSITION / PD）发布一条 JointCommand，其中
+`stiffness` / `damping` 取自 kp / kd。
 
 ## 5. 常见问题
 
-- **`connect` 抛出 ImportError**：缺少 rclpy / sensor_msgs，或 `my_ros2_proto` 没有编译或 source。
+- **`connect` 抛出 ImportError**：缺少 rclpy / sensor_msgs（source ROS 2 安装），或 `my_ros2_proto` 没有编译或 source。
 - **等待 /joint_states 超时**：AimRT 进程没有运行，或底层驱动模块没有发布状态。
 - **指令发出了但机器人不动**：最可能是前置条件 1（订阅侧没有 ros2 后端）或前置条件 2（`ControlModule`
   仍在争夺 `/joint_cmd`）。
 - **只有遥操作行走能用，关节目标不起作用**：你连接走的是官方 ControlModule 路径（`/cmd_vel` 加模式触发
   topics），它只能用内置 RL policy 行走，不是关节级的 VLA 控制。关节级控制需要绕过 ControlModule，
   直接与 DcuDriverModule / SimModule 通信。
-- **关节名不匹配**：`/joint_cmd` 按名字匹配；配置中拼错的关节名会被忽略。
+- **关节名不匹配**：`/joint_states` 和 `/joint_cmd` 都按名字匹配。`connect()` 会失败并列出 `/joint_states` 缺的关节；
+  `/joint_cmd` 里 AimRT 不认识的名字会被它忽略。名字不同时用 `ros_names` 改（见 [ROS 2 机器人](ros2.zh-CN.md)）。

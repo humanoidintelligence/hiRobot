@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 import numpy as np
 
 from hirobot.loading.registry import Registry
+from hirobot.core.embodiment import CameraIntrinsics
 from hirobot.core.stamps import Stamp, StampCounter
 
 #: A frame and its :class:`~hirobot.core.stamps.Stamp` (receive time on
@@ -72,6 +73,16 @@ class CameraDriver(ABC):
         """
         frame = self.latest()
         return None if frame is None else (frame[0], None, frame[1])
+
+    def intrinsics(self) -> Optional["CameraIntrinsics"]:
+        """The intrinsics of the images this driver delivers, read from the camera.
+
+        Valid after :meth:`start`. ``None`` (the default) when the driver cannot
+        read them; ``Robot.camera_info`` then falls back to the config's
+        ``fovy``. Drivers whose SDK reports a calibration (RealSense, Orbbec,
+        ZED) override this.
+        """
+        return None
 
     @abstractmethod
     def stop(self) -> None:
