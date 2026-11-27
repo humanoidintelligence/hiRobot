@@ -489,6 +489,7 @@ an unknown joint, a joint claimed by two end-effectors, or an end-effector with 
 | | `has_gripper` | `bool` | Has a gripper commanded through `Action.gripper`. Required for an end-effector driver without `joints` (`opening` interface) and not allowed with `joints` |
 | | `joints` | `List[str]` | Embodiment joints this end-effector actuates (finger joints), in its driver's motor order |
 | | `driver` | `dict` or `None` | End-effector driver spec: `type` names a registered end-effector driver, other keys are its arguments. Needs `joints` or `has_gripper: true` |
+| | `joint_map` | `Dict[str, List[JointMapEntry]]` | Simulation only: per hand joint, the model joints it drives, each to `offset + scale * value` (`joint`, `scale` default 1, `offset` default 0); the value reads back from the first. A joint without an entry drives the model joint of its own name. Real hand drivers ignore it; `safety.sim_check` refuses it for now |
 | | `frame` | `EndEffectorFrame` or `None` | Link the pose is read from: `body` (link name), `pos` (m, in that link), `quat` `[x, y, z, w]` in that link. The `mujoco` body fills `ee_poses` for end-effectors with a frame; drivers whose SDK reports the pose (UR, Franka) ignore it; `Kinematics` computes the same pose from joint angles |
 | `Camera` | `name` | `str` | Key in `Observation.images` |
 | | `width`, `height` | `int` | Frame size as delivered |
@@ -1338,7 +1339,7 @@ model:                      # optional: the body's model file (Embodiment.model)
 driver: {type: ur_rtde}     # registered driver name + its constructor kwargs
 ```
 
-`model:` needs `mjcf` or `urdf`; with both, `Embodiment.model` gives the MJCF. Relative paths (also in `package_roots`) are taken from the device file's directory. The simulation, the `mujoco` driver and `mink_ik` need `mjcf`; a body with only a `urdf` is refused there. `kp`, `kd`, `armature`, `home` set the `mujoco` body's gains, armature and start pose.
+`model:` needs `mjcf` or `urdf`; with both, `Embodiment.model` gives the MJCF. Relative paths (also in `package_roots`) are taken from the device file's directory. The simulation, the `mujoco` driver and `mink_ik` need `mjcf`; a body with only a `urdf` is refused there. `kp`, `kd`, `armature`, `home` set the `mujoco` body's gains, armature and start pose. `joint_names` (model joint -> new name) renames MJCF joints before the model compiles, with the actuators that name them.
 
 A camera file carries `width` / `height` / `fps` / `depth` / `fovy` /
 `intrinsics` (`{fx, fy, cx, cy}`, optional `width`, `height`, `model`, `coeffs`); an

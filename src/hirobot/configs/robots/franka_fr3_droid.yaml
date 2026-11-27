@@ -11,7 +11,9 @@
 #       body: {overrides: {driver: {type: franka_droid, ip: 172.16.0.2}}}
 #       wrist: {overrides: {driver: {serial: 10000000}}}
 #       ...
-# The cameras have no placement (the mounts differ per DROID station). See
+# The camera placements are defaults (the wrist camera on the flange, the two
+# ZED 2i in front left and front right of the arm, looking at its workspace);
+# the mounts differ per DROID station, so override them in a local config. See
 # docs/setup/franka.md, "DROID".
 
 assembly:
@@ -21,5 +23,11 @@ assembly:
     wrist: {from: camera/stereolabs/zed_mini}
     left: {from: camera/stereolabs/zed2i}
     right: {from: camera/stereolabs/zed2i}
+  placement:
+    wrist: {on: body.wrist_camera}
+    # pose: [x, y, z, qx, qy, qz, qw] of the optical frame (z forward, y down) in
+    # the arm's base frame.
+    left:  {pose: [1.2, 0.6, 0.8, 0.3703, 0.7406, -0.5014, -0.2507]}
+    right: {pose: [1.2, -0.6, 0.8, 0.7406, 0.3703, -0.2507, -0.5014]}
 safety:
   gripper_range: [0, 1]

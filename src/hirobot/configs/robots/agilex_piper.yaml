@@ -11,7 +11,8 @@
 #     parts:
 #       body: {overrides: {driver: {type: agilex_piper_sdk, can: can0}}}
 #       scene: {overrides: {driver: {serial: CC1N00000000}}}
-# The camera has no placement (it depends on the station). See
+# The camera placement is a default (front right of the arm, looking at its
+# workspace), not a measured station: override it in a local config. See
 # docs/setup/agilex_piper.md.
 
 assembly:
@@ -19,3 +20,7 @@ assembly:
   parts:
     body: {from: body/agilex/piper, overrides: {driver: {type: toy}}}
     scene: {from: camera/orbbec/dabai_dc1}
+  placement:
+    # pose: [x, y, z, qx, qy, qz, qw] of the optical frame (z forward, y down) in
+    # the arm's base frame.
+    scene: {pose: [1.1, 0.7, 0.75, 0.3632, 0.7427, -0.5053, -0.2471]}

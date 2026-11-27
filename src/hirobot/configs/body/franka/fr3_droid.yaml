@@ -24,6 +24,15 @@ frames:
   - {name: ee}
 grippers: [ee]
 
+mounts:
+  # The DROID wrist camera (a ZED Mini) beside the flange (fr3_link7, z out of
+  # the flange face at 0.107 m): 9 cm off the axis, 2 cm past the face, looking
+  # along the axis toward the gripper's fingers.
+  # Nominal, not measured: put a calibrated offset in the robot config's placement.
+  wrist_camera:
+    link: fr3_link7
+    pose: [0.09, 0.0, 0.127, 0.0, 0.0, 0.7071, 0.7071]
+
 # The MJCF is fr3_hirobot.xml from the hirobot-assets dataset: MuJoCo Menagerie's
 # franka_fr3/fr3.xml (Apache-2.0) with fr3_joint1..7 renamed to joint1..7; nothing
 # else changes. It is the arm alone (no gripper). It is not shipped with hiRobot.

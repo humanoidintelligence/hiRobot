@@ -25,14 +25,18 @@ assembly:
         parts:
           body: {from: body/franka/fr3_droid, overrides: {driver: {type: toy}}}
     right: {from: robots/ur_ur5e}
-    # Not part of either arm: a stand-in camera (frames in memory) here.
+    # Not part of either arm: a scene camera in front of both, looking at the
+    # table between them. It has no driver: in the simulation (sim:) MuJoCo
+    # renders it; on the toy body it delivers no frames. On hardware give it a
+    # camera driver (driver: {type: realsense, serial: ...}).
     scene:
       device: camera
       width: 640
       height: 480
-      driver: {type: array}
   placement:
     # pose: [x, y, z, qx, qy, qz, qw] of the arm's base in this robot's frame, so
     # ee_poses / ee_targets are in that frame.
     left:  {pose: [0.0, 0.4, 0.0, 0.0, 0.0, 0.0, 1.0]}
     right: {pose: [0.0, -0.4, 0.0, 0.0, 0.0, 0.0, 1.0]}
+    # The camera's optical frame (z forward, y down): a default, not a station.
+    scene: {pose: [1.6, 0.0, 1.1, 0.6116, 0.6116, -0.3549, -0.3549]}

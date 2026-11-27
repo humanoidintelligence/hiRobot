@@ -5,6 +5,40 @@ User-facing changes in each hiRobot release, newest first. The format follows
 release may change the API incompatibly; such changes are listed under
 "Removed" or "Changed" and marked **breaking**.
 
+## [0.0.8] - 2026-11-27
+
+Simulation for more robots: the Unitree H1 with its Inspire hands, the Fourier
+GR2 and the Trossen ALOHA run in MuJoCo, and cameras on arm, H1 / H2 and URDF
+models no longer render black. The README introduces hiApp, the web interface.
+
+### Added
+
+- **`joint_map`** on an end-effector (simulation only): each hand joint drives a list of
+  model joints, each to `offset + scale * value`, and reads back from the first. The
+  Inspire RH56DFX hands use it, so `unitree_h1_inspire` runs in MuJoCo with
+  `h1_with_hand.xml` (12 finger joints per hand, normalised 0 = closed, 1 = open).
+  `safety.sim_check` refuses a robot with a `joint_map` for now.
+- **`model: {joint_names: {old: new}}`** renames MJCF joints (and the actuators naming
+  them) before the model compiles.
+- **`hirobot.sim.world_spec.world_spec(config)`**: the composed, uncompiled MjSpec of every
+  body of a config (prefixes, placement poses, `fixed_base`), without the default stage,
+  plus its joint names. For viewers of multi-body configs.
+- New configs `fourier_gr2` and `trossen_aloha`. Default camera placements for
+  `agilex_piper`, `franka_fr3_droid`, `franka_ur5e_dual` and `trossen_wx250s` (wrist camera).
+- README: a Web interface section on
+  [hiApp](https://github.com/humanoidintelligence/hiApp), which drives any hiRobot
+  config from a browser.
+
+### Changed
+
+- A simulation world whose models bring no floor, light or sky gets a default stage
+  (`hirobot.sim.stage`). Cameras on Menagerie arms, H1 / H2 and URDF models rendered
+  black before.
+- The shared simulation world compiles a URDF-only body too (adding position motors);
+  `safety.sim_check` still needs an MJCF.
+- Actuators no view drives (H1 wrist joints, Menagerie grippers) hold their start pose with
+  a fixed PD instead of getting zero torque.
+
 ## [0.0.7] - 2026-11-26
 
 Episode recording as LeRobot datasets, an IK layer for end-effector targets, an
@@ -429,6 +463,7 @@ once against `Observation` / `Action` and run on any robot with a driver.
   GRx, AgiBot X1, Franka FR3 and UR5e are included but not yet checked on
   hardware.
 
+[0.0.8]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5

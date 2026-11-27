@@ -6,7 +6,7 @@
 
 [OpenMOSS Group](https://openmoss.ai) / [Shanghai Innovation Institute](https://www.sii.edu.cn/) / [Fudan University](https://www.fudan.edu.cn/en/)
 
-**English** | [简体中文](./README.zh-CN.md) · **Docs:** [Supported robots](docs/supported_robots.md) · [Setup guides](docs/setup/README.md) · [API reference](docs/api.md) · [MCP](docs/mcp.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+**English** | [简体中文](./README.zh-CN.md) · **Docs:** [Supported robots](docs/supported_robots.md) · [Setup guides](docs/setup/README.md) · [API reference](docs/api.md) · [MCP](docs/mcp.md) · [Web interface (hiApp)](https://github.com/humanoidintelligence/hiApp) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 <!-- hardware-gallery:start -->
 
@@ -31,6 +31,7 @@
 - [Robot at a glance](#robot-at-a-glance)
 - [Quick start](#quick-start)
   - [Simulation](#simulation)
+  - [Web interface (hiApp)](#web-interface-hiapp)
   - [Real robot: Unitree G1](#real-robot-unitree-g1)
   - [Several robots as one](#several-robots-as-one)
   - [Control a robot from an AI agent (MCP)](#control-a-robot-from-an-ai-agent-mcp)
@@ -102,9 +103,11 @@ SDK. hiRobot standardizes that glue:
 > **Companion projects.** [hiWBC](https://github.com/humanoidintelligence/hiWBC)
 > handles whole-body balance and locomotion beneath the robot interface,
 > [hiVLA](https://github.com/humanoidintelligence/hiVLA) (the motor cortex) serves
-> VLA models over the network, and
+> VLA models over the network,
 > [hiAgent](https://github.com/humanoidintelligence/hiAgent), the agentic operating
-> layer, drives the robot from above. The text below uses them as examples;
+> layer, drives the robot from above, and
+> [hiApp](https://github.com/humanoidintelligence/hiApp) is the web interface for
+> end users. The text below uses them as examples;
 > hiRobot works on its own and imports none of them.
 
 > [!WARNING]
@@ -122,6 +125,13 @@ SDK. hiRobot standardizes that glue:
 The real robots (bodies, mobile bases, end effectors, cameras), with their
 configs, drivers, vendor SDKs, setup guides and hardware checks, and the sim
 robots are listed in [docs/supported_robots.md](docs/supported_robots.md).
+
+Every one of them can also be driven from a browser with
+[hiApp](https://github.com/humanoidintelligence/hiApp), the web interface of the hi stack:
+3D model, cameras, joint charts and sliders, skills, health and an e-stop, in simulation
+or on the real robot ([Web interface](#web-interface-hiapp)).
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/hiapp/overview-en-dark.png"><img src="assets/hiapp/overview-en-light.png" alt="hiApp Overview page on a simulated Unitree G1"></picture>
 
 ## Robot at a glance
 
@@ -202,6 +212,21 @@ G1 once the config changes.
 The UR5e, AgileX PiPER and WidowX 250 S arms have MuJoCo configs too
 (`ur_ur5e_mujoco`, `agilex_piper_mujoco`, `trossen_wx250s_mujoco`); see
 [Sim robots](docs/supported_robots.md#sim-robots) for which models each robot has.
+
+### Web interface (hiApp)
+
+[hiApp](https://github.com/humanoidintelligence/hiApp) drives any hiRobot config from a
+browser, with no code: pick a robot, watch its 3D model, cameras and joint charts, move
+joints with sliders, run its skills, and stop it. Every command goes through the same
+lease and safety gate as your own code.
+
+```bash
+git clone https://github.com/humanoidintelligence/hiApp.git && cd hiApp
+pip install -e '.[camera]'
+hiapp --config unitree_g1_mujoco       # opens http://127.0.0.1:8600/
+```
+
+Its README covers the interface and access from the local network or the internet.
 
 ### Real robot: Unitree G1
 

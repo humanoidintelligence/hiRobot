@@ -6,7 +6,7 @@
 
 [OpenMOSS Group](https://openmoss.ai) / [Shanghai Innovation Institute](https://www.sii.edu.cn/) / [Fudan University](https://www.fudan.edu.cn/en/)
 
-[English](./README.md) | **简体中文** · **文档：** [支持的机器人](docs/supported_robots.zh-CN.md) · [设置指南](docs/setup/README.zh-CN.md) · [API 参考](docs/api.zh-CN.md) · [MCP](docs/mcp.zh-CN.md) · [更新日志](CHANGELOG.zh-CN.md) · [贡献指南](CONTRIBUTING.md)
+[English](./README.md) | **简体中文** · **文档：** [支持的机器人](docs/supported_robots.zh-CN.md) · [设置指南](docs/setup/README.zh-CN.md) · [API 参考](docs/api.zh-CN.md) · [MCP](docs/mcp.zh-CN.md) · [网页界面（hiApp）](https://github.com/humanoidintelligence/hiApp) · [更新日志](CHANGELOG.zh-CN.md) · [贡献指南](CONTRIBUTING.md)
 
 <!-- hardware-gallery:start -->
 
@@ -31,6 +31,7 @@
 - [Robot 一览](#robot-一览)
 - [快速开始](#快速开始)
   - [仿真](#仿真)
+  - [网页界面（hiApp）](#网页界面hiapp)
   - [真机：Unitree G1](#真机unitree-g1)
   - [多台机器人作为一个](#多台机器人作为一个)
   - [用 AI agent 控制机器人（MCP）](#用-ai-agent-控制机器人mcp)
@@ -82,7 +83,8 @@ hiRobot 把这层胶水统一起来：
 > **配套项目。** [hiWBC](https://github.com/humanoidintelligence/hiWBC)
 > 在机器人接口之下负责全身平衡与行走，
 > [hiVLA](https://github.com/humanoidintelligence/hiVLA)（运动皮层）通过网络部署 VLA 模型，
-> [hiAgent](https://github.com/humanoidintelligence/hiAgent)（agent 操作层）从上方驱动机器人。
+> [hiAgent](https://github.com/humanoidintelligence/hiAgent)（agent 操作层）从上方驱动机器人，
+> [hiApp](https://github.com/humanoidintelligence/hiApp) 是给最终用户的网页界面。
 > 下文以它们为例；hiRobot 可以单独工作，不 import 其中任何一个。
 
 > [!WARNING]
@@ -97,6 +99,11 @@ hiRobot 把这层胶水统一起来：
 
 真机（本体、移动底盘、末端执行器、摄像头）及其配置、驱动、厂商 SDK、设置指南和真机验证情况，
 以及仿真机器人，见 [docs/supported_robots.zh-CN.md](docs/supported_robots.zh-CN.md)。
+
+这些机器人现在都可以用 hi 栈的网页界面 [hiApp](https://github.com/humanoidintelligence/hiApp) 在浏览器里操作：
+3D 模型、相机、关节曲线和滑条、技能、健康状态和急停，仿真和真机都行（见[网页界面](#网页界面hiapp)）。
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/hiapp/overview-zh-dark.png"><img src="assets/hiapp/overview-zh-light.png" alt="hiApp 总览页，仿真 Unitree G1"></picture>
 
 ## Robot 一览
 
@@ -171,6 +178,19 @@ robot.disconnect()
 
 UR5e、AgileX PiPER 和 WidowX 250 S 机械臂也有 MuJoCo 配置（`ur_ur5e_mujoco`、`agilex_piper_mujoco`、
 `trossen_wx250s_mujoco`）；每款机器人有哪些模型，见[仿真机器人](docs/supported_robots.zh-CN.md#仿真机器人)。
+
+### 网页界面（hiApp）
+
+[hiApp](https://github.com/humanoidintelligence/hiApp) 不用写代码就能在浏览器里操作任何 hiRobot 配置：选机器人，
+看它的 3D 模型、相机和关节曲线，用滑条动关节，运行技能，让它停下。每条命令和你自己的代码一样经过命令租约和安全门。
+
+```bash
+git clone https://github.com/humanoidintelligence/hiApp.git && cd hiApp
+pip install -e '.[camera]'
+hiapp --config unitree_g1_mujoco       # 打开 http://127.0.0.1:8600/
+```
+
+界面操作，以及从内网、外网访问的方法，见它的 README。
 
 ### 真机：Unitree G1
 

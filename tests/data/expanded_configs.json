@@ -69,6 +69,19 @@
     "scene": {
      "from": "camera/orbbec/dabai_dc1"
     }
+   },
+   "placement": {
+    "scene": {
+     "pose": [
+      1.1,
+      0.7,
+      0.75,
+      0.3632,
+      0.7427,
+      -0.5053,
+      -0.2471
+     ]
+    }
    }
   }
  },
@@ -86,6 +99,19 @@
     },
     "scene": {
      "from": "camera/orbbec/dabai_dc1"
+    }
+   },
+   "placement": {
+    "scene": {
+     "pose": [
+      1.1,
+      0.7,
+      0.75,
+      0.3632,
+      0.7427,
+      -0.5053,
+      -0.2471
+     ]
     }
    }
   },
@@ -124,6 +150,29 @@
    }
   }
  },
+ "robots/fourier_gr2": {
+  "assembly": {
+   "name": "fourier-gr2",
+   "parts": {
+    "body": {
+     "from": "body/fourier/gr2",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "head": {
+     "from": "camera/intel/d435i"
+    }
+   },
+   "placement": {
+    "head": {
+     "true": "body.head_camera"
+    }
+   }
+  }
+ },
  "robots/franka_fr3_droid": {
   "assembly": {
    "name": "franka-fr3-droid",
@@ -144,6 +193,33 @@
     },
     "right": {
      "from": "camera/stereolabs/zed2i"
+    }
+   },
+   "placement": {
+    "wrist": {
+     "true": "body.wrist_camera"
+    },
+    "left": {
+     "pose": [
+      1.2,
+      0.6,
+      0.8,
+      0.3703,
+      0.7406,
+      -0.5014,
+      -0.2507
+     ]
+    },
+    "right": {
+     "pose": [
+      1.2,
+      -0.6,
+      0.8,
+      0.7406,
+      0.3703,
+      -0.2507,
+      -0.5014
+     ]
     }
    }
   },
@@ -180,10 +256,7 @@
     "scene": {
      "device": "camera",
      "width": 640,
-     "height": 480,
-     "driver": {
-      "type": "array"
-     }
+     "height": 480
     }
    },
    "placement": {
@@ -208,6 +281,69 @@
       0.0,
       1.0
      ]
+    },
+    "scene": {
+     "pose": [
+      1.6,
+      0.0,
+      1.1,
+      0.6116,
+      0.6116,
+      -0.3549,
+      -0.3549
+     ]
+    }
+   }
+  }
+ },
+ "robots/trossen_aloha": {
+  "assembly": {
+   "name": "trossen-aloha",
+   "parts": {
+    "body": {
+     "from": "body/trossen/aloha",
+     "overrides": {
+      "driver": {
+       "type": "toy"
+      }
+     }
+    },
+    "overhead": {
+     "from": "camera/intel/d435i_realsense",
+     "overrides": {
+      "fovy": 58
+     }
+    },
+    "left_wrist": {
+     "from": "camera/intel/d405",
+     "overrides": {
+      "fovy": 58
+     }
+    },
+    "right_wrist": {
+     "from": "camera/intel/d405",
+     "overrides": {
+      "fovy": 58
+     }
+    }
+   },
+   "placement": {
+    "overhead": {
+     "pose": [
+      0.0,
+      -0.3038,
+      1.0252,
+      0.9763,
+      0.0,
+      0.0,
+      -0.2163
+     ]
+    },
+    "left_wrist": {
+     "true": "body.left_wrist_camera"
+    },
+    "right_wrist": {
+     "true": "body.right_wrist_camera"
     }
    }
   }
@@ -230,6 +366,22 @@
     "scene": {
      "from": "camera/intel/d435i_realsense"
     }
+   },
+   "placement": {
+    "wrist": {
+     "true": "body.wrist_camera"
+    },
+    "scene": {
+     "pose": [
+      0.9,
+      0.6,
+      0.6,
+      0.3703,
+      0.7406,
+      -0.5014,
+      -0.2507
+     ]
+    }
    }
   }
  },
@@ -250,6 +402,22 @@
     },
     "scene": {
      "from": "camera/intel/d435i_realsense"
+    }
+   },
+   "placement": {
+    "wrist": {
+     "true": "body.wrist_camera"
+    },
+    "scene": {
+     "pose": [
+      0.9,
+      0.6,
+      0.6,
+      0.3703,
+      0.7406,
+      -0.5014,
+      -0.2507
+     ]
     }
    }
   },
@@ -790,6 +958,78 @@
      "overrides": {
       "driver": {
        "type": "toy"
+      },
+      "model": {
+       "mjcf": "~/.cache/hirobot/assets/unitree_ros/robots/h1_description/mjcf/h1_with_hand.xml",
+       "joint_names": {
+        "torso_joint": "waist_yaw_joint"
+       },
+       "kp": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+       ],
+       "kd": [
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1.5,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+       ]
       }
      }
     },

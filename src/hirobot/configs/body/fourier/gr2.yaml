@@ -1,0 +1,89 @@
+# Fourier GR2 — 29-DoF humanoid (legs 6+6, waist 1, head 2, arms 7+7), without hands.
+#
+# Joint names and order follow the Aurora SDK (fourier_aurora_sdk, robot_specs):
+# left leg, right leg, waist, head, left arm, right arm. Limits (rad) are the
+# MJCF's joint ranges. There is no hiRobot driver for GR2 yet (it would use the
+# Aurora SDK, over Fast DDS): the body runs on the toy driver or in the
+# simulation only.
+
+device: body
+control_hz: 100
+floating_base: true
+joints:
+  - {name: left_hip_pitch_joint,   position_limit: [-2.618, 2.618]}
+  - {name: left_hip_roll_joint,    position_limit: [-0.593, 1.571]}
+  - {name: left_hip_yaw_joint,     position_limit: [-0.698, 1.571]}
+  - {name: left_knee_pitch_joint,  position_limit: [-0.087, 2.356]}
+  - {name: left_ankle_pitch_joint, position_limit: [-0.785, 0.785]}
+  - {name: left_ankle_roll_joint,  position_limit: [-0.384, 0.384]}
+  - {name: right_hip_pitch_joint,   position_limit: [-2.618, 2.618]}
+  - {name: right_hip_roll_joint,    position_limit: [-1.571, 0.593]}
+  - {name: right_hip_yaw_joint,     position_limit: [-1.571, 0.698]}
+  - {name: right_knee_pitch_joint,  position_limit: [-0.087, 2.356]}
+  - {name: right_ankle_pitch_joint, position_limit: [-0.785, 0.785]}
+  - {name: right_ankle_roll_joint,  position_limit: [-0.384, 0.384]}
+  - {name: waist_yaw_joint,  position_limit: [-2.618, 2.618]}
+  - {name: head_yaw_joint,   position_limit: [-1.396, 1.396]}
+  - {name: head_pitch_joint, position_limit: [-0.524, 0.524]}
+  - {name: left_shoulder_pitch_joint, position_limit: [-2.967, 2.967]}
+  - {name: left_shoulder_roll_joint,  position_limit: [-0.524, 2.792]}
+  - {name: left_shoulder_yaw_joint,   position_limit: [-1.833, 1.833]}
+  - {name: left_elbow_pitch_joint,    position_limit: [-1.527, 0.48]}
+  - {name: left_wrist_yaw_joint,      position_limit: [-1.833, 1.833]}
+  - {name: left_wrist_pitch_joint,    position_limit: [-0.611, 0.611]}
+  - {name: left_wrist_roll_joint,     position_limit: [-0.96, 0.96]}
+  - {name: right_shoulder_pitch_joint, position_limit: [-2.967, 2.967]}
+  - {name: right_shoulder_roll_joint,  position_limit: [-2.792, 0.524]}
+  - {name: right_shoulder_yaw_joint,   position_limit: [-1.833, 1.833]}
+  - {name: right_elbow_pitch_joint,    position_limit: [-1.527, 0.48]}
+  - {name: right_wrist_yaw_joint,      position_limit: [-1.833, 1.833]}
+  - {name: right_wrist_pitch_joint,    position_limit: [-0.611, 0.611]}
+  - {name: right_wrist_roll_joint,     position_limit: [-0.96, 0.96]}
+
+frames:
+  - {name: left_hand,  link: left_end_effector_link}
+  - {name: right_hand, link: right_end_effector_link}
+
+mounts:
+  left_wrist:  {link: left_end_effector_link}
+  right_wrist: {link: right_end_effector_link}
+  # Head camera on camera_link (the MJCF's camera frame: x forward, z up), turned
+  # into the optical frame (z forward, x right, y down) and pitched down 30 deg.
+  # Nominal, not calibrated: put a calibrated offset in the robot config's placement.
+  head_camera:
+    link: camera_link
+    pose: [0.0, 0.0, 0.0, -0.6124, 0.6124, -0.3536, 0.3536]
+
+# The MJCF is Fourier's gr2v3_8_7 from FFTAI/Wiki-GRx-Models (GRX/GR2, GPL-3.0). It
+# is not shipped with hiRobot. Fetch it with
+#
+#   pip install 'hirobot[assets]'
+#   hirobot assets fetch fourier_gr2
+#
+# It declares no actuators; the simulation adds a motor per joint, bounded by the
+# MJCF's actuatorfrcrange. Its root (base_link) has no free joint: the robot is
+# fixed in the world, as on a gantry.
+# Gains are simulation defaults, not Fourier's: scaled from the G1's by the
+# joints' torque limits (hip/knee 366 N m, arms 74 / 43 / 17 N m). Armature is an
+# estimate (the MJCF has none).
+model:
+  mjcf: ~/.cache/hirobot/assets/fourier/Wiki-GRx-Models/GRX/GR2/gr2v3_8_7/mjcf/gr2v3_8_7.xml
+  #     hip_p hip_r hip_y knee ank_p ank_r   (left, then right)
+  kp: [200, 150, 100, 200, 40, 30,
+       200, 150, 100, 200, 40, 30,
+       200,                                  # waist yaw
+       20, 20,                               # head yaw, pitch
+       100, 100, 60, 60, 20, 20, 20,         # left arm
+       100, 100, 60, 60, 20, 20, 20]         # right arm
+  kd: [8, 6, 4, 8, 2, 2,
+       8, 6, 4, 8, 2, 2,
+       6,
+       1, 1,
+       4, 4, 3, 3, 1, 1, 1,
+       4, 4, 3, 3, 1, 1, 1]
+  armature: [0.05, 0.03, 0.02, 0.05, 0.01, 0.01,
+             0.05, 0.03, 0.02, 0.05, 0.01, 0.01,
+             0.03,
+             0.005, 0.005,
+             0.02, 0.02, 0.01, 0.01, 0.005, 0.005, 0.005,
+             0.02, 0.02, 0.01, 0.01, 0.005, 0.005, 0.005]

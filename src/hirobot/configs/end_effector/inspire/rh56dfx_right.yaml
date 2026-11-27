@@ -18,6 +18,32 @@ joints:
   - {name: right_hand_index,          position_limit: [0.0, 1.0]}
   - {name: right_hand_thumb_bend,     position_limit: [0.0, 1.0]}
   - {name: right_hand_thumb_rotation, position_limit: [0.0, 1.0]}
+# In simulation each hand value drives the finger joints of h1_with_hand.xml
+# (unitree_ros robots/h1_description), q = offset + scale * value, read back from the
+# first one. Ranges from Unitree xr_teleoperate robot_hand_inspire.py, which
+# normalises value = (max - q) / (max - min): fingers 0..1.7 rad (1.7 closed), thumb
+# bend 0..0.5, thumb rotation -0.1..1.3. The URDF mimic ratios couple the rest:
+# *_intermediate = 1 * *_proximal, thumb_intermediate = 1.6 and thumb_distal = 2.4
+# times thumb_proximal_pitch. A real hand driver ignores joint_map.
+joint_map:
+  right_hand_pinky:
+    - {joint: R_pinky_proximal_joint, offset: 1.7, scale: -1.7}
+    - {joint: R_pinky_intermediate_joint, offset: 1.7, scale: -1.7}
+  right_hand_ring:
+    - {joint: R_ring_proximal_joint, offset: 1.7, scale: -1.7}
+    - {joint: R_ring_intermediate_joint, offset: 1.7, scale: -1.7}
+  right_hand_middle:
+    - {joint: R_middle_proximal_joint, offset: 1.7, scale: -1.7}
+    - {joint: R_middle_intermediate_joint, offset: 1.7, scale: -1.7}
+  right_hand_index:
+    - {joint: R_index_proximal_joint, offset: 1.7, scale: -1.7}
+    - {joint: R_index_intermediate_joint, offset: 1.7, scale: -1.7}
+  right_hand_thumb_bend:
+    - {joint: R_thumb_proximal_pitch_joint, offset: 0.5, scale: -0.5}
+    - {joint: R_thumb_intermediate_joint, offset: 0.8, scale: -0.8}
+    - {joint: R_thumb_distal_joint, offset: 1.2, scale: -1.2}
+  right_hand_thumb_rotation:
+    - {joint: R_thumb_proximal_yaw_joint, offset: 1.3, scale: -1.4}
 driver:
   type: unitree_motorcmds
   cmd_topic: rt/inspire/cmd

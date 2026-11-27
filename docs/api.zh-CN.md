@@ -415,6 +415,7 @@ maintainers: []
 | | `has_gripper` | `bool` | 有通过 `Action.gripper` 控制的夹爪。末端执行器驱动不列 `joints`（`opening` 接口）时必须为 true，列了 `joints` 时不能为 true |
 | | `joints` | `List[str]` | 该末端执行器驱动的 embodiment 关节（手指关节），按其驱动的电机顺序排列 |
 | | `driver` | `dict` or `None` | 末端执行器驱动规格：`type` 指定一个已注册的末端执行器驱动，其他键是它的参数。需要 `joints` 或 `has_gripper: true` |
+| | `joint_map` | `Dict[str, List[JointMapEntry]]` | 只用于仿真：每个手部关节驱动的模型关节，各自到 `offset + scale * value`（`joint`，`scale` 默认 1，`offset` 默认 0）；读数取第一个。没有条目的关节驱动同名的模型关节。真实手的驱动忽略它；`safety.sim_check` 目前拒绝它 |
 | | `frame` | `EndEffectorFrame` or `None` | 读取位姿的连杆：`body`（连杆名）、`pos`（m，在该连杆中）、`quat` `[x, y, z, w]`（在该连杆中）。`mujoco` 本体为带 frame 的末端执行器填写 `ee_poses`；SDK 自己报告位姿的驱动（UR、Franka）忽略它；`Kinematics` 由关节角算出同一个位姿 |
 | `Camera` | `name` | `str` | `Observation.images` 中的键 |
 | | `width`, `height` | `int` | 交付的画面尺寸 |
@@ -1138,6 +1139,7 @@ driver: {type: ur_rtde}     # 注册的驱动名 + 它的构造参数
 `model:` 要有 `mjcf` 或 `urdf`；两个都有时 `Embodiment.model` 取 MJCF。相对路径（包括
 `package_roots` 里的）按设备文件所在目录展开。仿真、`mujoco` 驱动和 `mink_ik` 需要 `mjcf`，只有 `urdf`
 的本体在那里会被拒绝。`kp`、`kd`、`armature`、`home` 设置 `mujoco` 本体的增益、armature 和初始姿态。
+`joint_names`（模型关节 -> 新名字）在模型编译前给 MJCF 关节改名，引用它们的执行器一起改。
 
 相机文件带 `width` / `height` / `fps` / `depth` / `fovy` / `intrinsics`（`{fx, fy, cx, cy}`，可选 `width`、`height`、`model`、`coeffs`）；末端执行器文件带 `interface`（`joints` 或
 `opening`）、`joints`、`tcp`；麦克风或扬声器只带 `driver`。

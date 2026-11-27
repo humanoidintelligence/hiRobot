@@ -63,7 +63,6 @@ def build_tree(spec: RobotSpec, sim: bool = False) -> Tuple["Robot", Embodiment]
     if sim:
         from hirobot.sim.sim_world import build_world, sim_options
 
-        _check_mjcf(spec)
         world = build_world(spec, layout, sim_options(spec.sim))
     sim_only = world is not None or all(_body_class(b).simulated for _, b in _bodies(spec.root))
     robot = _build_node(spec.root, layout, sim_only, "", world)
@@ -160,7 +159,12 @@ def tree_safety(spec: RobotSpec, embodiment: Embodiment) -> Dict[str, Any]:
 
 
 def _check_mjcf(spec: RobotSpec) -> None:
-    """Refuse a body whose ``model:`` has a urdf but no mjcf: the simulation needs an MJCF."""
+    """Refuse a body whose ``model:`` has a urdf but no mjcf, for the simulation check.
+
+    The shared world (``sim:``) compiles a URDF itself (:func:`hirobot.sim.sim_world.build_world`);
+    the simulation check (``safety.sim_check``) predicts collisions, which a URDF's
+    actuator-less, uncalibrated model would get wrong, so it still needs an MJCF.
+    """
     for path, dev in _bodies(spec.root):
         model = dev.fields.get("model")
         if model and not model.get("mjcf"):
@@ -276,8 +280,8 @@ def body_driver_kwargs(dev: DeviceSpec) -> Dict[str, Any]:
     """The body driver's keyword arguments (its ``driver:`` without ``type``).
 
     Until the shared simulation (``sim:``) exists, a body set to the ``mujoco``
-    driver takes its MJCF, gains, armature and home pose from the device file's
-    ``model:`` (what ``driver:`` sets itself wins).
+    driver takes its MJCF, gains, armature, home pose and joint renames from the
+    device file's ``model:`` (what ``driver:`` sets itself wins).
     """
     kwargs = dict(dev.driver or {"type": "toy"})
     if kwargs.pop("type") == "mujoco" and dev.fields.get("model"):
@@ -288,7 +292,7 @@ def body_driver_kwargs(dev: DeviceSpec) -> Dict[str, Any]:
             raise ValueError("a mujoco body needs an MJCF; its model: has only a urdf. Add "
                              "model: {mjcf: ...} or driver: {model_path: ...}")
         for key, arg in (("kp", "default_kp"), ("kd", "default_kd"), ("armature", "armature"),
-                         ("home", "initial_joint_pos")):
+                         ("home", "initial_joint_pos"), ("joint_names", "joint_names")):
             if model.get(key) is not None:
                 kwargs.setdefault(arg, model[key])
     return kwargs

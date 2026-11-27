@@ -4,6 +4,30 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。0.1.0 之前任何版本都可能有不兼容的接口改动，
 这类改动列在"移除"或"变更"下，并标 **不兼容**。
 
+## [0.0.8] - 2026-11-27
+
+更多机器人能在仿真里跑：带 Inspire 手的 Unitree H1、Fourier GR2 和 Trossen ALOHA 能在 MuJoCo 里运行，
+机械臂、H1 / H2 和 URDF 模型上的相机画面不再是黑的。README 介绍了网页界面 hiApp。
+
+### 新增
+
+- 末端执行器的 **`joint_map`**（只用于仿真）：每个手部关节驱动一组模型关节，各自到 `offset + scale * value`，
+  读数取第一个。Inspire RH56DFX 手用上了它，`unitree_h1_inspire` 现在用 `h1_with_hand.xml` 在 MuJoCo 里跑
+  （每只手 12 个手指关节，归一化值 0 为握紧、1 为张开）。`safety.sim_check` 目前拒绝带 `joint_map` 的机器人。
+- **`model: {joint_names: {旧名: 新名}}`**：在模型编译前给 MJCF 关节（以及引用它们的执行器）改名。
+- **`hirobot.sim.world_spec.world_spec(config)`**：一个配置所有本体组合成的未编译 MjSpec（前缀、安装位姿、
+  `fixed_base`），不加默认场景，同时返回关节名。给多本体配置的查看器用。
+- 新配置 `fourier_gr2` 和 `trossen_aloha`。`agilex_piper`、`franka_fr3_droid`、`franka_ur5e_dual` 和
+  `trossen_wx250s`（腕部相机）有了默认的相机安装位姿。
+- README 加了"网页界面"一节，介绍 [hiApp](https://github.com/humanoidintelligence/hiApp)：在浏览器里驱动任意 hiRobot 配置。
+
+### 变更
+
+- 模型自己没有地板、灯光或天空的仿真世界会加一个默认场景（`hirobot.sim.stage`）。以前 Menagerie 机械臂、H1 / H2
+  和 URDF 模型上的相机画面是黑的。
+- 共享仿真世界也能编译只有 URDF 的本体（自动加位置电机）；`safety.sim_check` 仍然需要 MJCF。
+- 没有任何视图驱动的执行器（H1 腕部关节、Menagerie 夹爪）用固定 PD 保持初始位置，不再是零力矩。
+
 ## [0.0.7] - 2026-11-26
 
 录制成 LeRobot 数据集、末端目标的 IK 层、MCP 服务器、通用 ROS 2 本体驱动、相机内参，以及除 AgiBot 外每个内置本体的仿真模型，
@@ -269,6 +293,7 @@
   和底盘，以及它的头部（RealSense D457）和腕部（RealSense D405）相机；Unitree G1 和 H1 上的 RealSense D435i 头部相机。
   Fourier GRx、AgiBot X1、Franka FR3 和 UR5e 的驱动已包含，还没在真机上验证。
 
+[0.0.8]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.4...v0.0.5

@@ -1,0 +1,23 @@
+# ALOHA 2: two ViperX 300 arms with grippers (one body, left/ and right/ joints),
+# a camera above the table and one on each wrist.
+#
+# Runs on the toy body; hiRobot has no ALOHA hardware driver yet. In MuJoCo:
+# make_robot("trossen_aloha", sim=True), with the model from body/trossen/aloha.yaml
+# (hirobot assets fetch menagerie_aloha).
+#
+# The cameras are where MuJoCo Menagerie's ALOHA scene puts them: overhead_cam
+# above the table edge, pitched down, and the D405s on the grippers. The
+# overhead pose is in the body's frame (the table centre at the origin).
+
+assembly:
+  name: trossen-aloha
+  parts:
+    body: {from: body/trossen/aloha, overrides: {driver: {type: toy}}}
+    overhead: {from: camera/intel/d435i_realsense, overrides: {fovy: 58}}
+    left_wrist: {from: camera/intel/d405, overrides: {fovy: 58}}
+    right_wrist: {from: camera/intel/d405, overrides: {fovy: 58}}
+  placement:
+    # pose: [x, y, z, qx, qy, qz, qw] of the optical frame (z forward, y down).
+    overhead: {pose: [0.0, -0.3038, 1.0252, 0.9763, 0.0, 0.0, -0.2163]}
+    left_wrist: {on: body.left_wrist_camera}
+    right_wrist: {on: body.right_wrist_camera}

@@ -151,11 +151,13 @@ Every built-in body except the AgiBot ones names its model in its device file
 | Unitree H2 | unitree_mujoco `h2_mujoco.xml` | None yet |
 | UR5e, AgileX PiPER, WidowX 250 S | MuJoCo Menagerie | `ur_ur5e_mujoco`, `agilex_piper_mujoco`, `trossen_wx250s_mujoco` |
 | Franka FR3 | MuJoCo Menagerie `franka_fr3`, a copy with the joints renamed to `joint1`...`joint7` (`fr3_hirobot.xml`) | None yet |
-| Fourier GR1T1, GR1T2 | Fourier's URDF (no MJCF exists) | None: the simulation needs an MJCF |
+| Unitree H1 with Inspire hands | unitree_ros `h1_with_hand.xml`, the waist renamed at load (`model: joint_names`); the hands' `joint_map` drives the 12 finger joints of each | None yet |
+| Fourier GR1T1, GR1T2 | Fourier's URDF (no MJCF exists) | None: the shared simulation (`sim:`) compiles the URDF with position motors; `safety.sim_check` needs an MJCF |
 | AgiBot G1, X1 | None: no model whose license allows redistribution | None |
 
 The other humanoids have no `*_mujoco` config because no source gives gains that hold them up.
-In the arm configs the gripper does not move: the simulation does not drive gripper joints.
+In the arm configs the gripper is not commanded: the simulation holds gripper joints at
+their start pose.
 The dependency-free
 `toy` driver, which every shipped config defaults to, integrates joint targets
 in-process for tests.

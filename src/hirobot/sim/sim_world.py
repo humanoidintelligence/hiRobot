@@ -23,7 +23,15 @@ connect, a ``reset`` or a ``set_state`` renders.
 
 **Actuators.** Each joint is driven by a torque (the view's PD). An actuator
 the MJCF declares as a position or velocity servo (MuJoCo Menagerie arms) is
-turned into a motor with the same force range.
+turned into a motor with the same force range. A driven joint no actuator
+drives (a model without actuators, a URDF) gets such a motor.
+
+An actuator no view drives (a wrist roll the embodiment does not list, a
+zero-torque gripper) holds the pose it had at connect: a PD of
+:data:`HOLD_KP` / :data:`HOLD_KD`, set once when the world connects.
+
+**Stage.** A world whose models bring no floor, light or sky gets a default one
+(:mod:`hirobot.sim.stage`), so cameras see something; the floor is drawn only.
 
 :func:`build_world` reads a loaded tree and its ``sim:`` section;
 ``make_robot`` calls it (:mod:`hirobot.loading.build`) when ``sim`` is on.
@@ -44,6 +52,7 @@ import numpy as np
 
 from hirobot.core.stamps import Stamp
 from hirobot.geometry.transforms import IDENTITY_POSE, pose_compose, quat_multiply
+from hirobot.sim.stage import add_default_stage
 
 if TYPE_CHECKING:
     from hirobot.core.embodiment import Camera
@@ -123,12 +132,14 @@ class FrameClock:
 
 @dataclass
 class WorldBody:
-    """One MJCF attached to the world.
+    """One model file attached to the world.
 
     Attributes:
         path: Part path of the device (``left/body``), for messages.
         prefix: Prefix of its names in the world (``left/``; ``""`` for the root's body).
-        mjcf: The MJCF file (``~`` expanded).
+        mjcf: The model file (``~`` expanded): the body's ``model.mjcf``, else its
+            ``model.urdf`` (MuJoCo compiles a URDF too; it has no actuators, the world
+            adds a motor per driven joint).
         anchor: World body it is attached to (``world``, ``cell/torso_link``).
         pose: Offset from ``anchor``, ``[x, y, z, qx, qy, qz, qw]``.
         fixed_base: Remove its free joint (welded in place).
@@ -142,6 +153,62 @@ class WorldBody:
     pose: np.ndarray = field(default_factory=lambda: IDENTITY_POSE.copy())
     fixed_base: bool = False
     height: Optional[float] = None
+    joint_names: Dict[str, str] = field(default_factory=dict)
+
+
+def rename_joints(mj: Any, spec: Any, names: Mapping[str, str], where: str) -> None:
+    """Rename joints of ``spec`` (model name -> new name) before it compiles.
+
+    Actuators and equalities name their joint, so the ones that named an old
+    name are pointed at the new one. ``ValueError`` names a joint the model
+    lacks or a new name it already has.
+    """
+    if not names:
+        return
+    have = {j.name for j in spec.joints}
+    missing = sorted(set(names) - have)
+    if missing:
+        raise ValueError(f"model.joint_names renames {missing}, which are not joints of {where}")
+    taken = sorted(set(names.values()) & (have - set(names)))
+    if taken:
+        raise ValueError(f"model.joint_names renames to {taken}, which {where} already has")
+    for j in spec.joints:
+        if j.name in names:
+            j.name = names[j.name]
+    for a in spec.actuators:
+        if a.trntype == mj.mjtTrn.mjTRN_JOINT and a.target in names:
+            a.target = names[a.target]
+    for e in spec.equalities:
+        if e.type == mj.mjtEq.mjEQ_JOINT:
+            if e.name1 in names:
+                e.name1 = names[e.name1]
+            if e.name2 in names:
+                e.name2 = names[e.name2]
+
+
+def exclude_hand_contacts(mj: Any, spec: Any, hands: Sequence[Sequence[str]]) -> None:
+    """No contacts between the links of one mapped hand (before ``spec`` compiles).
+
+    ``hands`` lists, per end-effector with a ``joint_map``, the model joints the
+    map drives. Its links are the bodies those joints move plus the body they
+    hang from (the palm). The map moves coupled joints along a fixed curve, as
+    the hand's linkage does, but the collision meshes of h1_with_hand.xml overlap
+    along it: the palm stops the thumb base short of open, the closed thumb stops
+    the closed index finger. Contacts with anything else are kept.
+    """
+    for joints in hands:
+        links = []
+        for name in joints:
+            j = spec.joint(name)
+            if j is None:
+                continue  # reported when the joints are mapped
+            for b in (j.parent, j.parent.parent):
+                if b is not None and b.name and b.name not in links:
+                    links.append(b.name)
+        links = [b for b in links if b != "world"]
+        for i, a in enumerate(links):
+            for b in links[i + 1:]:
+                spec.add_exclude(bodyname1=a, bodyname2=b)
 
 
 def _wxyz(q: Sequence[float]) -> List[float]:
@@ -150,6 +217,18 @@ def _wxyz(q: Sequence[float]) -> List[float]:
 
 def _xyzw(q: Sequence[float]) -> np.ndarray:
     return np.array([q[1], q[2], q[3], q[0]], dtype=float)
+
+
+#: Gains (Nm/rad, Nm s/rad) that hold a joint no view drives at its pose at connect:
+#: stiff enough for H1's wrist roll (left/right_hand_joint, about 0.5 kg beyond it)
+#: to stay within 0.05 rad, soft enough for a light gripper finger at a 2 ms step.
+HOLD_KP = 20.0
+HOLD_KD = 1.0
+
+#: Armature (kg m^2) a joint without one gets when the world adds its motor (a URDF, an
+#: MJCF without actuators): a rotor's reflected inertia of this order keeps light links
+#: stable under the PD. A body's ``model.armature`` replaces it when the view binds.
+MOTOR_ARMATURE = 0.01
 
 
 def _import_mujoco() -> Any:
@@ -246,11 +325,13 @@ class SimWorld:
         if alone:
             # One body at the origin: its MJCF is the world (exactly the single-robot model).
             spec = mj.MjSpec.from_file(self.bodies[0].mjcf)
+            rename_joints(mj, spec, self.bodies[0].joint_names, self.bodies[0].mjcf)
             self._weld(spec, self.bodies[0])
         else:
             spec = mj.MjSpec.from_file(self.scene) if self.scene else mj.MjSpec()
             for i, b in enumerate(self.bodies):
                 child = mj.MjSpec.from_file(b.mjcf)
+                rename_joints(mj, child, b.joint_names, b.mjcf)
                 if i == 0 and self.scene is None:
                     _copy_option(child, spec)
                 else:
@@ -265,6 +346,8 @@ class SimWorld:
                 spec.attach(child, prefix=b.prefix, frame=frame)
         if self.timestep is not None:
             spec.option.timestep = self.timestep
+        add_default_stage(mj, spec)
+        exclude_hand_contacts(mj, spec, [h for v in self._views for h in v._mapped_hands()])
         self._as_motors(spec)
         self._add_cameras(spec)
         return spec.compile()
@@ -305,6 +388,46 @@ class SimWorld:
             if has_force:
                 a.forcerange = force
             a.ctrllimited = mj.mjtLimited.mjLIMITED_FALSE
+        self._add_missing_motors(spec)
+
+    def _add_missing_motors(self, spec: Any) -> None:
+        """Give each joint a view drives, but no actuator drives, a PD motor like the others.
+
+        Some models carry no actuators (Fourier's GR2 MJCF, every URDF): the joints are
+        there, nothing moves them. The added motor is the PD of :meth:`_as_motors`
+        (``biastype`` affine, no control range), bounded by the joint's
+        ``actuatorfrcrange`` when it has one (a URDF joint's ``effort`` limit).
+        """
+        mj = self.mj
+        driven = {a.target for a in spec.actuators if a.trntype == mj.mjtTrn.mjTRN_JOINT}
+        added = False
+        for view in self._views:
+            for cands, _, _ in (t for ts in view._joint_targets() for t in ts):
+                joint = next((spec.joint(c) for c in cands if spec.joint(c) is not None), None)
+                if joint is None or joint.name in driven:
+                    continue  # a missing joint is reported when the view binds
+                a = spec.add_actuator()
+                a.name = f"hirobot/motor/{joint.name}"
+                a.trntype = mj.mjtTrn.mjTRN_JOINT
+                a.target = joint.name
+                a.set_to_motor()
+                a.biastype = mj.mjtBias.mjBIAS_AFFINE
+                a.ctrllimited = mj.mjtLimited.mjLIMITED_FALSE
+                limited = joint.actfrclimited != mj.mjtLimited.mjLIMITED_FALSE \
+                    and joint.actfrcrange[0] < joint.actfrcrange[1]
+                a.forcelimited = mj.mjtLimited.mjLIMITED_TRUE if limited \
+                    else mj.mjtLimited.mjLIMITED_FALSE
+                if limited:
+                    a.forcerange = [float(x) for x in joint.actfrcrange]
+                if float(joint.armature) == 0.0:
+                    joint.armature = MOTOR_ARMATURE
+                driven.add(joint.name)
+                added = True
+        if added:
+            # A model without actuators sets no integrator for them either: light links
+            # (a GR1 wrist yaw of 3e-4 kg m^2) under a stiff PD go unstable with explicit
+            # Euler. Integrate the PD's damping implicitly, as MuJoCo Menagerie models do.
+            spec.option.integrator = mj.mjtIntegrator.mjINT_IMPLICITFAST
 
     def _weld(self, spec: Any, body: WorldBody) -> None:
         mj = self.mj
@@ -350,6 +473,7 @@ class SimWorld:
         for view in self._views:
             view._bind(self)
         self.mj.mj_forward(self.model, self.data)
+        self._hold_unclaimed()
         for view in self._views:
             view._hold_here()
         self._clocks = {c.name: FrameClock(c.fps if c.fps else self.camera_fps)
@@ -362,6 +486,30 @@ class SimWorld:
             self.lock = self._viewer.lock()
             atexit.register(self._close_viewer)  # scripts that never disconnect()
         self.render(force=True)
+
+    def _hold_unclaimed(self) -> None:
+        """Hold each joint actuator no view drives at its pose now (HOLD_KP / HOLD_KD).
+
+        Without it such an actuator (H1's wrist roll, which the embodiment does
+        not list; a gripper the arm's view leaves out) gives no torque and its
+        link swings. Written once: no view touches these actuators later.
+        """
+        m, d, mj = self.model, self.data, self.mj
+        claimed = {int(a) for v in self._views for a in v._mact}
+        for a in range(m.nu):
+            if a in claimed or int(m.actuator_trntype[a]) != int(mj.mjtTrn.mjTRN_JOINT):
+                continue
+            jid = int(m.actuator_trnid[a, 0])
+            # int(): a numpy int is never `in` a tuple of mujoco enums.
+            if int(m.jnt_type[jid]) not in (int(mj.mjtJoint.mjJNT_HINGE),
+                                            int(mj.mjtJoint.mjJNT_SLIDE)):
+                continue
+            # _as_motors made it ctrl - kp q - kd dq (gain 1); ctrl = kp q0 holds q0.
+            m.actuator_gainprm[a, 0] = 1.0
+            m.actuator_biasprm[a, 0] = 0.0
+            m.actuator_biasprm[a, 1] = -HOLD_KP
+            m.actuator_biasprm[a, 2] = -HOLD_KD
+            d.ctrl[a] = HOLD_KP * float(d.qpos[m.jnt_qposadr[jid]])
 
     def disconnect(self) -> None:
         """Close renderers and the viewer once the last view disconnects."""
@@ -654,9 +802,15 @@ def build_world(spec: Any, layout: Any, options: Mapping[str, Any]) -> TreeWorld
             if where is None:
                 raise ValueError(f"{path}: cannot place it in the simulation world")
             known.add(path)
+            if model.get("package_roots") and not model.get("mjcf"):
+                raise ValueError(f"{path}: its urdf resolves meshes through package_roots "
+                                 "(package://), which the simulation does not read; add an "
+                                 "mjcf: to its model:")
             bodies.append(WorldBody(path=path, prefix=prefix, mjcf=os.path.expanduser(
-                str(model["mjcf"])), anchor=where[0], pose=np.asarray(where[1], dtype=float),
-                fixed_base=path in fixed, height=heights.get(path)))
+                str(model.get("mjcf") or model["urdf"])), anchor=where[0],
+                pose=np.asarray(where[1], dtype=float),
+                fixed_base=path in fixed, height=heights.get(path),
+                joint_names=dict(model.get("joint_names") or {})))
             kw: Dict[str, Any] = {"prefix": prefix, "path": path,
                                   "ramp_seconds": options["ramp_seconds"],
                                   "damping_kd": options["damping_kd"]}

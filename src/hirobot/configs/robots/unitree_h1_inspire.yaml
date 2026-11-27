@@ -16,7 +16,30 @@
 assembly:
   name: unitree-h1-inspire
   parts:
-    body: {from: body/unitree/h1, overrides: {driver: {type: toy}}}
+    # In simulation the body is h1_with_hand.xml from unitree_ros robots/h1_description
+    # (fetched with the H1 assets: `hirobot assets fetch unitree_h1`), which has the
+    # hands' finger joints; the hands' joint_map drives them. Its waist is torso_joint,
+    # renamed to waist_yaw_joint as it loads. Its wrist roll (left/right_hand_joint) is
+    # not in the embodiment; the simulation holds it at its start pose.
+    body:
+      from: body/unitree/h1
+      overrides:
+        driver: {type: toy}
+        model:
+          mjcf: ~/.cache/hirobot/assets/unitree_ros/robots/h1_description/mjcf/h1_with_hand.xml
+          joint_names: {torso_joint: waist_yaw_joint}
+          # Body gains from Unitree's unitree_sdk2_python example/h1/low_level/
+          # h1_low_level_example.py: kp 200 / kd 5, and 60 / 1.5 on its "weak" motors
+          # (ankles, arms). With 60 / 1 throughout, the hanging legs sag 0.08 rad at
+          # the hip roll. The fingers keep 60 / 1 in hand units (0-1); the joint_map
+          # scales them to the finger joints, whose actuators are limited to 1 Nm.
+          #    hips, knees, waist (SDK 0-8)          ankles  right arm       left arm
+          kp: [200, 200, 200, 200, 200, 200, 200, 200, 200, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60,
+               60, 60, 60, 60, 60, 60,                 # left hand
+               60, 60, 60, 60, 60, 60]                 # right hand
+          kd: [5, 5, 5, 5, 5, 5, 5, 5, 5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5,
+               1, 1, 1, 1, 1, 1,
+               1, 1, 1, 1, 1, 1]
     left_hand: {from: end_effector/inspire/rh56dfx_left}
     right_hand: {from: end_effector/inspire/rh56dfx_right}
     head: {from: camera/intel/d435i_image_server}

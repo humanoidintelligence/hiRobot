@@ -3,7 +3,11 @@
 Simulates a robot from an MJCF model behind the :class:`~hirobot.core.robot.Robot`
 contract, so control code written for real hardware runs unchanged in sim.
 Joints are matched to the embodiment by name (``<name>`` or ``<name>_joint``),
-so the model's joint order does not have to match the embodiment's.
+so the model's joint order does not have to match the embodiment's. A hand
+joint with an entry in its end-effector's ``joint_map`` drives every model joint
+listed there instead, each to ``offset + scale * value`` (an Inspire hand's
+normalised finger value to its two or three finger joints, in radians); its
+reading comes back from the first one, ``(q - offset) / scale``.
 
 The driver mirrors how a PD-controlled motor behaves: ``send_action`` stores the
 command, then advances physics by one control period, recomputing
@@ -54,7 +58,7 @@ import logging
 import os
 import threading
 import time
-from typing import Optional, Sequence, Union
+from typing import List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -66,7 +70,8 @@ from hirobot.core.stamps import Stamp
 from hirobot.geometry.transforms import (pose_compose, pose_inverse, quat_multiply,
                                          quat_to_matrix)
 from hirobot.core.types import Action, ControlMode, Observation
-from hirobot.sim.sim_world import SIM_CAMERA_FPS, FrameClock, camera_fps_option
+from hirobot.sim.sim_world import (SIM_CAMERA_FPS, FrameClock, camera_fps_option,
+                                   exclude_hand_contacts, rename_joints)
 from hirobot.control.watchdog import DEFAULT_COMMAND_TIMEOUT_S, CommandWatchdog
 
 logger = logging.getLogger(__name__)
@@ -108,6 +113,8 @@ class MujocoRobot(Robot):
             where they are, damped); ``None`` turns it off.
         camera_fps: Frame rate (simulated time) of a mounted camera without
             ``fps`` of its own; ``None`` renders it on every observation.
+        joint_names: Model joint -> new name, applied before the model compiles
+            (``model.joint_names``: H1's MJCF calls the waist ``torso_joint``).
     """
 
     simulated = True
@@ -130,8 +137,10 @@ class MujocoRobot(Robot):
         armature: Union[None, float, Sequence[float]] = None,
         command_timeout_s: Optional[float] = DEFAULT_COMMAND_TIMEOUT_S,
         camera_fps: Optional[float] = SIM_CAMERA_FPS,
+        joint_names: Optional[Mapping[str, str]] = None,
     ) -> None:
         self._embodiment = embodiment
+        self._joint_names = dict(joint_names or {})
         self._camera_fps = camera_fps_option(camera_fps)
         self._n = embodiment.num_dofs
         self._model_path = os.path.expanduser(model_path)
@@ -201,6 +210,7 @@ class MujocoRobot(Robot):
             raise FileNotFoundError(
                 f"MJCF model not found: {self._model_path}. {fetch_hint(self._model_path)}")
         spec = mj.MjSpec.from_file(self._model_path)
+        rename_joints(mj, spec, self._joint_names, self._model_path)
         free = [j for j in spec.joints if j.type == mj.mjtJoint.mjJNT_FREE]
         root = free[0].parent if free else None
         if self._fixed_base:
@@ -208,6 +218,10 @@ class MujocoRobot(Robot):
                 spec.delete(j)
         if self._base_height is not None and root is not None:
             root.pos = [root.pos[0], root.pos[1], float(self._base_height)]
+        from hirobot.sim.stage import add_default_stage
+
+        add_default_stage(mj, spec)
+        exclude_hand_contacts(mj, spec, self._mapped_hands())
         self._add_cameras(spec)
         return spec.compile()
 
@@ -283,32 +297,79 @@ class MujocoRobot(Robot):
         for clock in self._clocks.values():
             clock.restart()
 
+    def _joint_targets(self) -> List[List[Tuple[Tuple[str, ...], float, float]]]:
+        """Per embodiment joint, its model joints: ``(candidate names, scale, offset)``.
+
+        A joint is ``<name>`` or ``<name>_joint`` in the model (prefixed in a shared
+        world); a hand joint in its end-effector's ``joint_map`` is the listed model
+        joints instead.
+        """
+        pre = self._prefix
+        mapped = {k: v for ee in self._embodiment.end_effectors for k, v in ee.joint_map.items()}
+        out = []
+        for name in self._embodiment.joint_names:
+            if name in mapped:
+                out.append([((pre + e.joint,), float(e.scale), float(e.offset))
+                            for e in mapped[name]])
+            else:
+                out.append([((pre + name, f"{pre}{name}_joint"), 1.0, 0.0)])
+        return out
+
+    def _mapped_hands(self) -> List[List[str]]:
+        """Per end-effector with a ``joint_map``, the model joints it drives (prefixed)."""
+        return [[self._prefix + e.joint for v in ee.joint_map.values() for e in v]
+                for ee in self._embodiment.end_effectors if ee.joint_map]
+
     def _map_joints(self) -> None:
+        """Find each joint's model joints and actuators.
+
+        The model side (``_mq``, ``_mv``, ``_mact``, ``_mjid``, ``_scale``, ``_offset``,
+        and ``_src``, the embodiment joint each one comes from) has one entry per
+        driven model joint. ``_qadr`` / ``_vadr`` / ``_act`` / ``_jid`` are the first
+        model joint of each embodiment joint, which the readings come from.
+        """
         m, mj = self.model, self._mj
-        qadr, vadr, act, jids = [], [], [], []
         joint_to_act = {int(m.actuator_trnid[a, 0]): a for a in range(m.nu)
                         if m.actuator_trntype[a] == mj.mjtTrn.mjTRN_JOINT}
-        pre = self._prefix
-        for name in self._embodiment.joint_names:
-            jid = -1
-            for cand in (pre + name, f"{pre}{name}_joint"):
-                jid = mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT, cand)
-                if jid >= 0:
-                    break
-            if jid < 0:
-                raise ValueError(
-                    f"Joint {name!r} (or {name}_joint) not found in {self._model_path}"
-                )
-            if jid not in joint_to_act:
-                raise ValueError(f"Joint {name!r} has no joint actuator in {self._model_path}")
-            jids.append(jid)
-            qadr.append(int(m.jnt_qposadr[jid]))
-            vadr.append(int(m.jnt_dofadr[jid]))
-            act.append(joint_to_act[jid])
-        self._qadr = np.array(qadr)
-        self._vadr = np.array(vadr)
-        self._act = np.array(act)
-        self._jid = np.array(jids)
+        mq, mv, mact, mjid, scale, offset, src, first = [], [], [], [], [], [], [], []
+        owner: dict = {}
+        names = self._embodiment.joint_names
+        for i, (name, targets) in enumerate(zip(names, self._joint_targets())):
+            first.append(len(mjid))
+            for cands, sc, off in targets:
+                jid = -1
+                for cand in cands:
+                    jid = mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT, cand)
+                    if jid >= 0:
+                        break
+                if jid < 0:
+                    if len(cands) > 1:
+                        raise ValueError(f"Joint {name!r} (or {name}_joint) not found in "
+                                         f"{self._model_path}")
+                    raise ValueError(f"Joint {cands[0][len(self._prefix):]!r} (joint_map of "
+                                     f"{name!r}) not found in {self._model_path}")
+                if jid not in joint_to_act:
+                    raise ValueError(f"Joint {name!r} has no joint actuator in {self._model_path}")
+                if jid in owner:
+                    raise ValueError(f"Model joint {mj.mj_id2name(m, mj.mjtObj.mjOBJ_JOINT, jid)!r} "
+                                     f"is driven by both {owner[jid]!r} and {name!r} in "
+                                     f"{self._model_path}")
+                owner[jid] = name
+                mjid.append(jid)
+                mq.append(int(m.jnt_qposadr[jid]))
+                mv.append(int(m.jnt_dofadr[jid]))
+                mact.append(joint_to_act[jid])
+                scale.append(sc)
+                offset.append(off)
+                src.append(i)
+        self._mq, self._mv = np.array(mq, dtype=int), np.array(mv, dtype=int)
+        self._mact, self._mjid = np.array(mact, dtype=int), np.array(mjid, dtype=int)
+        self._scale, self._offset = np.array(scale, dtype=float), np.array(offset, dtype=float)
+        self._src = np.array(src, dtype=int)
+        self._first = np.array(first, dtype=int)
+        self._qadr, self._vadr = self._mq[self._first], self._mv[self._first]
+        self._act, self._jid = self._mact[self._first], self._mjid[self._first]
+        jids = list(self._jid)
         # The free joint of the tree these joints are on (its own in a shared world).
         root = int(m.body_rootid[m.jnt_bodyid[jids[0]]]) if jids else 0
         free = [j for j in range(m.njnt) if m.jnt_type[j] == mj.mjtJoint.mjJNT_FREE
@@ -318,19 +379,25 @@ class MujocoRobot(Robot):
         self._fv = int(m.jnt_dofadr[free[0]]) if free else 0    # [v | omega]
         self._substeps = max(1, round(self.control_period / m.opt.timestep))
         if self._armature is not None:
-            m.dof_armature[self._vadr] = self._armature
-        # Torque limits: the joint's actuatorfrcrange, else the actuator's
-        # forcerange/ctrlrange, else unlimited. Clamped in _advance so the
-        # reported joint_torque is the torque actually applied.
-        lo, hi = np.full(self._n, -np.inf), np.full(self._n, np.inf)
-        for i, (a, jid) in enumerate(zip(self._act, self._jid)):
+            m.dof_armature[self._mv] = self._armature[self._src]
+        # Torque limits per model joint: the joint's actuatorfrcrange, else the
+        # actuator's forcerange/ctrlrange, else unlimited. Clamped in _advance so
+        # the reported joint_torque is the torque actually applied.
+        k = len(self._mjid)
+        lo, hi = np.full(k, -np.inf), np.full(k, np.inf)
+        for i, (a, jid) in enumerate(zip(self._mact, self._mjid)):
             if m.jnt_actfrclimited[jid]:
                 lo[i], hi[i] = m.jnt_actfrcrange[jid]
             elif m.actuator_forcelimited[a]:
                 lo[i], hi[i] = m.actuator_forcerange[a]
             elif m.actuator_ctrllimited[a]:
                 lo[i], hi[i] = m.actuator_ctrlrange[a]
-        self._tau_lo, self._tau_hi = lo, hi
+        self._mtau_lo, self._mtau_hi = lo, hi
+        # Per embodiment joint, in its own units (hand torque = model torque * scale):
+        # the first model joint's limits, which the simulation check reads.
+        s = self._scale[self._first]
+        a, b = lo[self._first] * s, hi[self._first] * s
+        self._tau_lo, self._tau_hi = np.minimum(a, b), np.maximum(a, b)
         # Base frame for ee_poses: the root body of the tree the joints are on.
         self._root = int(m.body_rootid[m.jnt_bodyid[self._jid[0]]]) if self._n else 0
         self._ee_frames = []
@@ -344,6 +411,31 @@ class MujocoRobot(Robot):
             offset = np.array([*ee.frame.pos, *ee.frame.quat], dtype=float)
             self._ee_frames.append((ee.name, bid, offset))
 
+    def _read_q(self) -> np.ndarray:
+        """Joint positions in embodiment units, from each joint's first model joint."""
+        f = self._first
+        return (self.data.qpos[self._qadr] - self._offset[f]) / self._scale[f]
+
+    def _write_q(self, q, dq=None) -> None:
+        """Put every model joint at ``offset + scale * q`` (and ``scale * dq``)."""
+        q = np.asarray(q, dtype=float)
+        self.data.qpos[self._mq] = self._offset + self._scale * q[self._src]
+        if dq is not None:
+            self.data.qvel[self._mv] = self._scale * np.asarray(dq, dtype=float)[self._src]
+
+    def _model_pd(self):
+        """The held command on the model side: ``(q*, dq*, tau_ff, kp, kd)`` per model joint.
+
+        ``kp / scale^2`` keeps the torque per unit of error the user set, in the
+        joint's own units (a hand joint's torque is the model torque times ``scale``).
+        """
+        src, s = self._src, self._scale
+        s2 = s * s
+        kp = np.broadcast_to(self._cmd_kp, (self._n,))[src] / s2
+        kd = np.broadcast_to(self._cmd_kd, (self._n,))[src] / s2
+        return (self._offset + s * self._cmd_q[src], s * self._cmd_dq[src],
+                self._cmd_tau[src] / s, kp, kd)
+
     @property
     def control_period(self) -> float:
         hz = self._embodiment.control_hz
@@ -355,10 +447,10 @@ class MujocoRobot(Robot):
         self.data = self._mj.MjData(self.model)
         self._map_joints()
         if self._initial is not None:
-            self.data.qpos[self._qadr] = self._initial
+            self._write_q(self._initial)
         self._mj.mj_forward(self.model, self.data)
         self._ticks = 0
-        self._cmd_q = self.data.qpos[self._qadr].copy()
+        self._cmd_q = self._read_q()
         self._clocks = {c.name: FrameClock(c.fps if c.fps else self._camera_fps)
                         for c in self._cameras}
         self._open_renderers()
@@ -381,7 +473,7 @@ class MujocoRobot(Robot):
         """
         token = self._stop_token()
         self._restart_cameras()
-        start = self.data.qpos[self._qadr].copy()
+        start = self._read_q()
         steps = max(1, int(self._ramp_seconds / self.control_period))
         for s in range(steps + 1):
             ratio = min(1.0, s / steps)
@@ -403,12 +495,12 @@ class MujocoRobot(Robot):
         """Step physics for one control period under the held PD command."""
         m, d, mj = self.model, self.data, self._mj
         with self._lock:
+            qs, dqs, tau_ff, kp, kd = self._model_pd()
             for _ in range(self._substeps):
-                q = d.qpos[self._qadr]
-                dq = d.qvel[self._vadr]
-                tau = (self._cmd_kp * (self._cmd_q - q)
-                       + self._cmd_kd * (self._cmd_dq - dq) + self._cmd_tau)
-                d.ctrl[self._act] = np.clip(tau, self._tau_lo, self._tau_hi)
+                q = d.qpos[self._mq]
+                dq = d.qvel[self._mv]
+                tau = kp * (qs - q) + kd * (dqs - dq) + tau_ff
+                d.ctrl[self._mact] = np.clip(tau, self._mtau_lo, self._mtau_hi)
                 mj.mj_step(m, d)
             self._ticks += 1
         self.render()
@@ -458,10 +550,11 @@ class MujocoRobot(Robot):
             raise RuntimeError("Not connected; call connect() first.")
         d = self.data
         with self._lock:
+            s = self._scale[self._first]
             obs = Observation(
-                joint_pos=d.qpos[self._qadr].copy(),
-                joint_vel=d.qvel[self._vadr].copy(),
-                joint_torque=d.actuator_force[self._act].copy(),
+                joint_pos=self._read_q(),
+                joint_vel=d.qvel[self._vadr] / s,
+                joint_torque=d.actuator_force[self._act] * s,
             )
             if self._embodiment.floating_base:
                 gravity = np.asarray(self.model.opt.gravity, dtype=float)
@@ -522,12 +615,9 @@ class MujocoRobot(Robot):
         """
         d, mj = self.data, self._mj
         with self._lock:
-            d.qpos[self._qadr] = np.asarray(joint_pos, dtype=float)
-            d.qvel[self._vadr] = 0.0
+            self._write_q(joint_pos, np.zeros(self._n) if joint_vel is None else joint_vel)
             if self._has_free:
                 d.qvel[self._fv:self._fv + 6] = 0.0
-            if joint_vel is not None:
-                d.qvel[self._vadr] = np.asarray(joint_vel, dtype=float)
             if self._has_free and base_orientation is not None:
                 q = np.asarray(base_orientation, dtype=float)
                 norm = np.linalg.norm(q)
@@ -654,7 +744,7 @@ class MujocoView(MujocoRobot):
         self._map_joints()
         self._substeps = world.substeps
         if self._initial is not None:
-            self.data.qpos[self._qadr] = self._initial
+            self._write_q(self._initial)
 
     def _hold_here(self) -> None:
         """Hold the pose at connect with the default gains.
@@ -664,7 +754,7 @@ class MujocoView(MujocoRobot):
         stepped before its reset, as with :class:`MujocoRobot`).
         """
         z = np.zeros(self._n)
-        self._set_command(self.data.qpos[self._qadr].copy(), self._kp, self._kd, z, z)
+        self._set_command(self._read_q(), self._kp, self._kd, z, z)
 
     def disconnect(self) -> None:
         if self._connected:
@@ -687,10 +777,11 @@ class MujocoView(MujocoRobot):
         force range; the damping is integrated implicitly when the model's
         integrator is.
         """
-        m, d, a = self.model, self.data, self._act
-        m.actuator_biasprm[a, 1] = -self._cmd_kp
-        m.actuator_biasprm[a, 2] = -self._cmd_kd
-        d.ctrl[a] = self._cmd_kp * self._cmd_q + self._cmd_kd * self._cmd_dq + self._cmd_tau
+        m, d, a = self.model, self.data, self._mact
+        qs, dqs, tau_ff, kp, kd = self._model_pd()  # per model joint (joint_map)
+        m.actuator_biasprm[a, 1] = -kp
+        m.actuator_biasprm[a, 2] = -kd
+        d.ctrl[a] = kp * qs + kd * dqs + tau_ff
 
     def _after_step(self) -> None:
         """Hook after each world step (nothing yet)."""
@@ -703,7 +794,7 @@ class MujocoView(MujocoRobot):
         """
         token = self._stop_token()
         self._restart_cameras()
-        start = self.data.qpos[self._qadr].copy()
+        start = self._read_q()
         steps = max(1, int(self._ramp_seconds / self.control_period))
         for s in range(steps + 1):
             ratio = min(1.0, s / steps)

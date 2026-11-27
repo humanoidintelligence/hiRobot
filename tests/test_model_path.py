@@ -106,9 +106,45 @@ def test_urdf_only_body_is_refused_where_an_mjcf_is_needed(tmp_path):
                                            "overrides": {"driver": {"type": "mujoco"}}}}}}
     with pytest.raises(ValueError, match="only a urdf"):
         make_robot(cfg)
-    with pytest.raises(ValueError, match="only a urdf"):
+
+
+def test_urdf_with_package_roots_is_refused_by_the_shared_world(tmp_path):
+    # The shared world (sim:) compiles a plain URDF; package:// meshes it cannot resolve.
+    _write(tmp_path / "body/arm.yaml",
+           _body("model: {urdf: /m/arm.urdf, package_roots: {arm: /m}}\n"))
+    with pytest.raises(ValueError, match="package_roots"):
         make_robot({"assembly": {"parts": {"body": {"from": str(tmp_path / "body/arm.yaml")}}}},
                    sim=True)
+
+
+def test_urdf_only_body_runs_in_the_shared_world(tmp_path):
+    pytest.importorskip("mujoco")
+    import numpy as np
+
+    from hirobot import Action
+
+    urdf = tmp_path / "arm.urdf"
+    urdf.write_text(
+        '<robot name="arm"><link name="base"/>'
+        '<link name="l1"><inertial><mass value="1"/><origin xyz="0.1 0 0"/>'
+        '<inertia ixx="0.01" iyy="0.01" izz="0.01" ixy="0" ixz="0" iyz="0"/></inertial>'
+        '<visual><geometry><box size="0.2 0.02 0.02"/></geometry></visual></link>'
+        '<joint name="j1" type="revolute"><parent link="base"/><child link="l1"/>'
+        '<axis xyz="0 0 1"/><limit lower="-2" upper="2" effort="20" velocity="3"/></joint>'
+        '</robot>')
+    _write(tmp_path / "body/arm.yaml", _body(f"model: {{urdf: {urdf}}}\n"))
+    robot = make_robot({"assembly": {"parts": {"body": {"from": str(tmp_path / "body/arm.yaml")}}},
+                        "sim": {"realtime": False, "ramp_seconds": 0.1}})
+    robot.connect()
+    try:
+        # The URDF has no actuator; the world adds a motor, bounded by its effort limit.
+        m = robot.world.model
+        assert m.nu == 1 and list(m.actuator_forcerange[0]) == [-20, 20]
+        for _ in range(100):
+            robot.send_action(Action(joint_target=np.array([0.5])))
+        assert abs(robot.get_observation().joint_pos[0] - 0.5) < 0.05
+    finally:
+        robot.disconnect()
 
 
 def test_model_ref_is_frozen_and_checked():

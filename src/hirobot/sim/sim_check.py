@@ -275,6 +275,9 @@ class _Sim:
         from hirobot.sim.sim_world import sim_options
 
         for path, part in spec.root.walk():
+            if getattr(part, "kind", None) == "end_effector" and part.fields.get("joint_map"):
+                # Its arrays take one model joint per robot joint; a joint_map drives several.
+                raise ValueError(f"simulation check does not support hand joint_map yet ({path})")
             if getattr(part, "kind", None) == "body" and not part.fields.get("model"):
                 raise ValueError(f"{path}: every body needs a model: (its MJCF) for the simulation "
                                  "check; checking only some of the parts would miss collisions")

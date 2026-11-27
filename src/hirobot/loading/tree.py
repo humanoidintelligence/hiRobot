@@ -38,6 +38,7 @@ that follows, is worked out by :mod:`hirobot.assembly.parts`.
 from __future__ import annotations
 
 import copy
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,7 +56,7 @@ DEVICE_KINDS = ("body", "end_effector", "camera", "microphone", "speaker")
 DEVICE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "body": ("control_hz", "floating_base", "battery_soc_limit", "joints", "frames", "mounts",
              "grippers", "model", "driver"),
-    "end_effector": ("interface", "joints", "tcp", "mounts", "model", "driver"),
+    "end_effector": ("interface", "joints", "joint_map", "tcp", "mounts", "model", "driver"),
     "camera": ("width", "height", "fps", "depth", "fovy", "intrinsics", "driver"),
     "microphone": ("driver",),
     "speaker": ("driver",),
@@ -65,7 +66,7 @@ NODE_KEYS = ("name", "control_hz", "parts", "placement", "collision")
 REF_KEYS = ("from", "overrides", "safety")
 #: Top-level keys of a robot config used as the root (``defaults:`` is expanded first).
 ROOT_KEYS = ("assembly", "safety", "layers", "arbiter", "sim", "mcp")
-MODEL_KEYS = ("mjcf", "urdf", "package_roots", "kp", "kd", "armature", "home")
+MODEL_KEYS = ("mjcf", "urdf", "package_roots", "joint_names", "kp", "kd", "armature", "home")
 #: ``safety:`` keys that only the root config may set.
 ROOT_ONLY_SAFETY = ("sim_check",)
 #: Every ``safety:`` key (the gate's arguments, ``sim_check``).
@@ -466,6 +467,12 @@ def _device(data: Mapping[str, Any], source: Optional[Path], base: Path, where: 
         if interface == "opening" and joints:
             raise ValueError(f"{where}: an end effector on the opening interface has no joints")
         out["joints"] = joints
+        if data.get("joint_map") is not None:
+            if interface == "opening":
+                raise ValueError(f"{where}: joint_map maps hand joints to model joints; an end "
+                                 "effector on the opening interface has no joints")
+            out["joint_map"] = _joint_map(data["joint_map"], [j["name"] for j in joints],
+                                          f"{where}: joint_map")
         out["tcp"] = None if data.get("tcp") is None else _pose(data["tcp"], f"{where}: tcp")
         out["mounts"] = _mounts(data.get("mounts") or {}, where)
     elif kind == "camera":
@@ -511,6 +518,50 @@ def _joints(value: Any, where: str) -> List[Dict[str, Any]]:
     return out
 
 
+def _joint_map(value: Any, joints: List[str], where: str) -> Dict[str, List[Dict[str, Any]]]:
+    """A hand's ``joint_map:``, checked: hand joint -> ``[{joint, scale, offset}, ...]``.
+
+    Each listed model joint is driven to ``offset + scale * value``; the first one
+    gives the hand joint's reading back. ``scale`` defaults to 1, ``offset`` to 0.
+    """
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{where} must map hand joints to lists of {{joint, scale, offset}}, "
+                         f"got {value!r}")
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    seen: Dict[str, str] = {}
+    for name, entries in value.items():
+        if name not in joints:
+            raise ValueError(f"{where}: {name!r} is not a joint of this hand; joints: {joints}")
+        if not isinstance(entries, list) or not entries:
+            raise ValueError(f"{where}: {name}: must be a non-empty list of "
+                             f"{{joint, scale, offset}}, got {entries!r}")
+        rows = []
+        for e in entries:
+            if not isinstance(e, Mapping) or not isinstance(e.get("joint"), str) \
+                    or not e["joint"]:
+                raise ValueError(f"{where}: {name}: every entry is {{joint, scale, offset}} with "
+                                 f"a model joint name, got {e!r}")
+            unknown = sorted(set(e) - {"joint", "scale", "offset"})
+            if unknown:
+                raise ValueError(f"{where}: {name}: unknown key(s) {unknown}; an entry takes "
+                                 "joint, scale and offset")
+            scale, offset = e.get("scale", 1.0), e.get("offset", 0.0)
+            for key, v in (("scale", scale), ("offset", offset)):
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                    raise ValueError(f"{where}: {name}: {key} must be a finite number, got {v!r}")
+            if scale == 0:
+                raise ValueError(f"{where}: {name}: scale must not be 0 (the hand value is read "
+                                 f"back as (q - offset) / scale)")
+            joint = e["joint"]
+            if joint in seen:
+                raise ValueError(f"{where}: model joint {joint!r} is listed by both "
+                                 f"{seen[joint]!r} and {name!r}")
+            seen[joint] = name
+            rows.append({"joint": joint, "scale": float(scale), "offset": float(offset)})
+        out[str(name)] = rows
+    return out
+
+
 def _frames(value: Any, where: str) -> List[Dict[str, Any]]:
     if not isinstance(value, list):
         raise ValueError(f"{where}: frames must be a list, got {value!r}")
@@ -549,8 +600,8 @@ def _mounts(value: Any, where: str) -> Dict[str, Dict[str, Any]]:
 
 def _model(value: Any, base: Path, where: str) -> Dict[str, Any]:
     if not isinstance(value, Mapping) or not (value.get("mjcf") or value.get("urdf")):
-        raise ValueError(f"{where} must be a mapping with mjcf or urdf (and package_roots, kp, "
-                         "kd, armature, home)")
+        raise ValueError(f"{where} must be a mapping with mjcf or urdf (and package_roots, "
+                         "joint_names, kp, kd, armature, home)")
     unknown = sorted(set(value) - set(MODEL_KEYS))
     if unknown:
         raise ValueError(f"{where}: unknown key(s) {unknown}; it takes {list(MODEL_KEYS)}")
@@ -567,6 +618,17 @@ def _model(value: Any, base: Path, where: str) -> Dict[str, Any]:
             raise ValueError(f"{where}: package_roots must map package names to directories, "
                              f"got {roots!r}")
         out["package_roots"] = {str(k): _path_from(v, base) for k, v in roots.items()}
+    names = out.get("joint_names")
+    if names is not None:
+        # Model joint -> embodiment joint, renamed before the simulation compiles the
+        # model (H1's MJCF calls the waist torso_joint).
+        if not isinstance(names, Mapping) or not all(
+                isinstance(k, str) and k and isinstance(v, str) and v for k, v in names.items()):
+            raise ValueError(f"{where}: joint_names must map model joint names to new names, "
+                             f"got {names!r}")
+        if len(set(names.values())) != len(names):
+            raise ValueError(f"{where}: joint_names renames two joints to the same name")
+        out["joint_names"] = dict(names)
     return out
 
 

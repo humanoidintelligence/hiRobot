@@ -74,7 +74,7 @@ from hirobot.core.types import (
     RobotStatus,
 )
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 
 __all__ = [
     "Observation",
@@ -172,6 +172,11 @@ def _sim_check(cfg: Any, spec: Any, driver_name: str) -> Any:
     if missing:
         raise ValueError(f"safety.sim_check: body part(s) {missing} have no model: (their MJCF); "
                          "every body needs one, checking only some parts would miss collisions")
+    mapped = [p for p, d in spec.root.walk() if isinstance(d, DeviceSpec)
+              and d.kind == "end_effector" and d.fields.get("joint_map")]
+    if mapped:
+        # Its arrays take one model joint per robot joint; a joint_map drives several.
+        raise ValueError(f"simulation check does not support hand joint_map yet ({mapped[0]})")
     urdf_only = [p for p, m in bodies if not m.get("mjcf")]
     if urdf_only:
         raise ValueError(f"safety.sim_check needs an mjcf for every body; body part(s) "

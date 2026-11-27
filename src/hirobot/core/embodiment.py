@@ -267,6 +267,26 @@ class EndEffectorFrame(BaseModel):
     quat: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
 
 
+class JointMapEntry(BaseModel):
+    """One model joint a hand joint drives in simulation (``EndEffector.joint_map``).
+
+    Attributes:
+        joint: Model joint name (MJCF), prefixed like the other names in a nested node.
+        scale: Model radians per unit of the hand joint; not 0.
+        offset: Model joint position at a hand value of 0.
+    """
+
+    joint: str
+    scale: float = 1.0
+    offset: float = 0.0
+
+    @model_validator(mode="after")
+    def _check(self) -> "JointMapEntry":
+        if self.scale == 0:
+            raise ValueError(f"joint_map entry {self.joint!r}: scale must not be 0")
+        return self
+
+
 class EndEffector(BaseModel):
     """A controllable end-effector / task-space frame.
 
@@ -290,6 +310,11 @@ class EndEffector(BaseModel):
             frame; drivers whose SDK reports the pose themselves (UR, Franka)
             ignore it. :class:`~hirobot.geometry.kinematics.Kinematics` computes the
             same pose from joint angles.
+        joint_map: Per hand joint, the model joints a simulator drives for it:
+            each to ``offset + scale * value``, the first one giving the value
+            back as ``(q - offset) / scale``. A hand joint without an entry is
+            matched to the model joint of its own name. Only simulators read
+            it; a real hand driver takes the hand values as they are.
     """
 
     name: str
@@ -297,6 +322,18 @@ class EndEffector(BaseModel):
     joints: List[str] = Field(default_factory=list)
     driver: Optional[Dict[str, Any]] = None
     frame: Optional[EndEffectorFrame] = None
+    joint_map: Dict[str, List[JointMapEntry]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_joint_map(self) -> "EndEffector":
+        unknown = sorted(set(self.joint_map) - set(self.joints))
+        if unknown:
+            raise ValueError(f"end-effector {self.name!r}: joint_map lists {unknown}, which are "
+                             f"not its joints {self.joints}")
+        empty = sorted(k for k, v in self.joint_map.items() if not v)
+        if empty:
+            raise ValueError(f"end-effector {self.name!r}: joint_map entries {empty} are empty")
+        return self
 
 
 class AudioDevice(BaseModel):

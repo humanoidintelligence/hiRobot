@@ -23,6 +23,15 @@ frames:
   - {name: ee}
 grippers: [ee]
 
+mounts:
+  # A wrist camera on the gripper link: 5 cm above it, looking forward past the
+  # fingers and slightly down (optical frame: z forward, x right, y down).
+  # Nominal, not measured on a rig: put a calibrated offset in the robot
+  # config's placement pose.
+  wrist_camera:
+    link: wx250s/gripper_link
+    pose: [0.0, 0.0, 0.05, 0.5539, -0.5539, 0.4395, -0.4395]
+
 # The MJCF comes from MuJoCo Menagerie (trossen_wx250s, BSD-3-Clause); it is not
 # shipped with hiRobot. Fetch it with
 #

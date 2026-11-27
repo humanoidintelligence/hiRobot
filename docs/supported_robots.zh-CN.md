@@ -139,10 +139,11 @@ Hugging Face 数据集 `humanoidintelligence/hirobot-assets` 把它们连同许�
 | Unitree H2 | unitree_mujoco `h2_mujoco.xml` | 暂无 |
 | UR5e、AgileX PiPER、WidowX 250 S | MuJoCo Menagerie | `ur_ur5e_mujoco`、`agilex_piper_mujoco`、`trossen_wx250s_mujoco` |
 | Franka FR3 | MuJoCo Menagerie `franka_fr3`，关节改名为 `joint1`…`joint7` 的副本（`fr3_hirobot.xml`） | 暂无 |
-| Fourier GR1T1、GR1T2 | Fourier 的 URDF（没有 MJCF） | 无：仿真需要 MJCF |
+| Unitree H1（带 Inspire 手） | unitree_ros `h1_with_hand.xml`，加载时把腰关节改名（`model: joint_names`）；手的 `joint_map` 驱动每只手的 12 个手指关节 | 暂无 |
+| Fourier GR1T1、GR1T2 | Fourier 的 URDF（没有 MJCF） | 无：共享仿真（`sim:`）会编译 URDF 并加位置电机；`safety.sim_check` 需要 MJCF |
 | AgiBot G1、X1 | 无：没有许可证允许转载的模型 | 无 |
 
-其他人形机器人没有 `*_mujoco` 配置，因为没有哪个来源给出能让它们站住的增益。机械臂配置里夹爪不会动：
-仿真不驱动夹爪关节。
+其他人形机器人没有 `*_mujoco` 配置，因为没有哪个来源给出能让它们站住的增益。机械臂配置里夹爪不受指令控制：
+仿真把夹爪关节保持在初始位置。
 无依赖的 `toy` 驱动是所有随附配置的默认驱动，
 它在进程内对关节目标做积分，用于测试。

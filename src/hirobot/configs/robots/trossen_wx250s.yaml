@@ -14,8 +14,9 @@
 #       body:  {overrides: {driver: {type: trossen_dynamixel, port: /dev/ttyDXL}}}
 #       wrist: {overrides: {driver: {serial: "<wrist camera serial>"}}}
 #       scene: {overrides: {driver: {serial: "<scene camera serial>"}}}
-# The cameras have no placement (it depends on the station). See
-# docs/setup/trossen_wx250s.md.
+# The camera placements are defaults (the wrist camera on the gripper, the scene
+# camera front left of the arm, looking at its workspace), not a measured rig:
+# override them in a local config. See docs/setup/trossen_wx250s.md.
 
 assembly:
   name: trossen-wx250s
@@ -23,3 +24,8 @@ assembly:
     body: {from: body/trossen/wx250s, overrides: {driver: {type: toy}}}
     wrist: {from: camera/intel/d435i_realsense}
     scene: {from: camera/intel/d435i_realsense}
+  placement:
+    wrist: {on: body.wrist_camera}
+    # pose: [x, y, z, qx, qy, qz, qw] of the optical frame (z forward, y down) in
+    # the arm's base frame.
+    scene: {pose: [0.9, 0.6, 0.6, 0.3703, 0.7406, -0.5014, -0.2507]}

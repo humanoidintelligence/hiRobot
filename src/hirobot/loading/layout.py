@@ -57,6 +57,7 @@ from hirobot.core.embodiment import (
     EndEffector,
     EndEffectorFrame,
     Joint,
+    JointMapEntry,
     ModelRef,
 )
 from hirobot.geometry.transforms import IDENTITY_POSE, pose_compose
@@ -288,8 +289,10 @@ def _embodiment(node: NodeSpec, name: Optional[str], layouts: Dict[str, PartLayo
             start = len(joints)
             joints += [j.model_copy(update={"name": pre + j.name}) for j in child.joints]
             # Links are named in full by the child (link_prefix): not renamed here.
-            ees += [e.model_copy(update={"name": pre + e.name, "driver": None,
-                                         "joints": [pre + j for j in e.joints]})
+            ees += [e.model_copy(update={
+                "name": pre + e.name, "driver": None, "joints": [pre + j for j in e.joints],
+                "joint_map": {pre + k: [m.model_copy(update={"joint": pre + m.joint})
+                                        for m in v] for k, v in e.joint_map.items()}})
                     for e in child.end_effectors]
             cams += [c.model_copy(update={"name": pre + c.name, "driver": None})
                      for c in child.cameras]
@@ -336,6 +339,8 @@ def _embodiment(node: NodeSpec, name: Optional[str], layouts: Dict[str, PartLayo
             ees.append(EndEffector(
                 name=p, has_gripper=f["interface"] == "opening",
                 joints=[j["name"] for j in f["joints"]], driver=part.driver,
+                joint_map={k: [JointMapEntry(**m) for m in v]
+                           for k, v in (f.get("joint_map") or {}).items()},
                 frame=None if fr is None else EndEffectorFrame(body=fr[0], pos=fr[1],
                                                                quat=fr[2])))
         elif part.kind == "camera":

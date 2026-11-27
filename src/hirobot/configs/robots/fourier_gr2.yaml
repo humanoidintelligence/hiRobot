@@ -1,0 +1,14 @@
+# Fourier GR2: 29-DoF humanoid with a head camera.
+#
+# Runs on the toy body; hiRobot has no GR2 driver yet (the Aurora SDK), so there
+# is no hardware override. In MuJoCo: make_robot("fourier_gr2", sim=True), with
+# the model from body/fourier/gr2.yaml (hirobot assets fetch fourier_gr2).
+# The head camera is a RealSense D435i, its placement nominal.
+
+assembly:
+  name: fourier-gr2
+  parts:
+    body: {from: body/fourier/gr2, overrides: {driver: {type: toy}}}
+    head: {from: camera/intel/d435i}
+  placement:
+    head: {on: body.head_camera}
