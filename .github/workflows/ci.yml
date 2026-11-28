@@ -33,17 +33,19 @@ jobs:
       matrix:
         # Core install (numpy, pydantic, pyyaml) on every supported Python.
         # Vendor SDKs are never installed: tests run against fakes.
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        # setup-python has no 3.9 build for ubuntu-latest (26.04), so 3.9 runs on 24.04.
+        python: ["3.10", "3.11", "3.12", "3.13"]
         os: [ubuntu-latest]
         extras: [core]
         include:
+          - {python: "3.9", os: ubuntu-24.04, extras: core}
           # Optional extras (MuJoCo, OpenCV, PyAV, sounddevice, pyarrow) on the oldest and newest Python.
-          - {python: "3.9", os: ubuntu-latest, extras: all}
+          - {python: "3.9", os: ubuntu-24.04, extras: all}
           - {python: "3.13", os: ubuntu-latest, extras: all}
           # The core is pure Python; check it imports and runs on macOS too.
           - {python: "3.12", os: macos-latest, extras: core}
           # Oldest dependency versions pyproject.toml allows.
-          - {python: "3.9", os: ubuntu-latest, extras: minimum}
+          - {python: "3.9", os: ubuntu-24.04, extras: minimum}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -89,8 +91,8 @@ jobs:
           python - <<'EOF'
           from pathlib import Path
           import hirobot
-          from hirobot.config import available_configs, load_config
-          from hirobot.sdk import load_manifest
+          from hirobot.loading.config import available_configs, load_config
+          from hirobot.loading.sdk import load_manifest
           assert "site-packages" in hirobot.__file__, hirobot.__file__
           names = available_configs()
           assert names, "no built-in configs in the wheel"

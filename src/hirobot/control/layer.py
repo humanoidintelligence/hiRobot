@@ -183,6 +183,14 @@ class Layer(Robot):
         return bool(self.inner.simulated)
 
     @property
+    def accepts_parts(self) -> bool:  # type: ignore[override]
+        return bool(self.inner.accepts_parts)
+
+    @property
+    def command_timeout_s(self):  # type: ignore[override]
+        return self.inner.command_timeout_s
+
+    @property
     def reward(self):  # type: ignore[override]
         return self.inner.reward
 
@@ -207,6 +215,17 @@ class Layer(Robot):
                 listener(self, self._fault)
             except Exception:  # noqa: BLE001 - the layer is in the fault state regardless
                 logger.exception("%s: reporting the fault failed", type(self).__name__)
+
+    def part(self, path: str) -> Any:
+        """The read-only view of part ``path`` of the robot below (an assembly's ``part()``).
+
+        Raises:
+            KeyError: No such part, or the robot below has no parts.
+        """
+        part = getattr(self.inner, "part", None)
+        if part is None:
+            raise KeyError(f"part({path!r}): this robot has no parts")
+        return part(path)
 
     def _part_layers(self) -> List["Layer"]:
         """Layers on parts of the robot below this one (:mod:`hirobot.assembly.part_layers`)."""
@@ -263,7 +282,7 @@ class Layer(Robot):
         self.inner.hold()
 
     def _idle_step(self) -> None:
-        self.inner._idle_step()
+        self.inner.idle_step()
 
     def set_gains(self, kp: Optional[np.ndarray], kd: Optional[np.ndarray]) -> None:
         self.inner.set_gains(kp, kd)

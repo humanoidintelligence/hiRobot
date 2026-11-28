@@ -152,7 +152,7 @@ def test_expanded_configs_match_the_snapshot():
     from pathlib import Path
 
     snap = json.loads((Path(__file__).parent / "data" / "expanded_configs.json").read_text())
-    names = available_configs("robots")
+    names = available_configs("robots", plugins=False)
     assert sorted(snap) == names
     for name in names:
         assert json.loads(json.dumps(load_config(name))) == snap[name], name
@@ -170,3 +170,49 @@ def test_old_formats_are_rejected_or_deprecated():
     with pytest.warns(DeprecationWarning, match="body_overrides"):
         robot = make_robot("unitree_h1", body_overrides={"driver": "toy", "dt": 0.01})
     assert robot.embodiment.num_dofs == 19
+
+
+def _plugin(tmp_path, monkeypatch, files):
+    """A package ``hrplug`` with ``hrplug/configs/<name>.yaml`` files, under ``hirobot.configs``."""
+    import importlib.metadata
+    import sys
+
+    root = tmp_path / "hrplug" / "configs"
+    for name, text in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text)
+    (tmp_path / "hrplug" / "__init__.py").write_text("")
+    (root / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for m in [m for m in sys.modules if m == "hrplug" or m.startswith("hrplug.")]:
+        monkeypatch.delitem(sys.modules, m)
+    eps = [importlib.metadata.EntryPoint("hrplug", "hrplug.configs", "hirobot.configs"),
+           importlib.metadata.EntryPoint("broken", "no_such_pkg.configs", "hirobot.configs")]
+    real = importlib.metadata.entry_points
+
+    def entry_points(**kw):
+        if kw.get("group") == "hirobot.configs":
+            return eps
+        if not kw and sys.version_info < (3, 10):  # pragma: no cover - py39
+            return {**real(), "hirobot.configs": eps}
+        return real(**kw)
+
+    monkeypatch.setattr(importlib.metadata, "entry_points", entry_points)
+
+
+def test_plugin_configs_are_found_by_name_and_builtins_win(tmp_path, monkeypatch, caplog):
+    _plugin(tmp_path, monkeypatch, {
+        "robots/plugged.yaml": "defaults: [robots/agibot_g1]\nassembly: {name: plugged}\n",
+        "robots/agibot_g1.yaml": "assembly: {name: impostor}\n",
+    })
+    with caplog.at_level("WARNING"):
+        names = available_configs("robots")
+    assert "robots/plugged" in names and names.count("robots/agibot_g1") == 1
+    assert "robots/plugged" not in available_configs("robots", plugins=False)
+    assert "no_such_pkg" in caplog.text and "skipped" in caplog.text
+    # By name (bare and with its group), through defaults: of a built-in.
+    cfg = load_config("plugged")
+    assert cfg["assembly"]["name"] == "plugged" and cfg["assembly"]["parts"]
+    assert load_config("robots/plugged") == cfg
+    assert load_config("agibot_g1")["assembly"]["name"] == "agibot-g1"  # the built-in
+    make_robot("plugged")

@@ -410,9 +410,19 @@ class PartView:
     ``robot.part("left")`` returns one. Names are the part's own (no prefix).
     """
 
-    def __init__(self, path: str, robot: "Robot") -> None:
+    def __init__(self, path: str, robot: "Robot", layer: Optional["LayerView"] = None) -> None:
         self.path = path
         self._robot = robot
+        self._layer = layer
+
+    @property
+    def layer(self) -> Optional["LayerView"]:
+        """The layer put on exactly this part (``layers: [{type: ..., part: <path>}]``), or ``None``.
+
+        A read-only view; command the part from the root with
+        ``Action.parts={path: ...}``, so the gate and the arbiter see it.
+        """
+        return self._layer
 
     @property
     def embodiment(self) -> Embodiment:
@@ -440,7 +450,68 @@ class PartView:
         return f"PartView({self.path!r}, {self._robot.embodiment.name!r})"
 
 
-__all__ = ["BASE_COMMANDS", "BASE_FIELDS", "PartView", "SEP", "action_leaves", "action_owners",
+class LayerView:
+    """Read-only view of the layer on one part: what it takes, not the layer itself.
+
+    ``robot.part("g1").layer`` returns one. Joint names (``direct_joints``) are
+    the part's own, without the ``<part>/`` prefix the root's ``joint_names``
+    carry. Layer skills run from the root as ``"<part>/<skill>"``.
+    """
+
+    def __init__(self, type: str, layer: "Robot") -> None:
+        self.type = type  #: The ``type`` in the config (``"wbc"`` for hiWBC's layer).
+        self._layer = layer
+
+    @property
+    def action_modes(self) -> Tuple[ControlMode, ...]:
+        return tuple(self._layer.action_modes)
+
+    @property
+    def direct_joints(self) -> Tuple[str, ...]:
+        """Joints a caller may name beside a non-joint mode, in the part's own names."""
+        return tuple(self._layer.direct_joints)
+
+    @property
+    def motion_spaces(self) -> Tuple[Any, ...]:
+        return tuple(self._layer.motion_spaces)
+
+    @property
+    def cartesian_targets(self) -> Tuple[str, ...]:
+        return tuple(self._layer.cartesian_targets)
+
+    @property
+    def fault(self) -> Optional[str]:
+        return self._layer.fault
+
+    @property
+    def layer_skill_running(self) -> bool:
+        return bool(self._layer.layer_skill_running)
+
+    def list_layer_skills(self) -> List[Any]:
+        """This layer's skills, by their own names (run them from the root as ``<part>/<name>``)."""
+        return list(self._layer.list_layer_skills())
+
+    def get_status(self) -> RobotStatus:
+        return self._layer.get_status()
+
+    def get(self, name: str, default: Any = None) -> Any:
+        """A public read-only attribute of the layer (``"base_velocity_limits"``), else ``default``.
+
+        Names starting with ``_`` and methods are not given out.
+        """
+        if not isinstance(name, str) or name.startswith("_"):
+            return default
+        try:
+            value = getattr(self._layer, name)
+        except Exception:  # noqa: BLE001 - a layer property that fails reads as missing
+            return default
+        return default if callable(value) else value
+
+    def __repr__(self) -> str:
+        return f"LayerView({self.type!r})"
+
+
+__all__ = ["BASE_COMMANDS", "BASE_FIELDS", "LayerView", "PartView", "SEP", "action_leaves", "action_owners",
            "check_parts", "frame_targets", "owner_part", "part_covers", "parts_overlap",
            "parts_position_targets", "resolve_part", "scope_joints",
            "leaf_prefix", "merge_embodiments", "part_joint_names", "prefixed", "split_name"]

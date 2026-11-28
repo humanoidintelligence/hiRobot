@@ -140,10 +140,22 @@ elif ref.kind == "mjcf" and os.path.isfile(ref.path):
     ...
 ```
 
-### `available_configs(group=None) -> List[str]`
+### `available_configs(group=None, plugins=True) -> List[str]`
 
-内置配置的名字，已排序：`robots/unitree_g1`、`body/unitree/g1`……`group`（`robots`、`body`、
+配置的名字，已排序：`robots/unitree_g1`、`body/unitree/g1`……`group`（`robots`、`body`、
 `end_effector`、`camera`、`microphone`、`speaker`）只列一个目录。和 `hirobot configs` 打印的一样。
+
+除了内置配置，插件包也能带配置：一个目录布局相同（`robots/<name>.yaml` 等）的包，写进 `hirobot.configs`
+entry-point 组：
+
+```toml
+[project.entry-points."hirobot.configs"]
+mypkg = "mypkg.configs"   # mypkg/configs/robots/my_robot.yaml -> make_robot("my_robot")
+```
+
+它的配置在这里列出，凡是接受配置名字的地方（`make_robot`、`load_config`、`defaults:`）都能按名字找到。
+内置名字优先：插件里同名的配置被跳过并打 warning；插件之间按 entry-point 名字排在前面的优先。
+`plugins=False` 只列 hiRobot 自己的。
 
 ### `make_robot(config, overrides=None, sim=None) -> Robot`
 
@@ -163,7 +175,8 @@ entry-point 插件）。按顺序执行以下步骤：
 5. 给根挂一个 `SafetyGate`，按关节的阈值从树中每个 `safety:` 合并而来（关节数和非有限值检查始终生效）；
    `safety: false` 会把它摘掉。
 6. 如果设置了 `layers:`，按顺序用每个 layer 包装机器人（见 [Layer](#layer)）。带 `part: <path>` 的 layer
-   只包装 assembly 的那个部件（`hirobot.assembly.part_layers`；它们位于整机 layer 之下）。layer 下面的安全门检查它们发出的
+   只包装 assembly 的那个部件（`hirobot.assembly.part_layers`；它们位于整机 layer 之下）。仿真里这种 layer 每个周期都推进它的
+   控制器，动作没提到它的部件时、调 `idle_step()` 时也推进；它发出的内容随这条动作一起下发。layer 下面的安全门检查它们发出的
    关节指令；有 layer 时，最外层再加一个安全门检查调用方发送的内容。
 
 `overrides` 把部件路径映射到合并进配置的 overrides，所以与主机相关的值（网络接口、IP、`read_only`）可以来自命令行：
@@ -355,6 +368,7 @@ maintainers: []
 | `camera_info(name)` | method -> `CameraInfo` | 相机 `name` 的内参和安装位姿（外参），用来把 `images[name]` 和 `depth[name]`（米，已配准到彩色图）换成 3D。内参取第一个有的来源：配置的 `intrinsics:`；相机驱动（`connect()` 之后；RealSense、Orbbec、ZED 从设备读）；否则由安装位置的 `fovy` 推出理想针孔。结果会缩放到相机声明的 `width` / `height`。`mount` 是光学坐标系在某个机器人连杆中的位姿；头部、腕部相机还要乘上该连杆的当前位姿，这一步由调用方做。子部件的相机名为 `<部件>/<名字>`。相机名不存在时抛 `KeyError` |
 | `accepts_parts` | class attribute | `send_action` 是否接受 `Action.parts`：带子部件的 assembly 为 `True`，其余为 `False` |
 | `now()` | optional | 机器人时钟（秒），`Observation.stamps` 的时间在它上面：默认 `time.monotonic()`，`toy` / `mujoco` 是仿真时间。包装层返回内层机器人的 |
+| `idle_step()` | concrete | 仿真里在最后一条指令下走一个控制周期（每个 layer 推进它的控制器）；真机上什么都不做。给没有新命令要发、但要仿真世界继续走的调用方（没有输入的界面、正在播放的 layer 技能）。它不发命令，所以不经 arbiter：别的租约（layer 技能）持有时也能调。只在一个线程里调，每个周期最多一次，发了命令的周期不调 |
 | `hold()` | optional | 让机器人保持在原处，例如在 policy 停止之后。默认情况下，驱动接受 POSITION 时把当前 `joint_pos` 作为 POSITION 动作发送，否则什么都不做。只接受笛卡尔增量的仿真器什么都不做；带 `builtin_skills` 的 Unitree 什么都不做（运动服务会让机器人保持站立）。有自己平衡回路的驱动（全身控制的人形机器人）必须覆盖它，指挥机器人站定（基座速度 `[0, 0, 0]`）：发送 `joint_pos` 会把关节冻住，人形机器人会摔倒。经过安全门 |
 | `set_gains(kp, kd)` | optional | 每个关节的 PD 增益。默认什么都不做 |
 | `has_onboard_skills` | property | 驱动是否提供机载 skill。默认 `False` |
@@ -643,7 +657,7 @@ skill 未知、参数错误或机器人拒绝时抛出 `RobotSkillError`。
 
 ### 包装器
 
-`RobotAssembly` 把这四个调用转发给其本体驱动，并把每个子部件的 skill 列在该部件的前缀下（`<part>/<skill>`）。
+`RobotAssembly` 把这四个调用转发给其本体驱动，并把每个子部件的 skill 列在该部件的前缀下（`<part>/<skill>`）。`Layer` 把它们转给 `inner`；自己写的包装器见[配置之外的包装器](#配置之外的包装器)。
 
 ### 带 skill 的驱动
 
@@ -887,7 +901,8 @@ robot = make_robot("examples/lab_two_cells.yaml")   # 两个 cell，每个各两
 | 能力 | `action_modes`：所有部件都接受的模式。`direct_joints`、`cartesian_targets`：各部件的值，加前缀。`motion_spaces`：恰好一个浮动基座部件时取它的值 |
 | 错误 | 某个部件读取或发送失败，或报告了 `fault`，assembly 就让其他所有部件保持，并进入自己的故障状态。此后 `send_action` 抛出 `RobotFaultError`，直到 `reset()` |
 | 租约 | 部件是带自己[命令租约](#命令仲裁)的 `Robot`，所以 `robot.claim(name, parts=["left"])` 只持有那个部件（嵌套的用 `parts=["cell_a/left"]`）；不相交的部件各自独立 claim，路径重叠抛 `RobotBusyError`。直接对已被持有的部件调用抛 `RobotBusyError`。部件自己的线程（全身控制器）仍能指挥它的内层机器人 |
-| `part(path)` | 只读视图：`embodiment`、`simulated`、`fault`、`get_observation()`、`get_status()` |
+| `part(path)` | 只读视图：`embodiment`、`action_modes`、`simulated`、`fault`、`get_observation()`、`get_status()`、`layer`。layer 把 `part()` 转给下面的机器人。`path` 是 `embodiment.parts` 的 key（`""` 是根，除外） |
+| `part(path).layer` | 根配置正好放在这个部件上的 layer（`layers: [{type: ..., part: <path>}]`），没有则 `None`（更深的部件也是 `None`）。只读的 `LayerView`：`type`（配置里的字符串，如 `"wbc"`）、`action_modes`、`direct_joints`（部件自己的名字，不带 `<part>/` 前缀）、`motion_spaces`、`cartesian_targets`、`fault`、`get_status()`、`list_layer_skills()`（自己的名字；从根以 `<part>/<name>` 运行）、`layer_skill_running`、`get(name, default=None)` 读 layer 的公开只读属性（`get("base_velocity_limits")`；方法和 `_` 开头的名字返回 `default`）。不能发命令：从根发 `Action.parts={path: ...}`；只让这个部件保持，用这个部件上的 lease：`robot.claim("app", parts=[path]).hold()` |
 | `get_status()` | `joint_temperature` 拼接；`joint_faults`、`board_temperature`、`extra` 的键加前缀；`battery` 和 `command` 只有一个部件报告时放在顶层，否则放进 `extra["<part>/battery"]` / `extra["<part>/command"]`；`fault` 取 assembly 自己的或第一个部件的 |
 | Skill | 部件的 skill 列为 `<part>/<skill>`；`run_onboard_skill("g1/wave")` 在该部件上运行它 |
 | 生命周期 | `connect` 先连接各部件，再连接节点自己的相机，失败时撤销。`reset`、`hold`、`damp`、`estop`、`disconnect`、`stop_onboard_skill` 即使某个部件失败也会作用到每个部件，然后抛出第一个错误。`reset` 也会清除故障状态 |
@@ -1387,7 +1402,7 @@ envelope=None)` 不连接也不断开机器人；返回时释放租约。`hirobo
 |---|---|---|
 | `_send_action(action)` | abstract | 驱动原语。**驱动实现这个方法，绝不实现 `send_action`** |
 | `_estop()` | optional | `estop()` 背后的驱动原语。默认在驱动有 `damp()` 时调用它 |
-| `_idle_step()` | optional，SPI | 在最后一条指令下让仿真时间前进一个控制周期。assembly 对动作未提及的仿真部件调用它。默认什么都不做；toy 仿真和 MuJoCo 会步进 |
+| `_idle_step()` | optional，SPI | `idle_step()` 背后的驱动原语：在最后一条指令下让仿真时间前进一个控制周期。assembly 也对动作未提及的仿真部件调用它。默认什么都不做；toy 仿真和 MuJoCo 会步进。`Layer` 把它转成 `inner.idle_step()`；有控制器的 layer 覆盖它来推进一拍 |
 | `_set_safety(gate)` | concrete，SPI | 挂接或清除（`None`）`SafetyGate`。给 `make_robot` 和测试用；应用在配置的 `safety:` 段里设限制 |
 | `_run_onboard_skill(spec, args)` | optional | `run_onboard_skill` 背后的驱动原语；`args` 已检查过。返回这次参数预计跑多少秒，返回 `None` 时用 `spec.duration_s` |
 | `_set_fault(reason)` / `_clear_fault()` | concrete，SPI | 让机器人进故障态（驱动或 layer 自己进入阻尼或停止时），命令抛 `RobotFaultError`，直到 `reset()`；清除故障 |
@@ -1477,6 +1492,23 @@ layer 是受信任代码，按内核模块的标准审。`self.inner` 是只给�
 层技能（[使用方](#layer)）：层实现 `_layer_skills() -> List[RobotSkillSpec]`、`_start_layer_skill(spec, args)`（启动后返回；
 在里面调层自己的 `hold()` 等能通过）、`_stop_layer_skill()`，技能自己结束时调 `_layer_skill_finished()`。层自己的线程照常给
 `inner` 发命令，那在仲裁器下面。
+
+### 配置之外的包装器
+
+任何包住一个 `Robot` 再交给别人的代码（比如 benchmark 的评测器：计步、episode 结束后拒绝命令），也应继承 `Layer`，只覆盖
+它拦截的方法。这样声明、设备、`now()`、`idle_step()` 和 episode 结果都从 `inner` 往上转，`estop()` 也先停最底下的机器人。
+直接构造 `Evaluator(inner)`，不经 `make_robot` 或 `layers:`，是受支持的用法：
+
+- 命令经 `inner.send_action`，`inner` 上的安全门和仲裁器照样检查。`inner` 上有 lease 时，包装器的直接调用会被拒
+  （`RobotBusyError`）。
+- `wrapper.claim(...)` 在包装器上建一个仲裁器，和 `inner` 的分开。层技能 claim 的是这个（包装器的 `_stack_arbiter` 为 `None`）。
+- `reset()` 转给 `inner`，并清掉 `estop()` 后包装器的故障。
+
+`hirobot.testing.assert_forwards(wrapper, inner, *, changes=())` 检查包装器把 `hirobot.testing.FORWARDED` 里的每个名字
+（`embodiment`、`action_modes`、`motion_spaces`、`direct_joints`、`cartesian_targets`、`accepts_parts`、`simulated`、
+`command_timeout_s`、`cameras`、`microphones`、`speakers`、`reward`、`success`、`done`、`has_onboard_skills`）原样往上转，
+且 `now()` 是 `inner` 的时钟。`changes` 里是包装器有意改的名字（锁定 `success` 的包装器传 `changes=["success"]`）。
+不一致的逐个列出后失败，所以 `Robot` 以后加了声明而包装器漏转会被测出来；不继承 `Layer` 的包装器也能用。
 
 ## 扩展点：相机、末端执行器与音频
 

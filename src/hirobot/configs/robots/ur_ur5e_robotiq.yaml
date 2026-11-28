@@ -11,6 +11,10 @@
 #
 # The arm runs on the toy body by default; the gripper's driver only connects on
 # hardware. See docs/setup/ur.md, "Gripper (Robotiq 2F)".
+#
+# In the simulation (sim: True) there is no gripper: end_effector/robotiq/2f85_urcap
+# has no model:, so the world has the arm alone and Observation.gripper is empty.
+# The robotiq_2f85 asset (hirobot/assets.py) is not wired in yet.
 
 assembly:
   name: ur5e_robotiq

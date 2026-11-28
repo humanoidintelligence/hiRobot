@@ -149,7 +149,8 @@ Core pieces:
   each layer's `_estop()` (0.2 s each). `hirobot.testing.assert_layer_uses_public_api` checks
   a layer. SPI methods are `_`-prefixed: `_set_safety`, `_set_fault`, `_clear_fault`,
   `_idle_step`; applications never call them (`docs/api.md` keeps them in "Writing a
-  driver or a layer (SPI)"). Layer skills: `list_layer_skills` / `run_layer_skill` /
+  driver or a layer (SPI)"). Applications call the public `idle_step()` instead, which
+  sends nothing and is not arbitrated. Layer skills: `list_layer_skills` / `run_layer_skill` /
   `stop_layer_skill`; while one runs the layer holds the lease with `LAYER_SKILL`. A layer
   implements `_layer_skills` / `_start_layer_skill` / `_stop_layer_skill`.
   Capabilities callers read: `action_modes`, `motion_spaces`, `cartesian_targets`,
@@ -165,8 +166,10 @@ Core pieces:
   `parts.py` works out each part's frame and the merged `Embodiment` (names under the
   `<part>/` prefix). `defaults:` still merges whole configs; named lists (`joints`,
   `frames`, `mounts`, device lists) merge by `name`. `make_robot` / `load_embodiment`
-  take a name, path or dict. `hirobot.available_configs(group)` lists the built-in names. The old `embodiment:` + `body:` single-robot format still
-  loads through `legacy.py` with a `DeprecationWarning`; `group:` is rejected.
+  take a name, path or dict. `hirobot.available_configs(group)` lists the built-in names
+  and those of `hirobot.configs` entry-point plugins (built-ins win a name clash). The
+  old `embodiment:` + `body:` single-robot format still loads through `legacy.py` with a
+  `DeprecationWarning`; `group:` is rejected.
   `tests/data/expanded_configs.json` pins the expanded result.
 - **`DofMap` (`dof.py`)** — reorder joint vectors by name, so one policy drives robots
   with different joint layouts.

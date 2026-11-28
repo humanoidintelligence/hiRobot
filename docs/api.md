@@ -148,11 +148,25 @@ elif ref.kind == "mjcf" and os.path.isfile(ref.path):
     ...
 ```
 
-### `available_configs(group=None) -> List[str]`
+### `available_configs(group=None, plugins=True) -> List[str]`
 
-Names of the built-in configs, sorted: `robots/unitree_g1`, `body/unitree/g1`, ...
+Names of the configs, sorted: `robots/unitree_g1`, `body/unitree/g1`, ...
 `group` (`robots`, `body`, `end_effector`, `camera`, `microphone`, `speaker`)
 limits the list to one directory. What `hirobot configs` prints.
+
+Besides the built-in ones, a plugin package can ship configs: a package whose
+directory has the same layout (`robots/<name>.yaml`, ...), named in the
+`hirobot.configs` entry-point group:
+
+```toml
+[project.entry-points."hirobot.configs"]
+mypkg = "mypkg.configs"   # mypkg/configs/robots/my_robot.yaml -> make_robot("my_robot")
+```
+
+Its configs are listed here and found by name everywhere a config name is taken
+(`make_robot`, `load_config`, `defaults:`). A built-in name always wins: a plugin
+config with the same name is skipped with a warning, and between plugins the first
+by entry-point name wins. `plugins=False` lists only hiRobot's own.
 
 ### `make_robot(config, overrides=None, sim=None) -> Robot`
 
@@ -183,7 +197,9 @@ order:
    `safety: false` detaches it.
 6. If `layers:` is set, wrap the robot in each layer in order (see
    [Layers](#layers)). A layer with `part: <path>` wraps only that part of an
-   assembly (`hirobot.assembly.part_layers`; these sit under the whole-robot layers). The
+   assembly (`hirobot.assembly.part_layers`; these sit under the whole-robot layers). In
+   simulation such a layer steps its controller every period, also when an action
+   leaves its part out or on `idle_step()`; what it sends goes down with the action. The
    gate under the layers checks the joint commands they send; with layers, a
    second gate on top checks what the caller sends.
 
@@ -426,6 +442,7 @@ promise that two threads sending at once get any particular order.
 | `camera_info(name)` | method -> `CameraInfo` | Intrinsics and mount (extrinsics) of camera `name`, to turn `images[name]` and `depth[name]` (metres, registered to the colour image) into 3D. Intrinsics come from the first source that has them: the config's `intrinsics:`, the camera driver (after `connect()`; RealSense, Orbbec, ZED read them from the device), else an ideal pinhole from the mount's `fovy`. They are rescaled to the camera's declared `width` / `height`. `mount` is the pose of the optical frame in a robot link; for a head or wrist camera, composing it with the link's current pose is the caller's step. A child part's camera is named `<part>/<name>`. `KeyError` for an unknown camera |
 | `accepts_parts` | class attribute | Whether `send_action` takes `Action.parts`: `True` on an assembly with child parts, else `False` |
 | `now()` | optional | The robot's clock in seconds, what `Observation.stamps` times are on: `time.monotonic()` by default, simulated time in `toy` / `mujoco`. Wrappers return the inner robot's |
+| `idle_step()` | concrete | In simulation, let one control period pass under the last command (each layer steps its controller); on a real robot, nothing. For a caller with nothing new to send that wants the simulated world to keep going (a UI with no input, a layer skill playing). Sends no command, so it is not arbitrated: it may be called while another lease (a layer skill) holds the robot. Call it from one thread, at most once per period, not in a period where you send |
 | `hold()` | optional | Keep the robot where it is, e.g. after a policy is stopped. By default sends the current `joint_pos` as a POSITION action when the driver accepts POSITION, otherwise does nothing. A simulator that takes only Cartesian deltas does nothing; Unitree with `builtin_skills` does nothing (the motion service keeps the robot standing). A driver with its own balance loop (a whole-body-controlled humanoid) must override it to command standing still (base velocity `[0, 0, 0]`): sending `joint_pos` freezes the joints and the humanoid falls. Goes through the safety gate |
 | `set_gains(kp, kd)` | optional | Per-joint PD gains. No-op by default |
 | `has_onboard_skills` | property | Whether the driver offers onboard skills at all. `False` by default |
@@ -741,7 +758,8 @@ that refused.
 ### Wrappers
 
 `RobotAssembly` forwards all four skill calls to its body driver, and lists each
-child part's skills under the part's prefix (`<part>/<skill>`).
+child part's skills under the part's prefix (`<part>/<skill>`). A `Layer` forwards
+them to `inner`; for wrappers of your own, see [Wrappers outside a config](#wrappers-outside-a-config).
 
 ### Drivers with skills
 
@@ -1048,7 +1066,8 @@ robot = make_robot("examples/lab_two_cells.yaml")   # two cells of two arms each
 | Capabilities | `action_modes`: modes every part takes. `direct_joints`, `cartesian_targets`: the parts', prefixed. `motion_spaces`: the floating-base part's when there is exactly one |
 | Errors | A part that fails to read or send, or reports a `fault`, makes the assembly hold every other part and enter its own fault state. Then `send_action` raises `RobotFaultError` until `reset()` |
 | Leases | A part is a `Robot` with its own [command lease](#command-arbiter), so `robot.claim(name, parts=["left"])` holds just that part (`parts=["cell_a/left"]` for a nested one); disjoint parts are claimed independently, overlapping paths raise `RobotBusyError`. A direct call on a held part raises `RobotBusyError`. A part's own thread (a whole-body controller) still commands its inner robot |
-| `part(path)` | Read-only view: `embodiment`, `simulated`, `fault`, `get_observation()`, `get_status()` |
+| `part(path)` | Read-only view: `embodiment`, `action_modes`, `simulated`, `fault`, `get_observation()`, `get_status()`, `layer`. A layer forwards `part()` to the robot below. `path` is a key of `embodiment.parts` (except `""`, the root) |
+| `part(path).layer` | The layer the root config puts on exactly this part (`layers: [{type: ..., part: <path>}]`), else `None` (also for a part deeper inside it). A read-only `LayerView`: `type` (the config's string, `"wbc"`), `action_modes`, `direct_joints` (the part's own names, no `<part>/` prefix), `motion_spaces`, `cartesian_targets`, `fault`, `get_status()`, `list_layer_skills()` (own names; run them from the root as `<part>/<name>`), `layer_skill_running`, `get(name, default=None)` for a public read-only attribute of the layer (`get("base_velocity_limits")`; methods and `_` names give `default`). It cannot command: send `Action.parts={path: ...}` from the root; hold only that part with a lease on it, `robot.claim("app", parts=[path]).hold()` |
 | `get_status()` | `joint_temperature` concatenated; `joint_faults`, `board_temperature`, `extra` keys prefixed; `battery` and `command` top-level when one part reports one, else `extra["<part>/battery"]` / `extra["<part>/command"]`; `fault` the assembly's or the first part's |
 | Skills | Part skills listed as `<part>/<skill>`; `run_onboard_skill("g1/wave")` runs it on that part |
 | Lifecycle | `connect` connects parts then the node's own cameras, undoing on failure. `reset`, `hold`, `damp`, `estop`, `disconnect`, `stop_onboard_skill` reach every part even when one fails, then raise the first error. `reset` also clears the fault state |
@@ -1622,7 +1641,7 @@ calls them, and a layer's `inner` does not expose them.
 |---|---|---|
 | `_send_action(action)` | abstract | Driver primitive. **Drivers implement this, never `send_action`** |
 | `_estop()` | optional | Driver primitive behind `estop()`. Default: `damp()` if the driver has one |
-| `_idle_step()` | optional, SPI | Let simulated time pass one control period under the last command. An assembly calls it on simulated parts the action did not mention. No-op by default; the toy sim and MuJoCo step |
+| `_idle_step()` | optional, SPI | Driver primitive behind `idle_step()`: let simulated time pass one control period under the last command. An assembly also calls it on simulated parts the action did not mention. No-op by default; the toy sim and MuJoCo step. `Layer` forwards it as `inner.idle_step()`; a layer with a controller overrides it to tick |
 | `_set_safety(gate)` | concrete, SPI | Attach or clear (`None`) the `SafetyGate`. For `make_robot` and tests; an application sets limits in the config's `safety:` section |
 | `_run_onboard_skill(spec, args)` | optional | Driver primitive behind `run_onboard_skill`; `args` are already checked. Returns the expected run time in seconds for these arguments, or `None` for `spec.duration_s` |
 | `_set_fault(reason)` / `_clear_fault()` | concrete, SPI | Put the robot in its fault state (a driver or layer that damped or stopped itself), so commands raise `RobotFaultError` until `reset()`; clear it |
@@ -1734,6 +1753,32 @@ Layer skills ([users' side](#layers)): a layer implements
 (start and return; inside it the layer's own `hold()` etc. pass),
 `_stop_layer_skill()`, and calls `_layer_skill_finished()` when a skill ends on
 its own. Its own thread commands `inner` as usual: that is below the arbiter.
+
+### Wrappers outside a config
+
+Any code that wraps a `Robot` to hand it to someone else (a benchmark's
+evaluator that counts steps and refuses commands after an episode ends) should
+subclass `Layer` too, and override only what it intercepts. It then passes the
+declarations, devices, `now()`, `idle_step()` and the episode outcome up from
+`inner`, and its `estop()` stops the robot at the bottom first. Build it
+directly, `Evaluator(inner)`, without `make_robot` or `layers:`; this is supported:
+
+- Commands go through `inner.send_action`, so the gate and arbiter on `inner`
+  still check them. A lease taken on `inner` blocks the wrapper's direct calls
+  (`RobotBusyError`).
+- `wrapper.claim(...)` makes an arbiter on the wrapper, separate from `inner`'s.
+  A layer skill claims that one (the wrapper's `_stack_arbiter` is `None`).
+- `reset()` forwards to `inner` and clears the wrapper's fault after `estop()`.
+
+`hirobot.testing.assert_forwards(wrapper, inner, *, changes=())` checks that the
+wrapper passes up every name in `hirobot.testing.FORWARDED` (`embodiment`,
+`action_modes`, `motion_spaces`, `direct_joints`, `cartesian_targets`,
+`accepts_parts`, `simulated`, `command_timeout_s`, `cameras`, `microphones`,
+`speakers`, `reward`, `success`, `done`, `has_onboard_skills`) and that `now()` is
+`inner`'s clock. Names in `changes` are the ones the wrapper means to change
+(a wrapper that locks `success` passes `changes=["success"]`). It fails listing
+each one that differs, so a wrapper that misses a declaration added to `Robot`
+later is caught; it works on wrappers that do not subclass `Layer` too.
 
 ## Extension points: cameras, end-effectors and audio
 

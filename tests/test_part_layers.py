@@ -271,3 +271,49 @@ def test_part_on_a_single_robot_is_refused():
     with pytest.raises(ValueError, match="built from parts"):
         make_robot({"assembly": {"parts": {"body": _ARM}}, "layers": [{"type": "walker",
                                                                        "part": "body"}]})
+
+
+class Ticker(Walker):
+    """A walker whose controller ticks: in simulation it must step every period."""
+
+    def __init__(self, inner, gain: float = 1.0) -> None:
+        super().__init__(inner, gain)
+        self.ticks = 0
+
+    def _send_action(self, action):
+        self.ticks += 1
+        super()._send_action(action)
+
+    def _idle_step(self):
+        self.ticks += 1
+        self.inner.send_action(Action(mode=ControlMode.POSITION,
+                                      joint_target=np.full(self.inner.embodiment.num_dofs, 0.1)))
+
+
+def test_a_part_layer_ticks_when_the_action_leaves_its_part_out_and_on_idle_step(monkeypatch):
+    monkeypatch.setitem(registry.LAYERS._entries, "ticker", Ticker)
+    robot = _robot([{"type": "ticker", "part": "left"}])
+    ticker = _layer(robot, "left")
+    pos = Action(mode=ControlMode.POSITION, joint_target=np.full(3, 0.2))
+    robot.send_action(Action(parts={"right": pos}))
+    assert ticker.ticks == 1 and np.allclose(_q(robot, "left"), 0.1)  # sent with the action
+    assert np.allclose(_q(robot, "right"), 0.2)
+    robot.idle_step()
+    assert ticker.ticks == 2
+    with robot.claim("skill", parts=["right"]):  # not arbitrated: a holder does not block it
+        robot.idle_step()
+    assert ticker.ticks == 3 and np.allclose(_q(robot, "right"), 0.2)
+
+
+def test_part_view_shows_the_layer_on_exactly_that_part():
+    robot = _robot([{"type": "walker", "part": "left", "gain": 2.0}, {"type": "walker"}])
+    assert isinstance(robot, Walker)  # through a whole-robot layer too
+    view = robot.part("left").layer
+    assert view.type == "walker"
+    assert ControlMode.BASE_VELOCITY in view.action_modes
+    assert view.direct_joints == ()  # Walker frees no joints
+    assert view.get("gain") == 2.0 and view.get("nope") is None and view.get("nope", 1) == 1
+    assert view.get("send_action") is None and view.get("_inner") is None
+    assert view.fault is None and not view.layer_skill_running
+    assert robot.part("right").layer is None and robot.part("cell/a").layer is None
+    assert not hasattr(view, "send_action")

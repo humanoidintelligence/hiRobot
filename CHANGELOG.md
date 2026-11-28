@@ -5,6 +5,48 @@ User-facing changes in each hiRobot release, newest first. The format follows
 release may change the API incompatibly; such changes are listed under
 "Removed" or "Changed" and marked **breaking**.
 
+## [0.0.9] - 2026-11-28
+
+Whole-body controllers on a part of an assembly keep running in simulation, and
+an app can read them. Plugin packages can ship their own configs. Several robots
+hold their pose better in MuJoCo.
+
+### Added
+
+- **`Robot.idle_step()`**: in simulation, one control period passes under the last
+  command and each layer steps its controller; on a real robot it does nothing. It
+  sends no command, so it works while another lease holds the robot.
+- **`PartView.layer`**: `robot.part("g1").layer` is a read-only view (`LayerView`) of
+  the layer on that part (`layers: [{type: ..., part: g1}]`), or `None`. It has
+  `type`, `action_modes`, `direct_joints`, `motion_spaces`, `cartesian_targets`,
+  `fault`, `get_status()`, `list_layer_skills()`, `layer_skill_running` and
+  `get(name)` for a public attribute. It cannot command.
+- **Configs from plugin packages**: a package registered under the `hirobot.configs`
+  entry-point group ships a config directory. `available_configs()`, `make_robot("name")`
+  and `defaults:` find its configs; a built-in config with the same name wins.
+  `available_configs(plugins=False)` lists only hiRobot's own.
+- **`hirobot.testing.assert_forwards(wrapper, inner, *, changes=())`** and `FORWARDED`:
+  checks that a wrapper passes every public `Robot` method and property up
+  unchanged. docs/api.md, "Wrappers outside a config": code that wraps a `Robot`
+  to hand it on (a benchmark's evaluator) subclasses `Layer`.
+
+### Changed
+
+- Simulation gains for `unitree_h1_2` (with rotor inertia), `franka_fr3_droid` (the
+  MJCF's actuator gains) and `fourier_gr1t1` / `fourier_gr1t2`. Under the defaults
+  H1-2's wrists oscillated, FR3's joint2 sagged 1.4 rad and the GR1 waists 0.3 rad.
+- `Layer` forwards `accepts_parts`, `command_timeout_s` and `part()`. A whole-robot
+  layer over an assembly refused `Action.parts` before.
+
+### Fixed
+
+- A layer on a part now steps its controller in simulation when an action does not
+  name its part, as docs/api.md says; the part below it was stepped directly before.
+- A layer that does not override `_idle_step` raised `AttributeError` in simulation
+  instead of letting time pass.
+- With `sim: {fixed_base: [...]}`, the welded root's contacts with its child bodies
+  are excluded again: the Unitree H1's waist could not turn.
+
 ## [0.0.8] - 2026-11-27
 
 Simulation for more robots: the Unitree H1 with its Inspire hands, the Fourier
@@ -463,6 +505,7 @@ once against `Observation` / `Action` and run on any robot with a driver.
   GRx, AgiBot X1, Franka FR3 and UR5e are included but not yet checked on
   hardware.
 
+[0.0.9]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6

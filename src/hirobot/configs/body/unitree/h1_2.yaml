@@ -49,8 +49,30 @@ frames:
 #   pip install 'hirobot[assets]'
 #   hirobot assets fetch unitree_h1_2
 #
-# No gains here: there is no *_mujoco config for H1-2 yet.
+# Gains and armature are for the simulation (sim:), not the real robot's. The MJCF
+# has no rotor inertia, so under the default PD (kp 60, kd 1) the light wrist links
+# oscillated (left_wrist_yaw up to 264 rad/s). armature reuses the G1 values
+# (body/unitree/g1.yaml: legs and waist from FRoM-W1's G1 MJCF, 0.003597 for the arms);
+# they are estimates, not measured. kp / kd are set so every joint holds its
+# home pose within 0.05 rad (tests/test_sim_tracking.py). Arms held straight out
+# at zero still sag about 0.5 rad at the shoulder under gravity.
 model:
   mjcf: ~/.cache/hirobot/assets/unitree_ros/robots/h1_2_description/h1_2_handless_hirobot.xml
+  #     hip_y hip_p hip_r knee ank_p ank_r   (left, then right)
+  kp: [200, 200, 200, 300, 40, 40,
+       200, 200, 200, 300, 40, 40,
+       300,                                  # waist yaw
+       150, 150, 80, 80, 20, 20, 20,         # left arm: shoulder p/r/y, elbow, wrist r/p/y
+       150, 150, 80, 80, 20, 20, 20]         # right arm
+  kd: [5, 5, 5, 6, 2, 2,
+       5, 5, 5, 6, 2, 2,
+       6,
+       3, 3, 2, 2, 1, 1, 1,
+       3, 3, 2, 2, 1, 1, 1]
+  armature: [0.0103, 0.0251, 0.0103, 0.0251, 0.003597, 0.003597,
+             0.0103, 0.0251, 0.0103, 0.0251, 0.003597, 0.003597,
+             0.0103,
+             0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597,
+             0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597, 0.003597]
 
 driver: {type: unitree_sdk2}

@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence, 
 
 from hirobot.control.layer import Layer
 from hirobot.assembly.node import OWN
-from hirobot.assembly.parts import SEP, PartView, action_owners, part_covers
+from hirobot.assembly.parts import SEP, LayerView, PartView, action_owners, part_covers
 from hirobot.core.robot import Robot
 from hirobot.core.robot_skills import RobotSkillError, RobotSkillResult, RobotSkillSpec
 from hirobot.core.types import Action, Observation, RobotStatus
@@ -207,13 +207,16 @@ class PartLayers(Layer):
         specs: ``(part path, layer class, keyword arguments)`` for each layer.
     """
 
-    def __init__(self, inner: Robot, specs: Sequence[Tuple[str, Any, Mapping[str, Any]]]) -> None:
+    def __init__(self, inner: Robot, specs: Sequence[Tuple[str, Any, Mapping[str, Any]]],
+                 types: Optional[Sequence[str]] = None) -> None:
         super().__init__(inner)
         root = self._inner
         check_layer_parts(root.embodiment, [p for p, _, _ in specs])
         self.ports: Dict[str, PartPort] = {}
         self.layers: Dict[str, Layer] = {}
-        for path, cls, kwargs in specs:
+        #: Part path -> the ``type`` the config gave its layer.
+        self.types: Dict[str, str] = {}
+        for i, (path, cls, kwargs) in enumerate(specs):
             port = PartPort(path, part_robot(root, path), self)
             layer = cls(port, **dict(kwargs))
             if not isinstance(layer, Layer):
@@ -222,6 +225,7 @@ class PartLayers(Layer):
             layer._fault_listener = self._layer_fault
             self.ports[path] = port
             self.layers[path] = layer
+            self.types[path] = str(types[i]) if types is not None else cls.__name__
 
     def _part_layers(self) -> List[Layer]:
         return list(self.layers.values())
@@ -294,7 +298,11 @@ class PartLayers(Layer):
         return self._inner.parts
 
     def part(self, path: str) -> PartView:
-        return self._inner.part(path)
+        view = self._inner.part(path)
+        layer = self.layers.get(view.path)
+        if layer is None:
+            return view
+        return PartView(view.path, view._robot, LayerView(self.types[view.path], layer))
 
     # ------------------------------------------------------------- commands
 
@@ -336,23 +344,52 @@ class PartLayers(Layer):
                 rest[m] = _with_base_frame(piece)
         return rest, to_layers
 
-    def _send_action(self, action: Action) -> None:
-        if not self._touches_layers(action):
-            self.inner.send_action(action)
-            return
-        rest, to_layers = self._route(self._inner, "", action)
+    def _idle_layers(self, busy: Sequence[str]) -> List[str]:
+        """In simulation, the layers not in ``busy``: they step their controller this period."""
+        if not self.simulated:
+            return []  # a real robot's layers run on their own (or do nothing when idle)
+        return [p for p in self.layers if p not in busy]
+
+    def _collect(self, to_layers: Mapping[str, Action], idle: Sequence[str]) -> Dict[str, Action]:
+        """Run the layers (``send_action`` with their piece, or ``_idle_step``); return what they sent."""
         produced: Dict[str, Action] = {}
         token = _COLLECTING.set((self, produced))
         try:
             for path, piece in to_layers.items():
                 self.layers[path].send_action(piece)
+            for path in idle:
+                self.layers[path]._idle_step()
         finally:
             _COLLECTING.reset(token)
-        combined = Action(parts=rest) if rest else None
+        return produced
+
+    @staticmethod
+    def _combined(rest: Mapping[str, Action], produced: Mapping[str, Action]) -> Optional[Action]:
+        combined = Action(parts=dict(rest)) if rest else None
         for path, out in produced.items():
             combined = _merge(combined, _nest(path, _with_base_frame(out)))
+        return combined
+
+    def _send_action(self, action: Action) -> None:
+        # A part's layer the action does not name still ticks in simulation, and
+        # what it sends joins the action; its part is idle-stepped otherwise.
+        touches = self._touches_layers(action)
+        idle = self._idle_layers(self._route(self._inner, "", action)[1] if touches else ())
+        if not touches and not idle:
+            self.inner.send_action(action)
+            return
+        rest, to_layers = self._route(self._inner, "", action)
+        combined = self._combined(rest, self._collect(to_layers, idle))
         if combined is not None:
             self.inner.send_action(combined)
+
+    def _idle_step(self) -> None:
+        idle = [] if self.fault is not None else self._idle_layers(())
+        combined = self._combined({}, self._collect({}, idle)) if idle else None
+        if combined is None:
+            self.inner.idle_step()
+        else:
+            self.inner.send_action(combined)  # the other parts are idle-stepped by the node
 
     # ------------------------------------------------------- hold and reset
 

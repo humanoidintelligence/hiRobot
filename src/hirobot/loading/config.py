@@ -9,6 +9,15 @@ A config is a YAML mapping with ``embodiment``, ``body`` and optional
     make_robot("~/my_robot.yaml")                 # a file
 
 A name is looked up as ``configs/<name>.yaml``, then ``configs/robots/<name>.yaml``.
+Plugin packages add config directories with the same layout through the
+``hirobot.configs`` entry-point group (the value is a package; its directory is
+the root)::
+
+    [project.entry-points."hirobot.configs"]
+    hiwbc = "hiwbc.configs"   # hiwbc/configs/robots/g1_sonic.yaml -> make_robot("g1_sonic")
+
+The built-in configs come first: a plugin config with a built-in name is
+skipped with a warning, and so is one an earlier plugin already has.
 Anything ending in ``.yaml`` / ``.yml``, or starting with ``/``, ``~`` or ``.``, is a path.
 
 **Composition.** A config can list other configs under ``defaults:``. They are
@@ -40,7 +49,9 @@ from __future__ import annotations
 
 import copy
 import importlib.resources
+import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -51,10 +62,55 @@ _SUFFIXES = (".yaml", ".yml")
 
 ConfigRef = Union[str, "os.PathLike[str]"]
 
+#: Entry-point group of plugin config directories.
+CONFIG_ENTRY_POINT_GROUP = "hirobot.configs"
+
+logger = logging.getLogger(__name__)
+
 
 def config_root() -> Path:
     """Directory of the built-in configs (inside the installed package)."""
     return Path(str(importlib.resources.files("hirobot").joinpath("configs")))
+
+
+def plugin_roots() -> List[Path]:
+    """Config directories from ``hirobot.configs`` entry points, by entry-point name.
+
+    A package that fails to import or has no directory is logged and skipped.
+    """
+    from importlib.metadata import entry_points
+
+    if sys.version_info >= (3, 10):
+        eps = list(entry_points(group=CONFIG_ENTRY_POINT_GROUP))
+    else:  # pragma: no cover - py39
+        eps = list(entry_points().get(CONFIG_ENTRY_POINT_GROUP, []))
+    roots: List[Path] = []
+    for ep in sorted(eps, key=lambda e: e.name):
+        try:
+            root = Path(str(importlib.resources.files(ep.value)))
+        except Exception as exc:  # noqa: BLE001 - a broken plugin must not break the rest
+            logger.warning("hirobot config plugin %r (%s) failed to load: %s", ep.name, ep.value, exc)
+            continue
+        if not root.is_dir():
+            logger.warning("hirobot config plugin %r: %s is not a directory", ep.name, root)
+            continue
+        roots.append(root)
+    return roots
+
+
+def _config_files(plugins: bool = True) -> Dict[str, Path]:
+    """Config name -> file: the built-in ones, then each plugin's new names."""
+    found: Dict[str, Path] = {}
+    roots = [config_root()] + (plugin_roots() if plugins else [])
+    for root in roots:
+        for p in sorted(root.rglob("*.yaml")):
+            name = p.relative_to(root).with_suffix("").as_posix()
+            if name in found:
+                logger.warning("hirobot config %r in %s skipped: %s has the same name",
+                               name, root, found[name])
+                continue
+            found[name] = p
+    return found
 
 
 def _is_path(ref: str) -> bool:
@@ -62,12 +118,13 @@ def _is_path(ref: str) -> bool:
 
 
 def builtin_path(name: str) -> Optional[Path]:
-    """The built-in config called ``name``, or ``None``."""
+    """The built-in or plugin config called ``name``, or ``None``."""
     root = config_root()
     for candidate in (root / f"{name}.yaml", root / "robots" / f"{name}.yaml"):
         if candidate.is_file():
             return candidate
-    return None
+    files = _config_files()
+    return files.get(name) or files.get(f"robots/{name}")
 
 
 def resolve(ref: ConfigRef, base: Optional[Path] = None) -> Path:
@@ -151,8 +208,10 @@ def load_config(ref: Union[ConfigRef, Dict[str, Any]]) -> Dict[str, Any]:
     return _load(resolve(ref), [])
 
 
-def available_configs(group: Optional[str] = None) -> List[str]:
-    """Names of the built-in configs, e.g. ``robots/unitree_g1``; ``group`` limits to one directory."""
-    root = config_root()
-    top = root / group if group else root
-    return sorted(p.relative_to(root).with_suffix("").as_posix() for p in top.rglob("*.yaml"))
+def available_configs(group: Optional[str] = None, plugins: bool = True) -> List[str]:
+    """Names of the configs, e.g. ``robots/unitree_g1``; ``group`` limits to one directory.
+
+    ``plugins=False`` lists only hiRobot's own (no ``hirobot.configs`` entry points).
+    """
+    prefix = group.strip("/") + "/" if group else ""
+    return sorted(n for n in _config_files(plugins) if n.startswith(prefix))

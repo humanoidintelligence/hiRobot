@@ -637,6 +637,22 @@ class Robot(Stoppable, ABC):
         """
         return RobotStatus(timestamp=time.time(), fault=self.fault)
 
+    def idle_step(self) -> None:
+        """In simulation, let one control period pass under the last command; on a real robot, nothing.
+
+        For a caller that has nothing new to send but wants the simulated world
+        to keep going (a UI with no input, a layer skill playing in
+        simulation). It sends no command: the safety gate has nothing to
+        check, so it is not arbitrated and may be called while another lease
+        holds the robot (a layer skill included). Call it from one thread, at
+        most once per control period, and not in a period where you send.
+
+        Simulated time is shared by the whole robot, so it advances every part,
+        and each layer steps its controller (a whole-body controller ticks),
+        layers on parts (``layers: [{type: ..., part: ...}]``) included.
+        """
+        self._idle_step()
+
     def _idle_step(self) -> None:
         """Let simulated time pass for one control period without a new command.
 

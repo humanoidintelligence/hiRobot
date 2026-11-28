@@ -3,6 +3,7 @@
 :func:`assert_layer_uses_public_api` runs a layer class on a toy robot and
 fails if the layer reached past the public API of the robot below it (see
 :class:`~hirobot.control.layer.Layer`, "Layers use the public API of ``inner``").
+:func:`assert_forwards` checks that a wrapper passes the robot's declarations up.
 """
 
 from __future__ import annotations
@@ -83,4 +84,53 @@ def assert_layer_uses_public_api(
     return set(proxy.accessed)
 
 
-__all__ = ["assert_layer_uses_public_api"]
+#: The public declarations of :class:`~hirobot.core.robot.Robot` a wrapper must
+#: pass up unchanged unless it means to change them (:func:`assert_forwards`).
+FORWARDED = ("embodiment", "action_modes", "motion_spaces", "direct_joints",
+             "cartesian_targets", "accepts_parts", "simulated", "command_timeout_s",
+             "cameras", "microphones", "speakers", "reward", "success", "done",
+             "has_onboard_skills")
+
+
+def _same(a: Any, b: Any) -> bool:
+    if a is b:
+        return True
+    if isinstance(a, Mapping) and isinstance(b, Mapping):
+        return dict(a).keys() == dict(b).keys() and all(a[k] is b[k] for k in a)
+    try:
+        return bool(tuple(a) == tuple(b)) if isinstance(a, (tuple, list)) else bool(a == b)
+    except Exception:  # noqa: BLE001 - values that do not compare count as different
+        return False
+
+
+def assert_forwards(wrapper: Robot, inner: Robot, *, changes: Iterable[str] = ()) -> None:
+    """Check that ``wrapper`` passes ``inner``'s public declarations up unchanged.
+
+    Compares each name in :data:`FORWARDED` (``embodiment``, ``action_modes``,
+    ``cameras``, ...), skipping those in ``changes`` (the ones the wrapper
+    means to change), and checks that ``wrapper.now()`` is ``inner``'s clock
+    (a simulator's time, not the host's). Fails with ``AssertionError`` listing
+    every name that differs, so a wrapper that misses a declaration added to
+    ``Robot`` later is caught. Works for any wrapper, a
+    :class:`~hirobot.control.layer.Layer` or not; it only reads.
+    """
+    changes = set(changes)
+    unknown = changes - set(FORWARDED)
+    assert not unknown, f"changes: {sorted(unknown)} are not in hirobot.testing.FORWARDED"
+    differ = []
+    for name in FORWARDED:
+        if name in changes:
+            continue
+        mine, theirs = getattr(wrapper, name, None), getattr(inner, name, None)
+        if not _same(mine, theirs):
+            differ.append(f"{name}: {mine!r} (inner: {theirs!r})")
+    before = inner.now()
+    mine = wrapper.now()
+    after = inner.now()
+    if not before <= mine <= after:
+        differ.append(f"now(): {mine} is not the inner clock ({before}..{after})")
+    assert not differ, (f"{type(wrapper).__name__} does not pass these up from "
+                        f"{type(inner).__name__}: " + "; ".join(differ))
+
+
+__all__ = ["FORWARDED", "assert_forwards", "assert_layer_uses_public_api"]

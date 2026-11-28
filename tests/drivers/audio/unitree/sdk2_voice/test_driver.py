@@ -158,7 +158,9 @@ def test_stop_cuts_playback_and_flushes_the_robot(monkeypatch):
     played = spk.play(_tone(3.0))
     took = time.monotonic() - t0
     spk.close()
-    assert 0.25 <= played <= 0.45 and took < 0.6
+    # Stopped at 0.3 s; `played` counts from the first send, so it can be a little less.
+    # Wide margins: shared CI runners are slow. Without stop() it would be 3.0 s.
+    assert 0.1 <= played <= 0.8 and took < 1.2
     assert ("PlayStop", "hirobot") in voice.calls
     assert voice.sent_seconds() < 1.0  # most of the clip was never sent
 

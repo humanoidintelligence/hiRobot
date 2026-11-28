@@ -74,7 +74,7 @@ assembly's parts.
   diff is what you meant:
 
   ```bash
-  python -c "import json; from hirobot.config import available_configs, load_config; \
+  python -c "import json; from hirobot.loading.config import available_configs, load_config; \
   names = available_configs('robots'); \
   print(json.dumps({n: load_config(n) for n in names}, indent=1, sort_keys=True))" \
   > tests/data/expanded_configs.json

@@ -19,8 +19,10 @@ from hirobot import (
     ControlMode,
     Layer,
     MotionClip,
+    Priority,
     Robot,
     RobotAssembly,
+    RobotBusyError,
     RobotFaultError,
     SafetyError,
     SafetyGate,
@@ -459,3 +461,24 @@ def test_assert_layer_uses_public_api(fake_layer):
         assert_layer_uses_public_api(Sneaky)
     with pytest.raises(AssertionError, match="does not subclass"):
         assert_layer_uses_public_api(lambda inner: ToyRobot(inner.embodiment))
+
+
+def test_idle_step_passes_time_through_the_layers_and_past_a_lease(fake_layer):
+    robot = make_robot(_cfg(layers=[{"type": "fake_wbc"}]))
+    robot.connect()
+    robot.reset()
+    toy = robot.inner
+    while not isinstance(toy, ToyRobot):
+        toy = toy._inner
+    cmds = []
+    robot.add_listener(on_command=cmds.append)
+    t0 = robot.now()
+    robot.idle_step()  # Layer forwards it through inner (public API)
+    assert toy.idle_steps == 1 and robot.now() > t0
+    # It sends nothing, so it is not arbitrated: another holder does not block it.
+    with robot.claim("skill", priority=Priority.LAYER_SKILL):
+        robot.idle_step()
+        assert toy.idle_steps == 2
+        assert cmds == [] and robot.received == []  # no command, nothing reported
+        with pytest.raises(RobotBusyError):
+            robot.hold()  # a real command still goes through the lease

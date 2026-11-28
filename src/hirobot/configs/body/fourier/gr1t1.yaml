@@ -48,13 +48,31 @@ frames:
 
 # The model is Fourier's URDF from FFTAI/Wiki-GRx-Models (GRX/GR1/gr1t1, GPL-3.0),
 # with the 6-DoF Fourier hands; the hand joints are not part of this body. Fourier
-# publishes no MJCF for GR1, so this body cannot be in the simulation (sim: needs an
-# mjcf); hirobot.model_path returns it for URDF tools outside hiRobot. It is not
-# shipped with hiRobot. Fetch it with
+# publishes no MJCF for GR1: the simulation (sim:) compiles the URDF itself, but
+# safety.sim_check needs an MJCF and refuses this body. MuJoCo drops the URDF's
+# <visual> meshes, so simulated cameras see the collision shapes (cylinders).
+# It is not shipped with hiRobot. Fetch it with
 #
 #   pip install 'hirobot[assets]'
 #   hirobot assets fetch fourier_gr1
+#
+# Gains are for the simulation, not the real robot's: set so every joint holds its
+# home pose within 0.05 rad (tests/test_sim_tracking.py). Under the default PD
+# (kp 60) waist_pitch sagged about 0.3 rad.
 model:
+  #     hip_r hip_y hip_p knee ank_p ank_r   (left, then right)
+  kp: [200, 200, 200, 250, 40, 40,
+       200, 200, 200, 250, 40, 40,
+       300, 300, 300,                        # waist yaw/pitch/roll
+       20, 20, 20,                           # head pitch/roll/yaw
+       100, 100, 60, 60, 20, 20, 20,         # left arm: shoulder p/r/y, elbow, wrist y/r/p
+       100, 100, 60, 60, 20, 20, 20]         # right arm
+  kd: [5, 5, 5, 6, 2, 2,
+       5, 5, 5, 6, 2, 2,
+       6, 6, 6,
+       1, 1, 1,
+       3, 3, 2, 2, 1, 1, 1,
+       3, 3, 2, 2, 1, 1, 1]
   urdf: ~/.cache/hirobot/assets/fourier/Wiki-GRx-Models/GRX/GR1/gr1t1/urdf/gr1t1_fourier_hand_6dof.urdf
 
 driver: {type: fourier_grx}

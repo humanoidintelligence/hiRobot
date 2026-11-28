@@ -436,6 +436,13 @@ class SimWorld:
         if body.fixed_base:
             for j in free:
                 spec.delete(j)
+            # Welded, the root body is part of the world body, and MuJoCo does not
+            # filter parent-child contacts against the world: collision meshes that
+            # overlap at a joint (H1's pelvis and torso_link at waist_yaw) then lock
+            # it. Exclude them as the free-floating model did.
+            if root is not None:
+                for child in root.bodies:
+                    spec.add_exclude(bodyname1=root.name, bodyname2=child.name)
         if body.height is not None and root is not None:
             root.pos = [root.pos[0], root.pos[1], float(body.height)]
 

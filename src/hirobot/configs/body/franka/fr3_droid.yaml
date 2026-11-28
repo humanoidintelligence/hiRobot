@@ -40,7 +40,12 @@ mounts:
 #
 #   pip install 'hirobot[assets]'
 #   hirobot assets fetch menagerie_franka_fr3
+#
+# Gains (for the simulation) are the MJCF's position actuators (kp, kv). Without
+# them the default PD (kp 60) let joint2 sag 1.36 rad under gravity.
 model:
   mjcf: ~/.cache/hirobot/assets/menagerie/franka_fr3/fr3_hirobot.xml
+  kp: [4500, 4500, 3500, 3500, 2000, 2000, 2000]
+  kd: [450, 450, 350, 350, 200, 200, 200]
 
 driver: {type: franka_droid, ip: 172.16.0.2}

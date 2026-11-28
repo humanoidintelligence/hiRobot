@@ -74,7 +74,7 @@ from hirobot.core.types import (
     RobotStatus,
 )
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"
 
 __all__ = [
     "Observation",
@@ -381,7 +381,7 @@ def _finish(robot: Robot, embodiment: Embodiment, safety_cfg: Any, sim_cfg: Any,
             part = spec.pop("part")
             if not isinstance(part, str):
                 raise ValueError(f"layers: part: of {name!r} must be a part path, got {part!r}")
-            on_parts.append((part.strip("/"), layer_cls, spec))
+            on_parts.append((part.strip("/"), layer_cls, spec, name))
         else:
             whole.append((layer_cls, spec))
     if on_parts:
@@ -392,7 +392,7 @@ def _finish(robot: Robot, embodiment: Embodiment, safety_cfg: Any, sim_cfg: Any,
         if getattr(robot, "_node", None) is None:
             raise ValueError("layers: part: is for a robot built from parts (an assembly: config "
                              "with child robots); this robot has none")
-        robot = PartLayers(robot, on_parts)
+        robot = PartLayers(robot, [s[:3] for s in on_parts], types=[s[3] for s in on_parts])
         layers.append(robot)
         layers += list(robot.layers.values())
     for layer_cls, spec in whole:

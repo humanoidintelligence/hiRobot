@@ -4,6 +4,36 @@
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。0.1.0 之前任何版本都可能有不兼容的接口改动，
 这类改动列在"移除"或"变更"下，并标 **不兼容**。
 
+## [0.0.9] - 2026-11-28
+
+组装体里某个部件上的全身控制器在仿真里照常运行，应用也能读到它。插件包可以带自己的配置。
+几个机器人在 MuJoCo 里更能保持姿态。
+
+### 新增
+
+- **`Robot.idle_step()`**：仿真里按上一条命令走一个控制周期，每个 layer 推进一拍控制器；真机上什么都不做。
+  它不发命令，别的租约占着机器人时也能用。
+- **`PartView.layer`**：`robot.part("g1").layer` 是那个部件上 layer（`layers: [{type: ..., part: g1}]`）的只读视图
+  （`LayerView`），没有则为 `None`。有 `type`、`action_modes`、`direct_joints`、`motion_spaces`、`cartesian_targets`、
+  `fault`、`get_status()`、`list_layer_skills()`、`layer_skill_running`，以及读公开属性的 `get(name)`。它不能发命令。
+- **插件包的配置**：在 `hirobot.configs` entry-point 组里注册的包可以带一个配置目录。`available_configs()`、
+  `make_robot("名字")` 和 `defaults:` 都能找到其中的配置；和内置配置同名时内置的优先。`available_configs(plugins=False)`
+  只列 hiRobot 自己的。
+- **`hirobot.testing.assert_forwards(wrapper, inner, *, changes=())`** 和 `FORWARDED`：检查包装器把 `Robot` 的每个公开方法和
+  属性原样向上转发。docs/api.zh-CN.md"配置之外的包装器"：把 `Robot` 包一层再交出去的代码（比如评测器）继承 `Layer`。
+
+### 变更
+
+- `unitree_h1_2`（加了转子惯量）、`franka_fr3_droid`（用 MJCF 执行器的增益）和 `fourier_gr1t1` / `fourier_gr1t2`
+  有了仿真增益。原来用默认增益时，H1-2 的手腕振荡，FR3 的 joint2 下垂 1.4 rad，GR1 的腰下垂 0.3 rad。
+- `Layer` 转发 `accepts_parts`、`command_timeout_s` 和 `part()`。以前组装体外面的整机 layer 会拒绝 `Action.parts`。
+
+### 修复
+
+- 部件上的 layer 在仿真里，动作没提到它的部件时也推进控制器，和 docs/api.zh-CN.md 说的一致；以前直接推进的是它下面的部件。
+- 没覆盖 `_idle_step` 的 layer 在仿真里报 `AttributeError`，时间推进不了。
+- `sim: {fixed_base: [...]}` 焊住的根 body 和子 body 之间的接触重新排除：Unitree H1 的腰转不动。
+
 ## [0.0.8] - 2026-11-27
 
 更多机器人能在仿真里跑：带 Inspire 手的 Unitree H1、Fourier GR2 和 Trossen ALOHA 能在 MuJoCo 里运行，
@@ -293,6 +323,7 @@
   和底盘，以及它的头部（RealSense D457）和腕部（RealSense D405）相机；Unitree G1 和 H1 上的 RealSense D435i 头部相机。
   Fourier GRx、AgiBot X1、Franka FR3 和 UR5e 的驱动已包含，还没在真机上验证。
 
+[0.0.9]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/humanoidintelligence/hiRobot/compare/v0.0.5...v0.0.6

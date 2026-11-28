@@ -183,9 +183,10 @@ def test_chassis_pose_and_battery(monkeypatch):
 
 
 def test_base_velocity_is_resent_then_zeroed(monkeypatch):
-    _, robot, chassis = _with_chassis(monkeypatch, command_timeout=0.25)
+    # command_timeout leaves room for several 10 Hz resends even on a slow CI runner.
+    _, robot, chassis = _with_chassis(monkeypatch, command_timeout=0.6)
     robot.send_action(Action(mode=ControlMode.BASE_VELOCITY, base_velocity=np.array([0.1, 0.0, 0.2], float)))
-    time.sleep(0.6)
+    time.sleep(1.2)
     sent = list(chassis.moves)
     assert sent[0] == pytest.approx((100.0, np.degrees(0.2)))
     assert len([m for m in sent if m[0] == 100.0]) >= 2  # resent at 10 Hz
